@@ -9,10 +9,19 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 keywords = ["opendrive", "xodr", "road", "map", "simulation"]
 categories = ["parser-implementations", "science::robotics", "simulation"]
-# Map fixtures stay in git and out of the published tarball: consumers never
-# need them, they are 1.7 MB, and they carry third-party licences of their own
-# (see tests/data/README.md). Run the integration tests from a git checkout.
-exclude = ["/tests/data"]
+documentation = "https://docs.rs/libopendrive"
+# The tests and benchmarks need the map fixtures in tests/data. Those stay in
+# git and out of the published tarball. They are 1.7 MB, consumers never need
+# them, and two carry third-party licences (see tests/data/README.md). Tests
+# shipped without their data could only fail, so the tests go too. Run them
+# from a git checkout.
+exclude = [
+    "/.github",
+    "/.gitignore",
+    "/benches",
+    "/rust-toolchain.toml",
+    "/tests",
+]
 
 [features]
 # Serialize the baked network and its surface mesh, for shipping a map to a
