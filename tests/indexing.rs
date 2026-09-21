@@ -1,8 +1,8 @@
 //! The indexed lookups must answer exactly what a full scan answers.
 //!
 //! `nearest_lane` and `MeshSampler::height_at` prune candidates by a
-//! ground-plane grid. Pruning is where this kind of optimisation goes wrong,
-//! silently, on the one query that mattered. So both are checked against the
+//! ground-plane grid. Pruning is where this kind of optimisation goes wrong --
+//! silently, on the one query that mattered -- so both are checked against the
 //! brute-force answer on a real city export, which has the stacked roads,
 //! dead ground, and far-off-map queries a hand-written fixture would not.
 

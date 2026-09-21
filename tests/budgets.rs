@@ -57,3 +57,73 @@ fn routing_across_town07_stays_under_its_budget() {
     );
     println!("worst route over town07: {worst:.6}s across {routed} routed pairs");
 }
+
+/// Time `f` over every probe, returning the total.
+fn time(probes: &[glam::Vec3], mut f: impl FnMut(glam::Vec3)) -> f64 {
+    let start = Instant::now();
+    for &p in probes {
+        f(p);
+    }
+    start.elapsed().as_secs_f64()
+}
+
+#[test]
+fn the_indexed_lookups_beat_the_scans_they_replaced() {
+    // An absolute microsecond budget would either flake on a slow shared
+    // runner or be too loose to catch anything. Racing the index against the
+    // full scan in the same process measures the thing that actually matters
+    // -- that the index is still pruning -- and does it the same way on any
+    // hardware.
+    const SPEEDUP: f64 = 10.0;
+
+    let net = load_file(TOWN).expect("load town07");
+    let lanes: Vec<_> = net.driving_lanes().collect();
+    assert!(
+        lanes.len() > 500,
+        "town07 imported only {} driving lanes; a speedup over a small map \
+         proves nothing",
+        lanes.len()
+    );
+    let probes: Vec<glam::Vec3> = (0..64)
+        .map(|i| {
+            let lane = lanes[i * lanes.len() / 64];
+            lane.center.point_at(lane.center.length() * 0.5)
+        })
+        .collect();
+
+    let indexed = time(&probes, |p| {
+        std::hint::black_box(net.nearest_lane(p));
+    });
+    let scanned = time(&probes, |p| {
+        let hit = net
+            .driving_lanes()
+            .map(|l| (l.id, l.center.project(p)))
+            .min_by(|(_, a), (_, b)| {
+                (p - a.point)
+                    .length_squared()
+                    .total_cmp(&(p - b.point).length_squared())
+            });
+        std::hint::black_box(hit);
+    });
+    assert!(
+        scanned > indexed * SPEEDUP,
+        "nearest_lane is only {:.1}x faster than the full scan it replaced \
+         ({indexed:.6}s vs {scanned:.6}s) -- the lane index has stopped pruning",
+        scanned / indexed.max(f64::MIN_POSITIVE)
+    );
+
+    let mesh = net.surface_mesh();
+    let sampler = mesh.sampler();
+    let indexed = time(&probes, |p| {
+        std::hint::black_box(sampler.height_at(p.x, p.z));
+    });
+    let scanned = time(&probes, |p| {
+        std::hint::black_box(mesh.height_at(p.x, p.z));
+    });
+    assert!(
+        scanned > indexed * SPEEDUP,
+        "MeshSampler is only {:.1}x faster than the full triangle scan \
+         ({indexed:.6}s vs {scanned:.6}s)",
+        scanned / indexed.max(f64::MIN_POSITIVE)
+    );
+}

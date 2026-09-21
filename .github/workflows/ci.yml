@@ -20,6 +20,10 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+      # The timing guardrails in tests/budgets.rs compare an indexed lookup
+      # against the scan it replaced. A debug build makes both slow enough
+      # that the ratio stops meaning anything.
+      - run: cargo test --release --test budgets
       - run: cargo doc --no-deps
 
   msrv:
