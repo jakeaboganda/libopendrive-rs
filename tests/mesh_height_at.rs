@@ -29,6 +29,7 @@ fn flat_quad(y: f32, flip: bool) -> Mesh {
         vertices,
         normals: vec![Vec3::Y; 4],
         indices,
+        ..Default::default()
     }
 }
 
@@ -89,6 +90,7 @@ fn a_degenerate_or_empty_mesh_returns_none() {
         ],
         normals: vec![Vec3::Y; 3],
         indices: vec![0, 1, 2],
+        ..Default::default()
     };
     assert!(edge_on.height_at(1.0, 1.0).is_none());
 }
@@ -172,6 +174,7 @@ fn a_tilted_surface_returns_its_interpolated_leaning_normal_for_both_windings() 
             vertices: vertices.clone(),
             normals: vec![up; 4],
             indices,
+            ..Default::default()
         };
         let (_, n) = mesh.height_at(1.0, 1.0).expect("on the tilted surface");
         assert!(

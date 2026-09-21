@@ -1,17 +1,39 @@
+use std::ops::Range;
+
 use glam::{Quat, Vec3};
 
 use crate::geometry::left_normal;
 use crate::grid::{Aabb, Grid};
-use crate::network::RoadNetwork;
+use crate::network::{LaneId, RoadNetwork};
 
 /// A triangle mesh (Y-up, meters): per-vertex positions and up-normals, plus
 /// triangle indices. The road surface, shared by the physics collider (which
-/// needs only positions) and the viewer (which needs normals for lighting).
+/// needs only positions) and a renderer (which needs normals for lighting).
+///
+/// Deliberately a plain data type with public fields and no engine types in
+/// sight: uploading it is a matter of copying three slices.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Mesh {
     pub vertices: Vec<Vec3>,
     pub normals: Vec<Vec3>,
     pub indices: Vec<u32>,
+    /// Which lane each part of the mesh came from, in emission order.
+    ///
+    /// [`RoadNetwork::surface_mesh`] merges every lane into one buffer, which
+    /// is what a collider and a single draw call want. This is the way back:
+    /// it is what lets a renderer pick the lane under the cursor, give one
+    /// lane its own material, or name the lane a degenerate triangle came
+    /// from. Empty on a mesh built by hand.
+    pub lanes: Vec<LaneSpan>,
+}
+
+/// The slice of a [`Mesh`] belonging to one lane: a half-open range into
+/// `vertices` (and, in step, `normals`) and one into `indices`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaneSpan {
+    pub lane: LaneId,
+    pub vertices: Range<u32>,
+    pub indices: Range<u32>,
 }
 
 /// Why a mesh cannot be turned into a physics trimesh.
@@ -196,6 +218,7 @@ impl RoadNetwork {
             let tangents = lane.center.tangents();
             let half = lane.width * 0.5;
             let base = mesh.vertices.len() as u32;
+            let first_index = mesh.indices.len() as u32;
             for i in 0..points.len() {
                 let along = tangents[i];
                 // Cross axis, rolled about the (stored) tangent by the local
@@ -217,6 +240,11 @@ impl RoadNetwork {
                 let (r0, l1, r1) = (l0 + 1, l0 + 2, l0 + 3);
                 mesh.indices.extend_from_slice(&[l0, r0, r1, l0, r1, l1]);
             }
+            mesh.lanes.push(LaneSpan {
+                lane: lane.id,
+                vertices: base..mesh.vertices.len() as u32,
+                indices: first_index..mesh.indices.len() as u32,
+            });
         }
         mesh
     }
@@ -277,6 +305,7 @@ mod tests {
             vertices: vec![Vec3::ZERO, Vec3::X, Vec3::Z],
             normals: vec![Vec3::Y; 3],
             indices: vec![0, 1, 2],
+            ..Default::default()
         };
         assert_eq!(sound.validate(), Ok(()));
 

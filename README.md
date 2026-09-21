@@ -53,6 +53,14 @@ yielded no lanes at all. Non-finite attribute values are rejected at parse:
 Rust's float parser accepts `NaN` and turns `1e400` into infinity, and one such
 value poisons every point derived from it.
 
+## Visualization
+
+Rendering is not in scope here, but the output is shaped for it.
+`surface_mesh()` returns plain position, normal, and index buffers with no
+engine types in them, and a `LaneSpan` per lane saying which slice of those
+buffers it owns -- enough to pick the lane under a cursor or give one lane its
+own material without re-tessellating.
+
 ## Public dependencies
 
 `glam` is public: `Vec3` appears throughout the API. It is re-exported as
