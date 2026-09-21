@@ -4,6 +4,7 @@
 use glam::Vec3;
 
 use crate::geometry::{Polyline, Projection, RoadSample};
+use crate::grid::{Aabb, Grid};
 
 /// An opaque lane identifier. **Not** a vector index into `RoadNetwork.lanes` --
 /// an importer may assign arbitrary ids (e.g. from OpenDRIVE lane keys), so
@@ -64,9 +65,51 @@ pub struct Lane {
 /// lookup structures from it in [`RoadNetwork::new`] without any way for them
 /// to go stale -- a map that changed under its own index would answer
 /// `nearest_lane` with a lane that is no longer there.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct RoadNetwork {
     lanes: Vec<Lane>,
+    /// Driving lanes bucketed by their XZ footprint, for [`Self::nearest_lane`].
+    /// Derived from `lanes`, so it takes no part in equality.
+    index: LaneIndex,
+}
+
+/// Two networks are equal when their lanes are; the index is a function of
+/// them.
+impl PartialEq for RoadNetwork {
+    fn eq(&self, other: &Self) -> bool {
+        self.lanes == other.lanes
+    }
+}
+
+/// The driving lanes' XZ footprints, and a grid over them. Entries index
+/// `lanes` directly, so a hit resolves without a second lookup.
+#[derive(Debug, Clone, Default)]
+struct LaneIndex {
+    bounds: Vec<Aabb>,
+    positions: Vec<usize>,
+    grid: Grid,
+}
+
+impl LaneIndex {
+    fn build(lanes: &[Lane]) -> Self {
+        let (mut bounds, mut positions) = (Vec::new(), Vec::new());
+        for (i, lane) in lanes.iter().enumerate() {
+            if lane.kind != LaneKind::Driving {
+                continue;
+            }
+            // A centerline always has at least two points, so this is Some.
+            if let Some(b) = Aabb::around(lane.center.points().iter().map(|p| (p.x, p.z))) {
+                bounds.push(b);
+                positions.push(i);
+            }
+        }
+        let grid = Grid::build(&bounds);
+        Self {
+            bounds,
+            positions,
+            grid,
+        }
+    }
 }
 
 impl Lane {
@@ -96,9 +139,11 @@ impl Lane {
 }
 
 impl RoadNetwork {
-    /// Bake a lane list into a network.
+    /// Bake a lane list into a network, indexing the driving lanes by their
+    /// ground footprint. Linear in the total number of centerline points.
     pub fn new(lanes: Vec<Lane>) -> Self {
-        Self { lanes }
+        let index = LaneIndex::build(&lanes);
+        Self { lanes, index }
     }
 
     /// Every lane, in the order the importer emitted them. Positions are not
@@ -148,14 +193,34 @@ impl RoadNetwork {
     /// The driving lane whose centerline is nearest `point`, with the
     /// projection onto it -- the lane a body is in, and its lane-keeping
     /// error.
+    ///
+    /// Answered through the ground-plane index built in [`RoadNetwork::new`],
+    /// so the cost tracks the local lane density rather than the size of the
+    /// map.
+    ///
+    /// Nearest is by full 3D distance, but the index prunes in XZ only. That
+    /// is sound -- a horizontal distance is never more than the 3D one, so
+    /// pruning on it can only keep candidates, never drop a winner -- and it
+    /// is what makes stacked roads (a bridge over a road) both still
+    /// candidates for a point between them.
     pub fn nearest_lane(&self, point: Vec3) -> Option<(LaneId, Projection)> {
-        self.driving_lanes()
-            .map(|lane| (lane.id, lane.center.project(point)))
-            .min_by(|(_, a), (_, b)| {
-                let da = (point - a.point).length_squared();
-                let db = (point - b.point).length_squared();
-                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-            })
+        let index = &self.index;
+        index.grid.nearest(point.x, point.z, |item, best| {
+            let i = item as usize;
+            // The footprint is a lower bound on the distance to the
+            // centerline, so a lane whose box already loses needs no
+            // projection -- which is most of them, and all the repeats of a
+            // long lane that spans several cells.
+            if index.bounds[i].dist2(point.x, point.z) > best {
+                return None;
+            }
+            let lane = &self.lanes[index.positions[i]];
+            let projection = lane.center.project(point);
+            Some((
+                (point - projection.point).length_squared(),
+                (lane.id, projection),
+            ))
+        })
     }
 
     /// The road surface nearest `point`: project onto the nearest driving lane,

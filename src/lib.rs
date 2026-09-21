@@ -67,6 +67,7 @@
 //!   does not yet guard against it).
 
 mod geometry;
+mod grid;
 mod mesh;
 mod network;
 mod parse;
