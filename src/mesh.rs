@@ -13,6 +13,7 @@ use crate::network::{LaneId, RoadNetwork};
 /// Deliberately a plain data type with public fields and no engine types in
 /// sight: uploading it is a matter of copying three slices.
 #[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Mesh {
     pub vertices: Vec<Vec3>,
     pub normals: Vec<Vec3>,
@@ -30,6 +31,7 @@ pub struct Mesh {
 /// The slice of a [`Mesh`] belonging to one lane: a half-open range into
 /// `vertices` (and, in step, `normals`) and one into `indices`.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LaneSpan {
     pub lane: LaneId,
     pub vertices: Range<u32>,
@@ -38,6 +40,7 @@ pub struct LaneSpan {
 
 /// Why a mesh cannot be turned into a physics trimesh.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MeshError {
     #[error("mesh has no triangles")]
     Empty,

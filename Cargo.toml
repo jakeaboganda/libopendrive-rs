@@ -14,12 +14,19 @@ categories = ["parser-implementations", "science::robotics", "simulation"]
 # (see tests/data/README.md). Run the integration tests from a git checkout.
 exclude = ["/tests/data"]
 
+[features]
+# Serialize the baked network and its surface mesh, for shipping a map to a
+# viewer or another process, or caching an import.
+serde = ["dep:serde", "glam/serde"]
+
 [dependencies]
 glam = "0.32"
 roxmltree = "0.21"
+serde = { version = "1", features = ["derive"], optional = true }
 thiserror = "2"
 
 [dev-dependencies]
+serde_json = "1"
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 
 [profile.bench]
@@ -32,3 +39,6 @@ harness = false
 [[bench]]
 name = "query"
 harness = false
+
+[package.metadata.docs.rs]
+all-features = true

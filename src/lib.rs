@@ -80,6 +80,7 @@ mod fixtures;
 /// dependency: match it, or your `Vec3` is a different type than ours.
 pub use glam;
 
+pub use geometry::TooFewPoints;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
 pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};
 pub use network::{Direction, Lane, LaneId, LaneKind, RoadNetwork};

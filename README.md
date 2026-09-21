@@ -61,6 +61,15 @@ engine types in them, and a `LaneSpan` per lane saying which slice of those
 buffers it owns -- enough to pick the lane under a cursor or give one lane its
 own material without re-tessellating.
 
+The optional `serde` feature serializes the network and its mesh, for a viewer
+in another process or a cached import. A `RoadNetwork` sends its lanes alone
+and rebuilds its index on arrival, so what arrives behaves like a freshly
+imported map.
+
+```toml
+libopendrive = { version = "0.1", features = ["serde"] }
+```
+
 ## Public dependencies
 
 `glam` is public: `Vec3` appears throughout the API. It is re-exported as

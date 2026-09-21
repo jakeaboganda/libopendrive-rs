@@ -10,17 +10,20 @@ use crate::grid::{Aabb, Grid};
 /// an importer may assign arbitrary ids (e.g. from OpenDRIVE lane keys), so
 /// look lanes up with [`RoadNetwork::lane`], never by position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LaneId(pub usize);
 
 /// What a lane is for. Only driving lanes exist today; shoulders, sidewalks,
 /// etc. slot in here as the importer grows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LaneKind {
     Driving,
 }
 
 /// Travel direction of a lane relative to its geometry's start→end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Direction {
     Forward,
     Backward,
@@ -29,6 +32,7 @@ pub enum Direction {
 /// One lane: a drivable strip described by its centerline and width. A plan
 /// is laid down `center`; a vehicle drives it.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Lane {
     pub id: LaneId,
     pub kind: LaneKind,
@@ -65,7 +69,16 @@ pub struct Lane {
 /// lookup structures from it in [`RoadNetwork::new`] without any way for them
 /// to go stale -- a map that changed under its own index would answer
 /// `nearest_lane` with a lane that is no longer there.
+///
+/// Serializes as its lanes alone; the index is rebuilt on the way back in, so
+/// a network that crossed a process boundary is indistinguishable from one
+/// that was just imported.
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(into = "Vec<Lane>", from = "Vec<Lane>")
+)]
 pub struct RoadNetwork {
     lanes: Vec<Lane>,
     /// Driving lanes bucketed by their XZ footprint, for [`Self::nearest_lane`].
@@ -78,6 +91,18 @@ pub struct RoadNetwork {
 impl PartialEq for RoadNetwork {
     fn eq(&self, other: &Self) -> bool {
         self.lanes == other.lanes
+    }
+}
+
+impl From<Vec<Lane>> for RoadNetwork {
+    fn from(lanes: Vec<Lane>) -> Self {
+        Self::new(lanes)
+    }
+}
+
+impl From<RoadNetwork> for Vec<Lane> {
+    fn from(net: RoadNetwork) -> Self {
+        net.lanes
     }
 }
 

@@ -2,6 +2,7 @@ use glam::{Quat, Vec3};
 
 /// A position plus a horizontal heading along a lane. Y is up (elevation).
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Pose {
     pub position: Vec3,
     /// Unit tangent in the XZ (ground) plane -- the direction of travel.
@@ -13,6 +14,7 @@ pub struct Pose {
 /// is what draping a body onto the road needs -- see [`crate::Lane::sample_at`]
 /// and [`crate::RoadNetwork::sample_near`].
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RoadSample {
     /// Centerline surface point (Y-up, m) -- already at the banked height.
     pub point: Vec3,
@@ -48,6 +50,7 @@ impl RoadSample {
 
 /// The result of projecting a world point onto a polyline.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Projection {
     /// Arc length of the nearest point along the polyline.
     pub s: f32,
@@ -61,7 +64,16 @@ pub struct Projection {
 /// A polyline in 3D (Y-up, meters), queried by arc length. This is the baked
 /// form every curve reduces to: an importer samples clothoids/arcs into points;
 /// consumers only ever see the points. At least two points.
+///
+/// Serializes as its points alone -- the cumulative lengths and tangents are
+/// derived, so sending them would be both wasteful and a way to receive a
+/// polyline whose cached state disagrees with its geometry.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(into = "Vec<Vec3>", try_from = "Vec<Vec3>")
+)]
 pub struct Polyline {
     points: Vec<Vec3>,
     /// Cumulative arc length at each point; `cumulative[0] == 0`.
@@ -197,6 +209,25 @@ impl Polyline {
             }
         }
         best
+    }
+}
+
+impl From<Polyline> for Vec<Vec3> {
+    fn from(line: Polyline) -> Self {
+        line.points
+    }
+}
+
+/// Why a list of points is not a polyline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("a polyline needs at least two points")]
+pub struct TooFewPoints;
+
+impl TryFrom<Vec<Vec3>> for Polyline {
+    type Error = TooFewPoints;
+
+    fn try_from(points: Vec<Vec3>) -> Result<Self, Self::Error> {
+        Self::try_new(points).ok_or(TooFewPoints)
     }
 }
 
