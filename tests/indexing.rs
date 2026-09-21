@@ -1,10 +1,10 @@
-//! The lane index must answer exactly what a full scan answers.
+//! The indexed lookups must answer exactly what a full scan answers.
 //!
-//! `nearest_lane` prunes candidates by a ground-plane grid. Pruning is where
-//! this kind of optimisation goes wrong, silently, on the one query that
-//! mattered. So it is checked against the brute-force answer on a real city
-//! export, which has the stacked roads, dead ground, and far-off-map queries
-//! a hand-written fixture would not.
+//! `nearest_lane` and `MeshSampler::height_at` prune candidates by a
+//! ground-plane grid. Pruning is where this kind of optimisation goes wrong,
+//! silently, on the one query that mattered. So both are checked against the
+//! brute-force answer on a real city export, which has the stacked roads,
+//! dead ground, and far-off-map queries a hand-written fixture would not.
 
 use glam::Vec3;
 use libopendrive::{load_file, LaneId, Projection, RoadNetwork};
@@ -80,9 +80,29 @@ fn a_non_finite_query_returns_rather_than_panicking() {
 }
 
 #[test]
+fn the_mesh_sampler_agrees_with_a_full_scan() {
+    // Town07 has overlapping surfaces, so this also pins that the sampler
+    // picks the same one of two stacked roads that the scan does.
+    let net = load_file(TOWN).expect("town07 loads");
+    let mesh = net.surface_mesh();
+    let sampler = mesh.sampler();
+    let mut hits = 0;
+    for point in probes(&net) {
+        let indexed = sampler.height_at(point.x, point.z);
+        let scanned = mesh.height_at(point.x, point.z);
+        assert_eq!(indexed, scanned, "different surface under {point:?}");
+        hits += usize::from(indexed.is_some());
+    }
+    assert!(hits > 40, "only {hits} probes landed on the road at all");
+}
+
+#[test]
 fn an_empty_network_indexes_and_answers_nothing() {
     let empty = RoadNetwork::default();
     assert!(empty.nearest_lane(Vec3::ZERO).is_none());
     assert!(empty.sample_near(Vec3::ZERO).is_none());
     assert!(empty.route(Vec3::ZERO, Vec3::X).is_none());
+
+    let mesh = empty.surface_mesh();
+    assert!(mesh.sampler().height_at(0.0, 0.0).is_none());
 }

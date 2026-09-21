@@ -81,6 +81,6 @@ mod fixtures;
 pub use glam;
 
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
-pub use mesh::{Mesh, MeshError};
+pub use mesh::{Mesh, MeshError, MeshSampler};
 pub use network::{Direction, Lane, LaneId, LaneKind, RoadNetwork};
 pub use parse::{load_file, load_str, ImportError};

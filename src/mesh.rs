@@ -1,6 +1,7 @@
 use glam::{Quat, Vec3};
 
 use crate::geometry::left_normal;
+use crate::grid::{Aabb, Grid};
 use crate::network::RoadNetwork;
 
 /// A triangle mesh (Y-up, meters): per-vertex positions and up-normals, plus
@@ -66,12 +67,35 @@ impl Mesh {
     /// is drawn. The normal, though, is barycentric-interpolated from the smooth
     /// per-vertex normals, not the flat triangle normal: a body oriented to the
     /// flat normal snaps as each wheel crosses a facet edge (visible attitude
-    /// vibration), while the interpolated normal varies continuously. O(triangles)
-    /// per query; fine for the handful of analytically-draped bodies, not a
-    /// per-tick whole-fleet query on a city map.
+    /// vibration), while the interpolated normal varies continuously.
+    ///
+    /// Scans every triangle. For more than a query or two, build a
+    /// [`Mesh::sampler`] instead -- it answers the same thing off an index.
     pub fn height_at(&self, x: f32, z: f32) -> Option<(f32, Vec3)> {
+        self.highest(0..self.indices.len() / 3, x, z)
+    }
+
+    /// An index over this mesh's triangles, for repeated [`Mesh::height_at`]
+    /// queries.
+    ///
+    /// Building it is linear in the triangle count; each query afterwards
+    /// touches only the triangles over the point rather than all of them. Two
+    /// or three queries and it has paid for itself, and a per-wheel road
+    /// conform on a city map does thousands per tick.
+    pub fn sampler(&self) -> MeshSampler<'_> {
+        MeshSampler::new(self)
+    }
+
+    /// The highest of `triangles` covering `(x, z)`, with its normal.
+    fn highest(
+        &self,
+        triangles: impl IntoIterator<Item = usize>,
+        x: f32,
+        z: f32,
+    ) -> Option<(f32, Vec3)> {
         let mut best: Option<(f32, Vec3)> = None;
-        for tri in self.indices.chunks_exact(3) {
+        for t in triangles {
+            let tri = &self.indices[t * 3..t * 3 + 3];
             let (ia, ib, ic) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
             let (a, b, c) = (self.vertices[ia], self.vertices[ib], self.vertices[ic]);
             // Barycentric coords of (x,z) in the triangle's XZ projection.
@@ -106,6 +130,51 @@ impl Mesh {
             best = Some((y, n));
         }
         best
+    }
+}
+
+/// A mesh plus a ground-plane index over its triangles. Borrows the mesh, so
+/// it cannot outlive or diverge from the geometry it describes.
+///
+/// Answers exactly what [`Mesh::height_at`] answers, including which surface
+/// wins where triangles stack.
+#[derive(Debug, Clone)]
+pub struct MeshSampler<'a> {
+    mesh: &'a Mesh,
+    grid: Grid,
+}
+
+impl<'a> MeshSampler<'a> {
+    fn new(mesh: &'a Mesh) -> Self {
+        let bounds: Vec<Aabb> = mesh
+            .indices
+            .chunks_exact(3)
+            .filter_map(|tri| {
+                Aabb::around(
+                    tri.iter()
+                        .filter_map(|&i| mesh.vertices.get(i as usize).map(|v| (v.x, v.z))),
+                )
+            })
+            .collect();
+        Self {
+            mesh,
+            grid: Grid::build(&bounds),
+        }
+    }
+
+    /// The mesh this samples.
+    pub fn mesh(&self) -> &'a Mesh {
+        self.mesh
+    }
+
+    /// The surface height (world Y) and up-normal directly under `(x, z)` --
+    /// see [`Mesh::height_at`], which this answers identically.
+    pub fn height_at(&self, x: f32, z: f32) -> Option<(f32, Vec3)> {
+        // A triangle covering the point overlaps the cell holding it, so the
+        // one cell is the whole candidate set.
+        let candidates = self.grid.at(x, z);
+        self.mesh
+            .highest(candidates.iter().map(|&t| t as usize), x, z)
     }
 }
 

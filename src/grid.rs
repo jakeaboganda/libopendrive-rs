@@ -142,6 +142,27 @@ impl Grid {
         }
     }
 
+    /// The items whose footprint could contain `(x, z)`. Everything that does
+    /// contain it is here; some of what is here does not. Empty when the point
+    /// falls outside the grid's extent, or the grid holds nothing.
+    pub fn at(&self, x: f32, z: f32) -> &[u32] {
+        if self.cells.is_empty() || !self.covers(x, z) {
+            return &[];
+        }
+        &self.cells[self.row(z) * self.cols + self.col(x)]
+    }
+
+    /// Whether `(x, z)` is inside the grid's extent. Outside it, `col`/`row`
+    /// clamp to an edge cell, which is right for a nearest-item walk and wrong
+    /// for a containment lookup.
+    fn covers(&self, x: f32, z: f32) -> bool {
+        let (dx, dz) = (x - self.min_x, z - self.min_z);
+        dx >= 0.0
+            && dz >= 0.0
+            && dx <= self.cols as f32 * self.cell
+            && dz <= self.rows as f32 * self.cell
+    }
+
     /// The nearest item to `(x, z)`, by whatever `consider` measures. Exact
     /// distance ties go to the lowest item index, so the answer matches a
     /// linear scan of the item list and does not depend on the grid's layout.

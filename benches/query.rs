@@ -74,6 +74,7 @@ fn bench_mesh(c: &mut Criterion) {
     let net = town();
     let mesh = net.surface_mesh();
     let probes = probes(&net, 16);
+    let sampler = mesh.sampler();
     let mut group = c.benchmark_group("town07");
     group.bench_function("surface_mesh", |b| b.iter(|| black_box(net.surface_mesh())));
     group.bench_function("height_at", |b| {
@@ -83,6 +84,14 @@ fn bench_mesh(c: &mut Criterion) {
             }
         })
     });
+    group.bench_function("height_at_indexed", |b| {
+        b.iter(|| {
+            for p in &probes {
+                black_box(sampler.height_at(black_box(p.x), black_box(p.z)));
+            }
+        })
+    });
+    group.bench_function("build_sampler", |b| b.iter(|| black_box(mesh.sampler())));
     group.finish();
 }
 
