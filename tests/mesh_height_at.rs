@@ -1,0 +1,187 @@
+//! Edge cases for `Mesh::height_at`, the vertical-ray surface sampler that
+//! drapes a body onto the meshed road.
+//!
+//! These pin the corners the inline unit tests don't: a query exactly on a
+//! shared edge/vertex, dead-centre of a quad, just outside, a degenerate/empty
+//! mesh, overlapping (stacked) surfaces, and the returned normal being a unit
+//! up-vector for either winding order.
+//!
+//! Companion to the inline tests in `src/mesh.rs`.
+
+use glam::Vec3;
+use libopendrive::Mesh;
+
+/// A single flat quad at height `y` spanning x∈[0,2], z∈[0,2], split on the
+/// (0,0)-(2,2) diagonal. `flip` reverses the winding of both triangles.
+fn flat_quad(y: f32, flip: bool) -> Mesh {
+    let vertices = vec![
+        Vec3::new(0.0, y, 0.0), // 0
+        Vec3::new(2.0, y, 0.0), // 1
+        Vec3::new(2.0, y, 2.0), // 2
+        Vec3::new(0.0, y, 2.0), // 3
+    ];
+    let indices = if flip {
+        vec![0, 2, 1, 0, 3, 2]
+    } else {
+        vec![0, 1, 2, 0, 2, 3]
+    };
+    Mesh {
+        vertices,
+        normals: vec![Vec3::Y; 4],
+        indices,
+    }
+}
+
+#[test]
+fn dead_centre_of_a_quad_resolves() {
+    let mesh = flat_quad(3.0, false);
+    // (1,1) is the quad centre -- it lies on the shared diagonal, so it must be
+    // claimed by (at least) one triangle, not fall through the split.
+    let (y, n) = mesh.height_at(1.0, 1.0).expect("centre of the quad");
+    assert!((y - 3.0).abs() < 1e-5, "y {y}");
+    assert!(n.abs_diff_eq(Vec3::Y, 1e-6), "n {n:?}");
+}
+
+#[test]
+fn a_point_on_a_shared_edge_and_on_a_vertex_resolves() {
+    let mesh = flat_quad(1.0, false);
+    // A point squarely on the shared diagonal edge (not the midpoint), inside
+    // the barycentric tolerance of both triangles.
+    assert!(
+        mesh.height_at(0.5, 0.5).is_some(),
+        "a point on the shared edge must resolve, not fall through the crack"
+    );
+    // Exactly on a shared vertex.
+    assert!(
+        mesh.height_at(2.0, 2.0).is_some(),
+        "a shared vertex must resolve"
+    );
+    // On an outer edge midpoint.
+    assert!(
+        mesh.height_at(1.0, 0.0).is_some(),
+        "outer edge must resolve"
+    );
+}
+
+#[test]
+fn a_point_just_outside_returns_none() {
+    let mesh = flat_quad(0.0, false);
+    // Comfortably clear of the quad footprint on every side.
+    assert!(mesh.height_at(2.5, 1.0).is_none(), "past +x edge");
+    assert!(mesh.height_at(-0.5, 1.0).is_none(), "past -x edge");
+    assert!(mesh.height_at(1.0, 2.5).is_none(), "past +z edge");
+    assert!(mesh.height_at(1.0, -0.5).is_none(), "past -z edge");
+}
+
+#[test]
+fn a_degenerate_or_empty_mesh_returns_none() {
+    // Empty: no triangles at all.
+    assert!(Mesh::default().height_at(0.0, 0.0).is_none());
+
+    // Degenerate: a triangle with zero XZ footprint (all three vertices on a
+    // vertical line) has an edge-on projection and must be skipped, not
+    // divide-by-zero into a bogus hit.
+    let edge_on = Mesh {
+        vertices: vec![
+            Vec3::new(1.0, 0.0, 1.0),
+            Vec3::new(1.0, 5.0, 1.0),
+            Vec3::new(1.0, 2.0, 1.0),
+        ],
+        normals: vec![Vec3::Y; 3],
+        indices: vec![0, 1, 2],
+    };
+    assert!(edge_on.height_at(1.0, 1.0).is_none());
+}
+
+#[test]
+fn overlapping_surfaces_return_the_higher_one() {
+    // Two stacked quads over the same XZ footprint (a bridge over a road): the
+    // sampler must return the surface you'd stand on -- the higher.
+    let mut low = flat_quad(0.0, false);
+    let high = flat_quad(5.0, false);
+    let base = low.vertices.len() as u32;
+    low.vertices.extend(high.vertices);
+    low.normals.extend(high.normals);
+    low.indices.extend(high.indices.iter().map(|i| i + base));
+
+    let (y, _) = low.height_at(1.0, 0.5).expect("both quads cover the point");
+    assert!(
+        (y - 5.0).abs() < 1e-5,
+        "should pick the higher surface, got {y}"
+    );
+
+    // Order-independence: stack them the other way and still get the higher.
+    let mut high_first = flat_quad(5.0, false);
+    let low2 = flat_quad(0.0, false);
+    let base = high_first.vertices.len() as u32;
+    high_first.vertices.extend(low2.vertices);
+    high_first.normals.extend(low2.normals);
+    high_first
+        .indices
+        .extend(low2.indices.iter().map(|i| i + base));
+    let (y, _) = high_first.height_at(1.0, 0.5).expect("covered");
+    assert!(
+        (y - 5.0).abs() < 1e-5,
+        "higher regardless of order, got {y}"
+    );
+}
+
+#[test]
+fn the_returned_normal_is_a_unit_up_vector_for_both_windings() {
+    for flip in [false, true] {
+        let mesh = flat_quad(2.0, flip);
+        let (_, n) = mesh.height_at(1.5, 0.5).expect("on the quad");
+        assert!(
+            (n.length() - 1.0).abs() < 1e-6,
+            "normal {n:?} not unit (flip={flip})"
+        );
+        assert!(n.y > 0.0, "normal {n:?} must point up (flip={flip})");
+        // A flat quad's normal is exactly +Y whichever way it is wound.
+        assert!(
+            n.abs_diff_eq(Vec3::Y, 1e-6),
+            "flat normal {n:?} should be +Y (flip={flip})"
+        );
+    }
+}
+
+#[test]
+fn a_tilted_surface_returns_its_interpolated_leaning_normal_for_both_windings() {
+    // height_at returns the mesh's own (interpolated) vertex normals, not a flat
+    // per-facet normal -- so a body draped on it doesn't snap at facet edges. A
+    // surface tilted about the X axis carries a leaning up-normal at every vertex;
+    // the query must return that lean, unit and upward, whichever way it is wound.
+    let vertices = vec![
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(2.0, 0.0, 0.0),
+        Vec3::new(2.0, 1.0, 2.0),
+        Vec3::new(0.0, 1.0, 2.0),
+    ];
+    // The surface's true up-normal (perpendicular to the plane, pointing up).
+    let up = (vertices[1] - vertices[0])
+        .cross(vertices[3] - vertices[0])
+        .normalize();
+    let up = if up.y < 0.0 { -up } else { up };
+    assert!(up.y < 0.999, "the test surface should actually tilt");
+    for flip in [false, true] {
+        let indices = if flip {
+            vec![0, 2, 1, 0, 3, 2]
+        } else {
+            vec![0, 1, 2, 0, 2, 3]
+        };
+        let mesh = Mesh {
+            vertices: vertices.clone(),
+            normals: vec![up; 4],
+            indices,
+        };
+        let (_, n) = mesh.height_at(1.0, 1.0).expect("on the tilted surface");
+        assert!(
+            (n.length() - 1.0).abs() < 1e-6,
+            "tilted normal {n:?} not unit (flip={flip})"
+        );
+        assert!(n.y > 0.0, "tilted normal {n:?} must point up (flip={flip})");
+        assert!(
+            n.abs_diff_eq(up, 1e-5),
+            "should return the interpolated vertex normal {up:?}, got {n:?} (flip={flip})"
+        );
+    }
+}
