@@ -7,16 +7,20 @@ surface mesh.
 No C++ dependency, no bindings, no `unsafe`.
 
 ```rust
-let net = libopendrive::load_file("maps/town07.xodr")?;
+use libopendrive::{glam::Vec3, load_file};
+
+let net = load_file("maps/town07.xodr")?;
 
 // Where is the road under this point, and which way does it lean?
-let sample = net.sample_near(position).expect("on the map");
+let sample = net.sample_near(Vec3::new(12.0, 0.0, -30.0)).expect("on the map");
+println!("{:?} banked {} rad", sample.point, sample.bank);
 
 // Drive somewhere.
-let waypoints = net.route(sample.point, destination).expect("a path");
+let waypoints = net.route(sample.point, Vec3::new(280.0, 0.0, 95.0));
 
 // Hand the surface to a collider or a renderer.
 let mesh = net.surface_mesh();
+mesh.validate()?;
 ```
 
 ## What it imports
@@ -75,10 +79,31 @@ libopendrive = { version = "0.1", features = ["serde"] }
 `glam` is public: `Vec3` appears throughout the API. It is re-exported as
 `libopendrive::glam` so you can match the version.
 
+## Performance
+
+Lane and surface lookups are answered off a ground-plane index, so their cost
+tracks local road density rather than map size. On CARLA's Town07 (234 roads,
+673 driving lanes):
+
+| | per call |
+| --- | --- |
+| `nearest_lane` / `sample_near` | ~0.9 us |
+| `route` (across the map) | ~28 us |
+| `MeshSampler::height_at` | ~0.2 us |
+
+Import is ~9 ms for that map, three quarters of it XML parsing.
+
+`cargo bench` reproduces these. `tests/budgets.rs` guards them in CI by racing
+each indexed lookup against the scan it replaced, which needs no fixed
+per-machine threshold.
+
 ## Testing
 
-Map fixtures are excluded from the published crate, so run the integration
-tests from a git checkout. See `tests/data/README.md` for their provenance.
+Map fixtures, tests, and benchmarks are excluded from the published crate, so
+run them from a git checkout. See `tests/data/README.md` for fixture
+provenance.
+
+MSRV is 1.82.
 
 ## License
 
