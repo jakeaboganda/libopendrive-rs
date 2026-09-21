@@ -4,6 +4,7 @@ use glam::{Quat, Vec3};
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Pose {
+    /// Position on the lane (Y-up, metres).
     pub position: Vec3,
     /// Unit tangent in the XZ (ground) plane -- the direction of travel.
     pub heading: Vec3,
@@ -115,6 +116,7 @@ impl Polyline {
         Self::try_new(points).expect("a polyline needs at least two points")
     }
 
+    /// The baked vertices, in geometry order.
     pub fn points(&self) -> &[Vec3] {
         &self.points
     }
@@ -124,6 +126,7 @@ impl Polyline {
         &self.tangents
     }
 
+    /// Total arc length (metres).
     pub fn length(&self) -> f32 {
         self.cumulative.last().copied().unwrap_or(0.0)
     }

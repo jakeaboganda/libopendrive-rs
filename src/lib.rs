@@ -1,3 +1,6 @@
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+#![warn(rustdoc::broken_intra_doc_links)]
 //! A pure-Rust OpenDRIVE (`.xodr`) importer.
 //!
 //! OpenDRIVE describes roads analytically: clothoids, arcs, cubic elevation

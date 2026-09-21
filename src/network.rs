@@ -18,6 +18,7 @@ pub struct LaneId(pub usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LaneKind {
+    /// A lane vehicles drive on.
     Driving,
 }
 
@@ -25,7 +26,9 @@ pub enum LaneKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Direction {
+    /// Travel runs along the centerline, start to end.
     Forward,
+    /// Travel runs against it, end to start.
     Backward,
 }
 
@@ -34,8 +37,11 @@ pub enum Direction {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Lane {
+    /// This lane's identity. Not a position in any list.
     pub id: LaneId,
+    /// What the lane is for.
     pub kind: LaneKind,
+    /// Which way traffic runs along `center`.
     pub direction: Direction,
     /// Lane centerline, Y-up, meters.
     pub center: Polyline,
@@ -191,6 +197,7 @@ impl RoadNetwork {
         }
     }
 
+    /// Every lane of kind [`LaneKind::Driving`].
     pub fn driving_lanes(&self) -> impl Iterator<Item = &Lane> {
         self.lanes.iter().filter(|l| l.kind == LaneKind::Driving)
     }

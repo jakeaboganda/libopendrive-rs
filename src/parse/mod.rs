@@ -17,10 +17,14 @@ use links::{LaneMeta, RoadInfo, Topology};
 /// Arc-length spacing (meters) at which curved geometry is baked to points.
 const SAMPLE_STEP: f64 = 2.0;
 
+/// Why an OpenDRIVE document did not import.
 #[derive(Debug, thiserror::Error)]
 pub enum ImportError {
+    /// The document is not well-formed XML.
     #[error("invalid OpenDRIVE XML: {0}")]
     Xml(#[from] roxmltree::Error),
+    /// The XML parsed, but it is not a usable map -- unreadable from disk, or
+    /// carrying no driving lanes at all.
     #[error("malformed OpenDRIVE: {0}")]
     Malformed(String),
 }

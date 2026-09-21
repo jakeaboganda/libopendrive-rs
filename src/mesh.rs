@@ -15,8 +15,11 @@ use crate::network::{LaneId, RoadNetwork};
 #[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Mesh {
+    /// Vertex positions (Y-up, metres).
     pub vertices: Vec<Vec3>,
+    /// Per-vertex up-normals, parallel to `vertices`.
     pub normals: Vec<Vec3>,
+    /// Triangle vertex indices, three per triangle.
     pub indices: Vec<u32>,
     /// Which lane each part of the mesh came from, in emission order.
     ///
@@ -33,8 +36,11 @@ pub struct Mesh {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LaneSpan {
+    /// The lane this slice was tessellated from.
     pub lane: LaneId,
+    /// Its range in `Mesh::vertices` and `Mesh::normals`.
     pub vertices: Range<u32>,
+    /// Its range in `Mesh::indices`.
     pub indices: Range<u32>,
 }
 
@@ -42,12 +48,16 @@ pub struct LaneSpan {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MeshError {
+    /// No triangles at all.
     #[error("mesh has no triangles")]
     Empty,
+    /// A vertex carries a `NaN` or an infinity.
     #[error("vertex {0} is not finite")]
     NonFiniteVertex(usize),
+    /// A triangle names a vertex that does not exist.
     #[error("triangle {0} indexes vertex {1}, past the {2} vertices present")]
     IndexOutOfRange(usize, u32, usize),
+    /// A triangle repeats a vertex, so it has no area.
     #[error("triangle {0} is degenerate (it repeats a vertex)")]
     DegenerateTriangle(usize),
 }
