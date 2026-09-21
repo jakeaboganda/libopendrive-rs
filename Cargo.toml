@@ -1,0 +1,25 @@
+[package]
+name = "libopendrive"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+description = "Pure-Rust OpenDRIVE (.xodr) importer: bakes a road network into polylines, a lane graph, and a surface mesh."
+repository = "https://github.com/jakeaboganda/libopendrive-rs"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+keywords = ["opendrive", "xodr", "road", "map", "simulation"]
+categories = ["parser-implementations", "science::robotics", "simulation"]
+# town07.xodr is 1.6 MB of integration fixture. Keep it in git, out of the
+# published tarball; `cargo test` on a vendored copy skips what it can't find.
+exclude = ["/tests/data/town07.xodr"]
+
+[dependencies]
+glam = "0.32"
+roxmltree = "0.21"
+thiserror = "2"
+
+[dev-dependencies]
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+
+[profile.bench]
+debug = true
