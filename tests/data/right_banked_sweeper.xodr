@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The mirror of banked_sweeper.xodr: a RIGHT-hand banked arc. Curvature is
+     negative (a right turn) and the superelevation is the opposite sign, so the
+     cant raises the OPPOSITE edge from the left sweeper: here the right (-t)
+     lanes ride up and the left (+t) lanes dip below the reference line.
+
+       s 0-50        straight, flat            (line)
+       s 50-128.54   right arc R=50, banked     (arc, curvature -0.02)
+       s 128.54+     straight, flat            (line)
+
+     Superelevation ramps 0 -> -0.2 over the arc entry (s 50-60), holds, then
+     ramps -0.2 -> 0 over the exit, meeting the flat straights at 0. Two driving
+     lanes each side, so the reference-line pivot separates them vertically. -->
+<OpenDRIVE>
+  <header revMajor="1" revMinor="7" name="right_banked_sweeper" version="1.00"/>
+  <road name="right_banked_sweeper" length="158.5398" id="1" junction="-1">
+    <planView>
+      <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="50.0">
+        <line/>
+      </geometry>
+      <geometry s="50.0" x="50.0" y="0.0" hdg="0.0" length="78.5398">
+        <arc curvature="-0.02"/>
+      </geometry>
+      <geometry s="128.5398" x="100.0" y="-50.0" hdg="-1.5707963" length="30.0">
+        <line/>
+      </geometry>
+    </planView>
+    <lateralProfile>
+      <superelevation s="0.0"      a="0.0"  b="0.0"   c="0.0" d="0.0"/>
+      <superelevation s="50.0"     a="0.0"  b="-0.02" c="0.0" d="0.0"/>
+      <superelevation s="60.0"     a="-0.2" b="0.0"   c="0.0" d="0.0"/>
+      <superelevation s="118.5398" a="-0.2" b="0.02"  c="0.0" d="0.0"/>
+      <superelevation s="128.5398" a="0.0"  b="0.0"   c="0.0" d="0.0"/>
+    </lateralProfile>
+    <lanes>
+      <laneSection s="0.0">
+        <left>
+          <lane id="1" type="driving"><width sOffset="0.0" a="3.75"/></lane>
+          <lane id="2" type="driving"><width sOffset="0.0" a="3.75"/></lane>
+        </left>
+        <center>
+          <lane id="0" type="none"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving"><width sOffset="0.0" a="3.75"/></lane>
+          <lane id="-2" type="driving"><width sOffset="0.0" a="3.75"/></lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>

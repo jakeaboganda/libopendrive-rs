@@ -9,9 +9,10 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 keywords = ["opendrive", "xodr", "road", "map", "simulation"]
 categories = ["parser-implementations", "science::robotics", "simulation"]
-# town07.xodr is 1.6 MB of integration fixture. Keep it in git, out of the
-# published tarball; `cargo test` on a vendored copy skips what it can't find.
-exclude = ["/tests/data/town07.xodr"]
+# Map fixtures stay in git and out of the published tarball: consumers never
+# need them, they are 1.7 MB, and they carry third-party licences of their own
+# (see tests/data/README.md). Run the integration tests from a git checkout.
+exclude = ["/tests/data"]
 
 [dependencies]
 glam = "0.32"

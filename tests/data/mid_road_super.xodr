@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A superelevation record that starts MID-road (s = 30). The stations before
+     it have no active superelevation record, so they must default flat (bank 0);
+     from s = 30 on the road banks a constant 0.15 rad. Straight +X, length 60,
+     one driving lane each side (width 4.0), no elevation grade. -->
+<OpenDRIVE>
+  <header revMajor="1" revMinor="7" name="mid_road_super" version="1.00"/>
+  <road name="mid_road_super" length="60.0" id="1" junction="-1">
+    <planView>
+      <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="60.0">
+        <line/>
+      </geometry>
+    </planView>
+    <lateralProfile>
+      <superelevation s="30.0" a="0.15" b="0.0" c="0.0" d="0.0"/>
+    </lateralProfile>
+    <lanes>
+      <laneSection s="0.0">
+        <left>
+          <lane id="1" type="driving"><width sOffset="0.0" a="4.0"/></lane>
+        </left>
+        <center>
+          <lane id="0" type="none"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving"><width sOffset="0.0" a="4.0"/></lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>

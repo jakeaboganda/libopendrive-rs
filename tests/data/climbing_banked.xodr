@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A road that BOTH climbs and banks, to prove elevation grade and
+     superelevation compose through the importer, not just in unit tests.
+
+       straight +X, length 100
+       elevation grade b = 0.05  (elev(s) = 0.05*s)
+       superelevation constant a = 0.2 rad
+
+     A single driving lane each side (width 4.0), so the left lane centerline
+     sits at lateral t = +2.0 and the right at t = -2.0. Expected baked height at
+     any station s: elev(s) + t*sin(phi) = 0.05*s +/- 2.0*sin(0.2). -->
+<OpenDRIVE>
+  <header revMajor="1" revMinor="7" name="climbing_banked" version="1.00"/>
+  <road name="climbing_banked" length="100.0" id="1" junction="-1">
+    <planView>
+      <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.05" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile>
+      <superelevation s="0.0" a="0.2" b="0.0" c="0.0" d="0.0"/>
+    </lateralProfile>
+    <lanes>
+      <laneSection s="0.0">
+        <left>
+          <lane id="1" type="driving"><width sOffset="0.0" a="4.0"/></lane>
+        </left>
+        <center>
+          <lane id="0" type="none"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving"><width sOffset="0.0" a="4.0"/></lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>

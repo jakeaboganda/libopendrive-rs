@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Non-finite coordinates, in the two forms an XML attribute can carry them:
+     the literal "NaN" (Rust's f64 parser accepts it) and an exponent past the
+     f64 range, which parses to infinity. Either one poisons every point baked
+     from it, and a NaN vertex is what makes the road's trimesh collider fail
+     to build at all. -->
+<OpenDRIVE>
+  <header revMajor="1" revMinor="7" name="non_finite" version="1.00"/>
+  <road name="nan_road" length="40.0" id="1" junction="-1">
+    <planView>
+      <geometry s="0.0" x="NaN" y="0.0" hdg="0.0" length="40.0">
+        <line/>
+      </geometry>
+    </planView>
+    <lanes>
+      <laneSection s="0.0">
+        <center><lane id="0" type="none"/></center>
+        <right>
+          <lane id="-1" type="driving">
+            <width sOffset="0.0" a="3.5" b="0.0" c="0.0" d="0.0"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road name="inf_road" length="40.0" id="2" junction="-1">
+    <planView>
+      <geometry s="0.0" x="0.0" y="1e400" hdg="0.0" length="40.0">
+        <line/>
+      </geometry>
+    </planView>
+    <lanes>
+      <laneSection s="0.0">
+        <center><lane id="0" type="none"/></center>
+        <right>
+          <lane id="-1" type="driving">
+            <width sOffset="0.0" a="3.5" b="0.0" c="0.0" d="0.0"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road name="inf_elevation" length="40.0" id="3" junction="-1">
+    <planView>
+      <geometry s="0.0" x="200.0" y="0.0" hdg="0.0" length="40.0">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="NaN" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lanes>
+      <laneSection s="0.0">
+        <center><lane id="0" type="none"/></center>
+        <right>
+          <lane id="-1" type="driving">
+            <width sOffset="0.0" a="NaN" b="0.0" c="0.0" d="0.0"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road name="good" length="40.0" id="4" junction="-1">
+    <planView>
+      <geometry s="0.0" x="300.0" y="0.0" hdg="0.0" length="40.0">
+        <line/>
+      </geometry>
+    </planView>
+    <lanes>
+      <laneSection s="0.0">
+        <center><lane id="0" type="none"/></center>
+        <right>
+          <lane id="-1" type="driving">
+            <width sOffset="0.0" a="3.5" b="0.0" c="0.0" d="0.0"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>

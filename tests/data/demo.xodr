@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-authored OpenDRIVE twin of map::demo_road: a 40 m straight along +X,
+     then a 90-degree left arc (radius 30), climbing at a constant 4% grade,
+     with one driving lane each direction (3.5 m wide). Used to verify the
+     pure-Rust OpenDRIVE importer produces the same road as the built-in one. -->
+<OpenDRIVE>
+  <header revMajor="1" revMinor="7" name="demo" version="1.00"/>
+  <road name="demo" length="87.1239" id="1" junction="-1">
+    <planView>
+      <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="40.0">
+        <line/>
+      </geometry>
+      <geometry s="40.0" x="40.0" y="0.0" hdg="0.0" length="47.1239">
+        <arc curvature="0.0333333"/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.04" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lanes>
+      <laneSection s="0.0">
+        <left>
+          <lane id="1" type="driving">
+            <width sOffset="0.0" a="3.5" b="0.0" c="0.0" d="0.0"/>
+          </lane>
+        </left>
+        <center>
+          <lane id="0" type="none"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving">
+            <width sOffset="0.0" a="3.5" b="0.0" c="0.0" d="0.0"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>

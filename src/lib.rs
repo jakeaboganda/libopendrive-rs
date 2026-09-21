@@ -1,44 +1,75 @@
 //! A pure-Rust OpenDRIVE (`.xodr`) importer.
 //!
-//! This commit carries the destination: the baked road-network model every
-//! importer writes into and every consumer reads. The parser follows.
+//! OpenDRIVE describes roads analytically: clothoids, arcs, cubic elevation
+//! and width profiles, lane links. This crate evaluates all of it once, at
+//! load, and hands back a [`RoadNetwork`] of plain polylines. Nothing
+//! downstream touches OpenDRIVE again -- consumers sample points, walk the
+//! lane graph, and tessellate a surface mesh.
 //!
-//! # The baked model
+//! No C++ dependency, no bindings, no `unsafe`.
 //!
-//! OpenDRIVE describes roads analytically -- clothoids, arcs, cubic elevation
-//! and width profiles. All of that is evaluated once, at load, into plain
-//! polylines. Consumers only ever sample points, walk the lane graph, or
-//! tessellate the surface.
+//! ```no_run
+//! let net = libopendrive::load_file("maps/town07.xodr")?;
+//! let lane = net.driving_lanes().next().expect("a driving lane");
+//! let pose = lane.center.pose_at(25.0);
+//! let route = net.route(pose.position, lane.center.point_at(400.0));
+//! # Ok::<(), libopendrive::ImportError>(())
+//! ```
 //!
-//! - [`RoadNetwork`] is the compiled map: a lane list plus a drive-direction
-//!   lane graph, with `nearest_lane`, `sample_near`, `route`, and
-//!   `surface_mesh` over it.
-//! - [`Lane`] is one drivable strip: a centerline [`Polyline`], a width, a
-//!   superelevation profile, and its graph edges.
-//! - [`Mesh`] is the tessellated road surface -- positions, normals, indices.
-//!   Renderer-agnostic on purpose.
+//! # What gets imported
+//!
+//! - Reference geometry: `line`, `arc`, `spiral` (clothoid), `paramPoly3`,
+//!   `poly3`.
+//! - `<elevationProfile>`, and `<lateralProfile>` **superelevation** baked as
+//!   a real cant: the cross-section rolls about the reference line, so an
+//!   outer lane rides higher and its surface normal leans.
+//! - Per-lane widths, `laneOffset`, and multiple lane sections.
+//! - Road/lane `<link>`s and `<junction>`s, resolved into a drive-direction
+//!   lane graph -- "successor" means "a lane you can drive into off this
+//!   lane's exit end", not a raw mirror of the file's `+s` links.
+//!
+//! Not yet: `<lateralProfile>` `<shape>` (per-`t` crowning and camber), and
+//! lane types other than `driving`.
 //!
 //! # Coordinate frame
 //!
 //! Baked geometry is right-handed, **Y-up, metres**, with the ground in the
-//! X-Z plane -- the frame most renderers and physics engines want. OpenDRIVE
-//! itself is right-handed **Z-up**; the mapping happens at import.
+//! X-Z plane -- the frame most renderers and physics engines want.
+//!
+//! OpenDRIVE itself is right-handed **Z-up**: the reference line lies in the
+//! X-Y plane, `hdg` is the heading within it, and elevation runs along +Z.
+//! The importer maps `(x, y, elev)` to `(x, elev, -y)`, so an OpenDRIVE left
+//! turn (increasing heading) curves toward -Z.
+//!
+//! Travel direction follows right-hand traffic: negative-id (right) lanes run
+//! with `+s`, positive-id (left) lanes against it. OpenDRIVE encodes no travel
+//! direction of its own, so a left-hand-traffic map imports with its
+//! directions inverted.
+//!
+//! # Robustness
+//!
+//! `.xodr` files come from outside your program. A road the importer cannot
+//! interpret is skipped rather than fatal, because losing a whole city map to
+//! one junk road is the worse failure; [`load_str`] still errors if the
+//! document yielded no lanes at all. Non-finite attribute values are rejected
+//! at parse -- Rust's float parser accepts `NaN` and turns `1e400` into
+//! infinity, and one such value poisons every point derived from it.
 //!
 //! # Importer contract
 //!
-//! Code baking external (possibly malformed) map data into a [`RoadNetwork`]
-//! must:
+//! Code baking other map formats into a [`RoadNetwork`] must:
 //!
 //! - build lane geometry with [`Polyline::try_new`] and surface an error on
 //!   degenerate input, rather than the panicking [`Polyline::new`];
 //! - keep [`LaneId`]s opaque -- never assume one indexes the lane list;
 //! - avoid lane curvature tighter than the half-width, or the
-//!   `surface_mesh` ribs can self-intersect (the tessellator does not yet
-//!   guard against it).
+//!   [`RoadNetwork::surface_mesh`] ribs can self-intersect (the tessellator
+//!   does not yet guard against it).
 
 mod geometry;
 mod mesh;
 mod network;
+mod parse;
 mod route;
 
 #[cfg(test)]
@@ -51,3 +82,4 @@ pub use glam;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
 pub use mesh::{Mesh, MeshError};
 pub use network::{Direction, Lane, LaneId, LaneKind, RoadNetwork};
+pub use parse::{load_file, load_str, ImportError};

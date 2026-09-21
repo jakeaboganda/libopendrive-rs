@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A purpose-built track for exercising wheel and tire behaviour, rather than
+     hoping a city map happens to. Every section targets a specific thing the
+     vehicle model does:
+
+       0-300 m    straight, level      launch wheelspin, brake lockup, squat/dive
+       300-450 m  4% climb + crest     suspension unloading over the top
+       450-600 m  dip, back to level   compression, load spike
+       600-694 m  arc R=60, 90 deg     roll, lateral load transfer; banked ~0.10 rad
+       694-744 m  straight             settle between corners
+       744-784 m  arc R=25, 90 deg     limit cornering, understeer; banked ~0.18 rad
+       784-834 m  straight
+       834-954 m  spiral R=100 to 30   decreasing radius: progressive limit;
+                                       bank deepens to ~0.20 rad as it tightens
+       954-1054 m straight             run-out
+
+     One 3.5 m driving lane each direction. The three curves are super-elevated
+     via <lateralProfile> (proper banking: the outer edge is raised, so the sign
+     is negative for these left-hand turns). The bank ramps in and out to meet
+     the flat straights at 0, and deepens through the tightening spiral.
+
+     Generated. Geometry start poses are chained, so edit the <planView> by
+     regenerating rather than by hand; the <lateralProfile> is independent of the
+     chained poses and was hand-added. -->
+<OpenDRIVE>
+  <header revMajor="1" revMinor="7" name="testtrack" version="1.00"/>
+  <road name="testtrack" length="1053.5200" id="1" junction="-1">
+    <planView>
+      <geometry s="0.0000" x="0.0000" y="0.0000" hdg="0.000000" length="300.0000">
+        <line/>
+      </geometry>
+      <geometry s="300.0000" x="300.0000" y="0.0000" hdg="0.000000" length="150.0000">
+        <line/>
+      </geometry>
+      <geometry s="450.0000" x="450.0000" y="0.0000" hdg="0.000000" length="150.0000">
+        <line/>
+      </geometry>
+      <geometry s="600.0000" x="600.0000" y="0.0000" hdg="0.000000" length="94.2500">
+        <arc curvature="0.01666667"/>
+      </geometry>
+      <geometry s="694.2500" x="660.0000" y="60.0022" hdg="1.570833" length="50.0000">
+        <line/>
+      </geometry>
+      <geometry s="744.2500" x="659.9981" y="110.0022" hdg="1.570833" length="39.2700">
+        <arc curvature="0.04000000"/>
+      </geometry>
+      <geometry s="783.5200" x="634.9971" y="135.0013" hdg="3.141633" length="50.0000">
+        <line/>
+      </geometry>
+      <geometry s="833.5200" x="584.9971" y="134.9993" hdg="3.141633" length="120.0000">
+        <spiral curvStart="0.01000000" curvEnd="0.03333333"/>
+      </geometry>
+      <geometry s="953.5200" x="539.7832" y="58.8131" hdg="5.741633" length="100.0000">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0"   a="0.0"  b="0.0"   c="0.0"     d="0.0"/>
+      <elevation s="300.0" a="0.0"  b="0.0"   c="0.002"   d="0.0"/>
+      <elevation s="310.0" a="0.2"  b="0.04"  c="0.0"     d="0.0"/>
+      <elevation s="400.0" a="3.8"  b="0.04"  c="-0.004"  d="0.0"/>
+      <elevation s="410.0" a="3.8"  b="-0.04" c="0.0"     d="0.0"/>
+      <elevation s="500.0" a="0.2"  b="-0.04" c="0.004"   d="0.0"/>
+      <elevation s="510.0" a="0.2"  b="0.04"  c="0.0"     d="0.0"/>
+      <elevation s="600.0" a="3.8"  b="0.04"  c="-0.002"  d="0.0"/>
+      <elevation s="610.0" a="4.0"  b="0.0"   c="0.0"     d="0.0"/>
+    </elevationProfile>
+    <lateralProfile>
+      <!-- Flat until the first curve. Proper banking of a left-hand turn raises
+           the outer (right, -t) edge, so the superelevation is negative; each
+           curve ramps in and out to meet the flat straights at 0. -->
+      <superelevation s="0.0"      a="0.0"   b="0.0"       c="0.0" d="0.0"/>
+      <!-- R=60 sweeper (600-694.25): ramp to -0.10 over 15 m, hold, ramp out. -->
+      <superelevation s="600.0"    a="0.0"   b="-0.0066667" c="0.0" d="0.0"/>
+      <superelevation s="615.0"    a="-0.10" b="0.0"        c="0.0" d="0.0"/>
+      <superelevation s="679.25"   a="-0.10" b="0.0066667"  c="0.0" d="0.0"/>
+      <superelevation s="694.25"   a="0.0"   b="0.0"        c="0.0" d="0.0"/>
+      <!-- R=25 corner (744.25-783.52): tighter, ramp to -0.18 over 10 m. -->
+      <superelevation s="744.25"   a="0.0"   b="-0.018"     c="0.0" d="0.0"/>
+      <superelevation s="754.25"   a="-0.18" b="0.0"        c="0.0" d="0.0"/>
+      <superelevation s="773.52"   a="-0.18" b="0.018"      c="0.0" d="0.0"/>
+      <superelevation s="783.52"   a="0.0"   b="0.0"        c="0.0" d="0.0"/>
+      <!-- Spiral R=100->30 (833.52-953.52): bank deepens 0 -> -0.20 as the
+           radius tightens, then ramps out over the last 20 m to the run-out. -->
+      <superelevation s="833.52"   a="0.0"   b="-0.002"     c="0.0" d="0.0"/>
+      <superelevation s="933.52"   a="-0.20" b="0.01"       c="0.0" d="0.0"/>
+      <superelevation s="953.52"   a="0.0"   b="0.0"        c="0.0" d="0.0"/>
+    </lateralProfile>
+    <lanes>
+      <laneSection s="0.0">
+        <left>
+          <lane id="1" type="driving">
+            <width sOffset="0.0" a="3.5" b="0.0" c="0.0" d="0.0"/>
+          </lane>
+        </left>
+        <center>
+          <lane id="0" type="none"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving">
+            <width sOffset="0.0" a="3.5" b="0.0" c="0.0" d="0.0"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>
