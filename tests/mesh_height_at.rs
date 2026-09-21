@@ -185,3 +185,21 @@ fn a_tilted_surface_returns_its_interpolated_leaning_normal_for_both_windings() 
         );
     }
 }
+
+#[test]
+fn an_extreme_query_returns_none_rather_than_a_nan_height() {
+    // The barycentric arithmetic overflows to infinity out here, and every
+    // comparison against the resulting NaN is false -- so an outside-the-
+    // triangle test written as `l < -eps` waves it through and reports a NaN
+    // height, which lands in whatever is being draped onto the road.
+    let mesh = flat_quad(1.0, false);
+    for bad in [f32::MAX, f32::MIN, 1.0e30, -1.0e30, f32::INFINITY, f32::NAN] {
+        for (x, z) in [(bad, 1.0), (1.0, bad), (bad, bad)] {
+            let hit = mesh.height_at(x, z);
+            assert!(
+                hit.is_none_or(|(y, n)| y.is_finite() && n.is_finite()),
+                "height_at({x}, {z}) returned {hit:?}"
+            );
+        }
+    }
+}

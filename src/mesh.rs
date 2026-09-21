@@ -82,8 +82,12 @@ impl Mesh {
             let l1 = ((b.z - c.z) * (x - c.x) + (c.x - b.x) * (z - c.z)) / det;
             let l2 = ((c.z - a.z) * (x - c.x) + (a.x - c.x) * (z - c.z)) / det;
             let l3 = 1.0 - l1 - l2;
-            if l1 < -1e-4 || l2 < -1e-4 || l3 < -1e-4 {
-                continue; // outside this triangle
+            // Reject outside-the-triangle, and non-finite with it. A query far
+            // enough out overflows the barycentric arithmetic to infinity, and
+            // every comparison against the resulting NaN is false -- so the
+            // bounds test alone would wave it through and report a NaN height.
+            if !(l1 >= -1e-4 && l2 >= -1e-4 && l3 >= -1e-4) {
+                continue;
             }
             let y = l1 * a.y + l2 * b.y + l3 * c.y;
             if best.is_some_and(|(by, _)| y <= by) {
