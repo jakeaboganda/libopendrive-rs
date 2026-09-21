@@ -227,6 +227,12 @@ impl Cubic {
 
 /// The record whose start is the greatest not exceeding `s` (records sorted by
 /// start). `None` if `s` precedes them all / the list is empty.
+///
+/// A scan, not a binary search, even though this runs once per profile per
+/// sampled station. Real files keep these lists short -- across Town07's 234
+/// roads the longest elevation, width and laneOffset lists are 13, 17 and a
+/// handful of records -- and at that size `partition_point` measured slower
+/// than walking back from the end.
 fn active(records: &[Cubic], s: f64) -> Option<&Cubic> {
     records.iter().rev().find(|r| r.start <= s + 1e-9)
 }

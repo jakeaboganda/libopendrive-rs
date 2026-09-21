@@ -24,3 +24,11 @@ criterion = { version = "0.8", default-features = false, features = ["cargo_benc
 
 [profile.bench]
 debug = true
+
+[[bench]]
+name = "import"
+harness = false
+
+[[bench]]
+name = "query"
+harness = false
