@@ -296,6 +296,9 @@ fn active(records: &[Cubic], s: f64) -> Option<&Cubic> {
 
 struct LaneDef {
     id: i32,
+    /// Whether this lane is emitted. Non-driving lanes are kept only so their
+    /// width shifts the lanes outboard of them.
+    driving: bool,
     widths: Vec<Cubic>,
     pred_link: Option<i32>,
     succ_link: Option<i32>,
@@ -499,19 +502,24 @@ fn emit_section(
             continue;
         };
         for lane in side_node.children().filter(|n| n.has_tag_name("lane")) {
-            if lane.attribute("type") != Some("driving") {
-                continue;
-            }
             let Some(id) = lane.attribute("id").and_then(|s| s.parse::<i32>().ok()) else {
                 continue;
             };
             let widths = parse_width_cubics(lane);
             if widths.is_empty() {
-                continue; // a driving lane with no width can't be sampled
+                continue; // no width: nothing to sample, and no offset to add
             }
+            // Keep every lane, driving or not. A shoulder or a `none` lane still
+            // pushes the lanes outboard of it away from the reference line, so
+            // its width has to enter the running offset even though only driving
+            // lanes are emitted. Dropping non-driving lanes here placed an
+            // outboard driving lane too close to the reference line, and on a
+            // curve gave it the wrong radius and length.
+            let driving = lane.attribute("type") == Some("driving");
             let (pred_link, succ_link) = links::lane_link(lane);
             let def = LaneDef {
                 id,
+                driving,
                 widths,
                 pred_link,
                 succ_link,
@@ -558,6 +566,9 @@ fn emit_section(
         // Consecutive ones are lateral neighbors (lane-change edges).
         let mut emitted: Vec<(LaneId, usize)> = Vec::new();
         for (i, lane) in side.iter().enumerate() {
+            if !lane.driving {
+                continue; // counted in the inner offset above, not a lane itself
+            }
             let points = sample_lane(
                 geoms,
                 elevations,
@@ -908,6 +919,36 @@ mod tests {
         let net = load_str(STRAIGHT_OFFSET).expect("import");
         let y = net.lanes()[0].center.pose_at(0.0).position.y;
         assert!((y - 0.25).abs() < 0.05, "y {y}");
+    }
+
+    // A driving lane outboard of a shoulder. The shoulder is not a driving lane
+    // and is not emitted, but its width still pushes the driving lane out.
+    const SHOULDER_INBOARD: &str = r#"<?xml version="1.0"?>
+<OpenDRIVE>
+  <road name="s" length="20.0" id="1" junction="-1">
+    <planView>
+      <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="20.0"><line/></geometry>
+    </planView>
+    <lanes>
+      <laneSection s="0.0">
+        <right>
+          <lane id="-1" type="shoulder"><width sOffset="0.0" a="2.0"/></lane>
+          <lane id="-2" type="driving"><width sOffset="0.0" a="3.0"/></lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>"#;
+
+    #[test]
+    fn a_non_driving_inner_lane_still_offsets_the_driving_lane() {
+        // Only the driving lane -2 is emitted, but it sits outboard of the 2.0 m
+        // shoulder: its center is at t = -(2.0 + 3.0/2) = -3.5, so y = -3.5.
+        // Skipping the shoulder's width would leave it at -1.5.
+        let net = load_str(SHOULDER_INBOARD).expect("import");
+        assert_eq!(net.driving_lanes().count(), 1, "only the driving lane emits");
+        let y = net.lanes()[0].center.pose_at(0.0).position.y;
+        assert!((y + 3.5).abs() < 0.05, "y {y}, expected -3.5");
     }
 
     // A straight road split into two lane sections at s=25. Each section's
