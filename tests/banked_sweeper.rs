@@ -59,12 +59,12 @@ fn the_banked_sweeper_tessellates_to_a_valid_trimesh() {
     mesh.validate().expect("the banked sweeper tessellates");
     // Every surface normal still points generally up, cant and all.
     assert!(
-        mesh.normals.iter().all(|n| n.y > 0.9),
+        mesh.normals.iter().all(|n| n.z > 0.9),
         "a banked normal points sideways/down"
     );
     // The cant is real: some normal leans measurably off vertical.
     assert!(
-        mesh.normals.iter().any(|n| n.y < 0.99),
+        mesh.normals.iter().any(|n| n.z < 0.99),
         "no normal is tilted -- the arc didn't bank"
     );
 }
@@ -74,20 +74,20 @@ fn the_outer_left_lane_rides_above_the_inner_through_the_cant() {
     // Reference-line pivot: with the left side raised, the outer left lane (id 2,
     // further from the reference line) climbs higher than the inner (id 1).
     let net = load_file(SWEEPER).expect("the banked sweeper loads");
-    let max_y = |dir| {
+    let max_z = |dir| {
         net.driving_lanes()
             .filter(|l| l.direction == dir)
             .map(|l| {
                 l.center
                     .points()
                     .iter()
-                    .map(|p| p.y)
+                    .map(|p| p.z)
                     .fold(f32::MIN, f32::max)
             })
             .collect::<Vec<_>>()
     };
     // Left lanes travel Backward under RHT; there are two of them.
-    let mut left = max_y(libopendrive::Direction::Backward);
+    let mut left = max_z(libopendrive::Direction::Backward);
     left.sort_by(|a, b| a.total_cmp(b));
     assert_eq!(left.len(), 2, "two left lanes");
     assert!(
@@ -102,13 +102,13 @@ fn the_outer_left_lane_rides_above_the_inner_through_the_cant() {
 fn sample_near_leans_on_the_banked_arc() {
     let net = load_file(SWEEPER).expect("the banked sweeper loads");
     // The arc apex on the reference line (~45 deg through a R=50 left turn from
-    // (50,0)): OD (85.36, 14.66) -> the baked frame (85.36, 0, -14.66).
-    let apex = glam::Vec3::new(85.36, 0.0, -14.66);
+    // (50,0)): OD (85.36, 14.66), which the baked frame keeps verbatim.
+    let apex = glam::Vec3::new(85.36, 14.66, 0.0);
     let s = net.sample_near(apex).expect("a sample on the arc");
     assert!(s.point.is_finite(), "sample point {:?}", s.point);
     assert!((s.bank.abs() - 0.2).abs() < 0.03, "apex bank {}", s.bank);
     // The up-normal leans off vertical but still points up.
-    assert!(s.up.y < 0.99 && s.up.y > 0.9, "apex up {:?}", s.up);
+    assert!(s.up.z < 0.99 && s.up.z > 0.9, "apex up {:?}", s.up);
     assert!(s.up.is_normalized(), "up not unit: {:?}", s.up);
 }
 

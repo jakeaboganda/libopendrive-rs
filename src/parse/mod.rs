@@ -596,12 +596,13 @@ fn sample_lane(
             let phi = active(superelevations, s).map(|e| e.eval(s)).unwrap_or(0.0);
             let (sin_phi, cos_phi) = phi.sin_cos();
             let t_h = t * cos_phi;
-            // ref -> the baked frame, then offset along the left-hand normal.
-            // left_normal(our tangent) = (-sin hdg, 0, -cos hdg).
+            // The baked frame is OpenDRIVE's own, so the reference-line point
+            // needs no mapping. Offset along the left-hand normal, which in the
+            // reference line's plane is (-sin hdg, cos hdg).
             Vec3::new(
                 (x - t_h * hdg.sin()) as f32,
+                (y + t_h * hdg.cos()) as f32,
                 (elev + t * sin_phi) as f32,
-                (-y - t_h * hdg.cos()) as f32,
             )
         })
         .collect()
@@ -710,14 +711,14 @@ mod tests {
         assert_eq!(lane.direction, Direction::Forward);
         let start = lane.center.pose_at(0.0);
         let end = lane.center.pose_at(lane.center.length());
-        // Heads +X, the right lane sits on the +Z side, and it climbs.
+        // Heads +X, the right lane sits on the -Y side, and it climbs.
         assert!(start.heading.x > 0.9, "start heading {:?}", start.heading);
         assert!(
-            (start.position.z - 1.75).abs() < 0.1,
-            "z {}",
-            start.position.z
+            (start.position.y + 1.75).abs() < 0.1,
+            "y {}",
+            start.position.y
         );
-        assert!(end.position.y > start.position.y + 1.0, "no climb");
+        assert!(end.position.z > start.position.z + 1.0, "no climb");
     }
 
     // A straight then a 90-degree left arc (radius 30), two opposing lanes --
@@ -755,8 +756,8 @@ mod tests {
         let start = fwd.center.pose_at(0.0);
         let end = fwd.center.pose_at(fwd.center.length());
         assert!(start.heading.x > 0.9, "start {:?}", start.heading);
-        // After a 90-degree left turn, heading points toward -Z.
-        assert!(end.heading.z < -0.9, "end {:?}", end.heading);
+        // After a 90-degree left turn, heading points toward +Y.
+        assert!(end.heading.y > 0.9, "end {:?}", end.heading);
     }
 
     #[test]
@@ -778,8 +779,53 @@ mod tests {
         assert!((gap - 3.5).abs() < 0.2, "gap {gap}");
     }
 
+    // A straight road placed away from the origin and pointed along +Y, so
+    // every axis carries a distinct number and a transposed or negated axis
+    // cannot hide. One right lane, 4 m wide, at a constant 3 m elevation.
+    const PLACED: &str = r#"<?xml version="1.0"?>
+<OpenDRIVE>
+  <road name="placed" length="30.0" id="1" junction="-1">
+    <planView>
+      <geometry s="0.0" x="100.0" y="50.0" hdg="1.5707963267948966" length="30.0"><line/></geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="3.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lanes>
+      <laneSection s="0.0">
+        <right><lane id="-1" type="driving"><width sOffset="0.0" a="4.0"/></lane></right>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>"#;
+
+    // The baked frame is OpenDRIVE's own, so a point can be read straight off
+    // the file. Heading is +Y, so left is -X and the right lane sits at +X.
+    #[test]
+    fn a_placed_road_bakes_to_its_opendrive_coordinates() {
+        let net = load_str(PLACED).expect("import");
+        let lane = &net.lanes()[0];
+
+        // Reference line runs (100, 50) -> (100, 80); lane centre is t = -2,
+        // which for heading +Y is 2 m toward +X. Elevation is a flat 3.
+        for (s, want) in [
+            (0.0, Vec3::new(102.0, 50.0, 3.0)),
+            (15.0, Vec3::new(102.0, 65.0, 3.0)),
+            (30.0, Vec3::new(102.0, 80.0, 3.0)),
+        ] {
+            let got = lane.center.point_at(s);
+            assert!(
+                (got - want).length() < 1e-3,
+                "s={s}: baked {got:?}, want {want:?}"
+            );
+        }
+        // Travel is along +Y and the surface is level.
+        assert!(lane.center.pose_at(15.0).heading.abs_diff_eq(Vec3::Y, 1e-4));
+        assert!(lane.sample_at(15.0).up.abs_diff_eq(Vec3::Z, 1e-5));
+    }
+
     // A straight road with a constant laneOffset of +2.0 (shifts the whole
-    // cross-section left, toward -Z in the baked frame).
+    // cross-section left, toward +Y in the baked frame).
     const STRAIGHT_OFFSET: &str = r#"<?xml version="1.0"?>
 <OpenDRIVE>
   <road name="o" length="20.0" id="1" junction="-1">
@@ -799,11 +845,11 @@ mod tests {
 
     #[test]
     fn lane_offset_shifts_the_cross_section() {
-        // Right lane without offset sits at z = +1.75; laneOffset +2.0 shifts
-        // it left by 2.0 -> z = -0.25.
+        // Right lane without offset sits at y = -1.75; laneOffset +2.0 shifts
+        // it left by 2.0 -> y = +0.25.
         let net = load_str(STRAIGHT_OFFSET).expect("import");
-        let z = net.lanes()[0].center.pose_at(0.0).position.z;
-        assert!((z - (-0.25)).abs() < 0.05, "z {z}");
+        let y = net.lanes()[0].center.pose_at(0.0).position.y;
+        assert!((y - 0.25).abs() < 0.05, "y {y}");
     }
 
     // A straight road split into two lane sections at s=25. Each section's
@@ -837,7 +883,7 @@ mod tests {
     }
 
     // A pure clothoid: curvStart 0, curvEnd 0.1 over 10 m. End heading is the
-    // closed form 0.5*c_dot*L^2 = 0.5*(0.01)*100 = 0.5 rad (a left turn -> -Z).
+    // closed form 0.5*c_dot*L^2 = 0.5*(0.01)*100 = 0.5 rad (a left turn -> +Y).
     const SPIRAL_ONLY: &str = r#"<?xml version="1.0"?>
 <OpenDRIVE>
   <road name="sp" length="10.0" id="1" junction="-1">
@@ -861,14 +907,15 @@ mod tests {
         // Reference heading there = 0.5*c_dot*s^2 = 0.5*0.01*25 = 0.125 rad.
         let net = load_str(SPIRAL_ONLY).expect("import");
         let h = net.lanes()[0].center.pose_at(5.0).heading;
-        let theta = (-h.z).atan2(h.x);
+        let theta = h.y.atan2(h.x);
         assert!((theta - 0.125).abs() < 0.03, "mid heading angle {theta}");
     }
 
     // A normalized paramPoly3: u(p)=10p, v(p)=5p^2 for p in [0,1], so the curve
-    // runs from OD (0,0) to OD (10,5) -> the baked frame end near z=-5. The road is
-    // longer than the curve (arc length ~11.5), so the end clamps to that point.
-    // A straight line (v ignored) would end at z=0.
+    // runs from OD (0,0) to OD (10,5), which is the baked frame unchanged, so
+    // the end lands near y=+5. The road is longer than the curve (arc length
+    // ~11.5), so the end clamps to that point. A straight line (v ignored)
+    // would end at y=0.
     const PARAM_POLY3: &str = r#"<?xml version="1.0"?>
 <OpenDRIVE>
   <road name="pp" length="15.0" id="1" junction="-1">
@@ -893,10 +940,10 @@ mod tests {
             .pose_at(net.lanes()[0].center.length())
             .position;
         assert!(end.x > 8.0, "end x {}", end.x);
-        assert!(end.z < -3.0, "end z {} (should follow v to ~-5)", end.z);
+        assert!(end.y > 3.0, "end y {} (should follow v to ~+5)", end.y);
     }
 
-    // poly3 with v(u)=0.05*u^2 over length 10 -- curves laterally toward -z
+    // poly3 with v(u)=0.05*u^2 over length 10 -- curves laterally toward +y
     // (like the arcLength paramPoly3 case; exact endpoint depends on the
     // arc-length reparametrization, so just assert a clear deviation).
     const POLY3: &str = r#"<?xml version="1.0"?>
@@ -922,7 +969,7 @@ mod tests {
             .center
             .pose_at(net.lanes()[0].center.length())
             .position;
-        assert!(end.z < -2.0, "end z {} (poly3 should curve)", end.z);
+        assert!(end.y > 2.0, "end y {} (poly3 should curve)", end.y);
     }
 
     // Two lane sections in one road, linked lane -1 -> lane -1.
@@ -1080,17 +1127,17 @@ mod tests {
         // Lane centers sit half a lane-width off the reference (t = ±1.75), so
         // the pivot raises the left by 1.75·sin0.1 and drops the right likewise.
         let expect = 1.75 * 0.1_f32.sin();
-        let ly = left.center.point_at(10.0).y;
-        let ry = right.center.point_at(10.0).y;
-        assert!((ly - expect).abs() < 0.02, "left y {ly}, want {expect}");
-        assert!((ry + expect).abs() < 0.02, "right y {ry}, want {}", -expect);
+        let ly = left.center.point_at(10.0).z;
+        let ry = right.center.point_at(10.0).z;
+        assert!((ly - expect).abs() < 0.02, "left z {ly}, want {expect}");
+        assert!((ry + expect).abs() < 0.02, "right z {ry}, want {}", -expect);
         // Positive φ raises the left edge: left above right.
         assert!(ly > ry, "left {ly} should ride above right {ry}");
 
         // Horizontal offset shrinks by cos φ (the lane leans in, not straight
-        // out): |z| a touch under 1.75.
-        let lz = left.center.point_at(10.0).z.abs();
-        assert!(lz < 1.75 && lz > 1.75 * 0.1_f32.cos() - 0.02, "z {lz}");
+        // out): |y| a touch under 1.75.
+        let ly = left.center.point_at(10.0).y.abs();
+        assert!(ly < 1.75 && ly > 1.75 * 0.1_f32.cos() - 0.02, "y {ly}");
     }
 
     // Superelevation ramping in along s: φ(s) = 0.01·s, so the bank grows.
@@ -1157,21 +1204,21 @@ mod tests {
         let net = load_str(SUPERELEV_TWO_LEFT).expect("import");
         // Inner lane center t = 1.75, outer t = 5.25 (one full width further out).
         // Both climb by t·sin0.1; the outer sits ~3.5·sin0.1 ≈ 0.35 m above.
-        let mut ys: Vec<f32> = net
+        let mut zs: Vec<f32> = net
             .lanes()
             .iter()
-            .map(|l| l.center.point_at(10.0).y)
+            .map(|l| l.center.point_at(10.0).z)
             .collect();
-        ys.sort_by(|a, b| a.total_cmp(b));
-        let inner_y = 1.75 * 0.1_f32.sin();
-        let outer_y = 5.25 * 0.1_f32.sin();
-        assert!((ys[0] - inner_y).abs() < 0.02, "inner y {}", ys[0]);
-        assert!((ys[1] - outer_y).abs() < 0.02, "outer y {}", ys[1]);
+        zs.sort_by(|a, b| a.total_cmp(b));
+        let inner_z = 1.75 * 0.1_f32.sin();
+        let outer_z = 5.25 * 0.1_f32.sin();
+        assert!((zs[0] - inner_z).abs() < 0.02, "inner z {}", zs[0]);
+        assert!((zs[1] - outer_z).abs() < 0.02, "outer z {}", zs[1]);
         assert!(
-            ys[1] - ys[0] > 0.3,
+            zs[1] - zs[0] > 0.3,
             "outer lane {} should ride well above inner {}",
-            ys[1],
-            ys[0]
+            zs[1],
+            zs[0]
         );
     }
 
@@ -1210,10 +1257,10 @@ mod tests {
             .expect("a right lane");
         // φ = −0.1: the right lane now rides above the left (mirror of +φ).
         assert!(
-            right.center.point_at(10.0).y > left.center.point_at(10.0).y,
+            right.center.point_at(10.0).z > left.center.point_at(10.0).z,
             "right {} should ride above left {} for negative bank",
-            right.center.point_at(10.0).y,
-            left.center.point_at(10.0).y
+            right.center.point_at(10.0).z,
+            left.center.point_at(10.0).z
         );
         // The stored angle carries the sign.
         assert!(
@@ -1296,13 +1343,13 @@ mod tests {
         // (+t) lane rides up by 1.75*sin0.15, the right (-t) down by the same.
         let expect = 1.75 * 0.15_f32.sin();
         for &s in &[20.0_f32, 60.0, 85.0] {
-            let ly = left.center.point_at(s).y;
-            let ry = right.center.point_at(s).y;
+            let ly = left.center.point_at(s).z;
+            let ry = right.center.point_at(s).z;
             assert!(
                 (ly - expect).abs() < 0.05,
-                "left y@{s} = {ly}, want {expect}"
+                "left z@{s} = {ly}, want {expect}"
             );
-            assert!((ry + expect).abs() < 0.05, "right y@{s} = {ry}");
+            assert!((ry + expect).abs() < 0.05, "right z@{s} = {ry}");
             assert!(ly > ry, "left {ly} should ride above right {ry} @ s={s}");
         }
     }
@@ -1338,7 +1385,7 @@ mod tests {
                 "up not unit @ s={s}: {:?}",
                 rs.up
             );
-            assert!(rs.up.y > 0.9, "up.y too low @ s={s}: {}", rs.up.y);
+            assert!(rs.up.z > 0.9, "up.z too low @ s={s}: {}", rs.up.z);
             assert!(
                 rs.up.dot(rs.heading).abs() < 1e-5,
                 "up.heading @ s={s} = {}",
@@ -1395,16 +1442,16 @@ mod tests {
             let grade = 0.04 * s; // elevation cubic: a=0, b=0.04
                                   // Left (+t) rides above the grade line, right (-t) below it, by the
                                   // same cant -- the grade is the midline of the two.
-            let ly = left.center.point_at(s).y;
-            let ry = right.center.point_at(s).y;
+            let ly = left.center.point_at(s).z;
+            let ry = right.center.point_at(s).z;
             assert!(
                 (ly - (grade + cant)).abs() < 0.02,
-                "left y@{s} = {ly}, want {}",
+                "left z@{s} = {ly}, want {}",
                 grade + cant
             );
             assert!(
                 (ry - (grade - cant)).abs() < 0.02,
-                "right y@{s} = {ry}, want {}",
+                "right z@{s} = {ry}, want {}",
                 grade - cant
             );
             // The mean of the two lanes recovers the grade (bank cancels).
@@ -1440,24 +1487,24 @@ mod tests {
         let net = load_str(SUPERELEV_PLUS_OFFSET).expect("import");
         let lane = &net.lanes()[0];
         let t = 2.0 - 1.75; // laneOffset + own (right) offset = +0.25
-        let want_y = t * 0.1_f32.sin();
-        let y = lane.center.point_at(10.0).y;
+        let want_z = t * 0.1_f32.sin();
+        let z = lane.center.point_at(10.0).z;
         assert!(
-            (y - want_y).abs() < 5e-3,
-            "y = {y}, want {want_y} (pivot on shifted t=+0.25, not own -1.75 nor offset +2.0)"
+            (z - want_z).abs() < 5e-3,
+            "z = {z}, want {want_z} (pivot on shifted t=+0.25, not own -1.75 nor offset +2.0)"
         );
         // Height is clearly positive: had the pivot used the lane's own -1.75,
         // it would be negative (~ -0.175).
         assert!(
-            y > 0.0,
-            "shifted t is +0.25 -> height must be positive, got {y}"
+            z > 0.0,
+            "shifted t is +0.25 -> height must be positive, got {z}"
         );
-        // Horizontal reach shrinks by cos(phi): |z| = t*cos0.1 ~= 0.2487.
-        let z = lane.center.point_at(10.0).z;
+        // Horizontal reach shrinks by cos(phi): |y| = t*cos0.1 ~= 0.2487.
+        let y = lane.center.point_at(10.0).y;
         assert!(
-            (z - (-(t * 0.1_f32.cos()))).abs() < 5e-3,
-            "z = {z}, want {}",
-            -(t * 0.1_f32.cos())
+            (y - t * 0.1_f32.cos()).abs() < 5e-3,
+            "y = {y}, want {}",
+            t * 0.1_f32.cos()
         );
     }
 
@@ -1508,12 +1555,12 @@ mod tests {
         );
         let p = lane.center.point_at(10.0);
         assert!(p.is_finite(), "point not finite at steep bank: {p:?}");
-        // t = -1.75; height ~= -1.75*sin1.5 ~= -1.746, |z| ~= 1.75*cos1.5 ~= 0.124.
-        assert!((p.y - (-1.75 * 1.5_f32.sin())).abs() < 0.02, "y {}", p.y);
+        // t = -1.75; height ~= -1.75*sin1.5 ~= -1.746, |y| ~= 1.75*cos1.5 ~= 0.124.
+        assert!((p.z - (-1.75 * 1.5_f32.sin())).abs() < 0.02, "z {}", p.z);
         assert!(
-            p.z.abs() < 0.2,
-            "horizontal reach should collapse, z {}",
-            p.z
+            p.y.abs() < 0.2,
+            "horizontal reach should collapse, y {}",
+            p.y
         );
     }
 
@@ -1544,9 +1591,9 @@ mod tests {
             "an all-zero profile must collapse to the flat sentinel"
         );
         assert_eq!(net.lanes()[0].bank_at(10.0), 0.0);
-        // And its centerline height is pure horizontal (z = -1.75, y = 0).
+        // And its centerline height is pure horizontal (y = -1.75, z = 0).
         let p = net.lanes()[0].center.point_at(10.0);
-        assert!(p.y.abs() < 1e-4, "flat road, y {}", p.y);
+        assert!(p.z.abs() < 1e-4, "flat road, z {}", p.z);
     }
 
     // A superelevation record that starts at s=10 on a 20 m road: stations before
@@ -1581,9 +1628,9 @@ mod tests {
             lane.bank_at(2.0)
         );
         assert!(
-            lane.center.point_at(2.0).y.abs() < 1e-3,
-            "early height should be flat, y {}",
-            lane.center.point_at(2.0).y
+            lane.center.point_at(2.0).z.abs() < 1e-3,
+            "early height should be flat, z {}",
+            lane.center.point_at(2.0).z
         );
         // After the record starts: banked ~0.1.
         assert!(
@@ -1592,9 +1639,9 @@ mod tests {
             lane.bank_at(18.0)
         );
         assert!(
-            lane.center.point_at(18.0).y < -0.1,
-            "late height should be banked (t=-1.75), y {}",
-            lane.center.point_at(18.0).y
+            lane.center.point_at(18.0).z < -0.1,
+            "late height should be banked (t=-1.75), z {}",
+            lane.center.point_at(18.0).z
         );
     }
 }

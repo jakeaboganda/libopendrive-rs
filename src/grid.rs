@@ -1,42 +1,42 @@
-//! A uniform grid over the XZ ground plane, for nearest-thing-under-a-point
+//! A uniform grid over the XY ground plane, for nearest-thing-under-a-point
 //! queries.
 //!
-//! Both hot lookups on a city map are the same shape: given `(x, z)`, find the
+//! Both hot lookups on a city map are the same shape: given `(x, y)`, find the
 //! nearest of thousands of things that each occupy a small patch of ground.
 //! Scanning all of them is O(map) per query, and a consumer runs these every
 //! tick for every body, so the cost scales with map size times fleet size.
 //!
-//! The grid buckets items by their XZ bounding box, then answers a query by
+//! The grid buckets items by their XY bounding box, then answers a query by
 //! walking cells outward in rings and stopping as soon as the best candidate
 //! found is closer than anything the next ring could hold. Items are bucketed
 //! by bounding box, which is a superset of their geometry, so nothing that
 //! could win is ever skipped.
 
-/// An axis-aligned XZ footprint.
+/// An axis-aligned XY footprint.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Aabb {
     pub min_x: f32,
     pub max_x: f32,
-    pub min_z: f32,
-    pub max_z: f32,
+    pub min_y: f32,
+    pub max_y: f32,
 }
 
 impl Aabb {
-    /// The box around a set of XZ points, or `None` if there are none.
+    /// The box around a set of XY points, or `None` if there are none.
     pub fn around(points: impl IntoIterator<Item = (f32, f32)>) -> Option<Self> {
-        points.into_iter().fold(None, |acc: Option<Self>, (x, z)| {
+        points.into_iter().fold(None, |acc: Option<Self>, (x, y)| {
             Some(match acc {
                 None => Self {
                     min_x: x,
                     max_x: x,
-                    min_z: z,
-                    max_z: z,
+                    min_y: y,
+                    max_y: y,
                 },
                 Some(b) => Self {
                     min_x: b.min_x.min(x),
                     max_x: b.max_x.max(x),
-                    min_z: b.min_z.min(z),
-                    max_z: b.max_z.max(z),
+                    min_y: b.min_y.min(y),
+                    max_y: b.max_y.max(y),
                 },
             })
         })
@@ -46,19 +46,19 @@ impl Aabb {
         Self {
             min_x: self.min_x.min(other.min_x),
             max_x: self.max_x.max(other.max_x),
-            min_z: self.min_z.min(other.min_z),
-            max_z: self.max_z.max(other.max_z),
+            min_y: self.min_y.min(other.min_y),
+            max_y: self.max_y.max(other.max_y),
         }
     }
 
-    /// Squared distance from `(x, z)` to this box; zero inside it. A lower
+    /// Squared distance from `(x, y)` to this box; zero inside it. A lower
     /// bound on the distance to whatever the box contains, so a candidate
     /// whose box is already further than the best hit can be rejected without
     /// touching its geometry.
-    pub fn dist2(&self, x: f32, z: f32) -> f32 {
+    pub fn dist2(&self, x: f32, y: f32) -> f32 {
         let dx = (self.min_x - x).max(0.0).max(x - self.max_x);
-        let dz = (self.min_z - z).max(0.0).max(z - self.max_z);
-        dx * dx + dz * dz
+        let dy = (self.min_y - y).max(0.0).max(y - self.max_y);
+        dx * dx + dy * dy
     }
 }
 
@@ -66,7 +66,7 @@ impl Aabb {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Grid {
     min_x: f32,
-    min_z: f32,
+    min_y: f32,
     cell: f32,
     cols: usize,
     rows: usize,
@@ -88,7 +88,7 @@ impl Grid {
         let Some(extent) = bounds.iter().copied().reduce(Aabb::merge) else {
             return Self::default();
         };
-        let (w, h) = (extent.max_x - extent.min_x, extent.max_z - extent.min_z);
+        let (w, h) = (extent.max_x - extent.min_x, extent.max_y - extent.min_y);
         let target = (bounds.len() as f32 / ITEMS_PER_CELL).max(1.0);
         // Area per cell, floored so a perfectly straight road (zero extent on
         // one axis) still produces a usable cell size.
@@ -105,7 +105,7 @@ impl Grid {
 
         let mut grid = Self {
             min_x: extent.min_x,
-            min_z: extent.min_z,
+            min_y: extent.min_y,
             cell,
             cols,
             rows,
@@ -113,10 +113,10 @@ impl Grid {
         };
         for (i, b) in bounds.iter().enumerate() {
             let (lo_x, hi_x) = (grid.col(b.min_x), grid.col(b.max_x));
-            let (lo_z, hi_z) = (grid.row(b.min_z), grid.row(b.max_z));
-            for iz in lo_z..=hi_z {
+            let (lo_y, hi_y) = (grid.row(b.min_y), grid.row(b.max_y));
+            for iy in lo_y..=hi_y {
                 for ix in lo_x..=hi_x {
-                    grid.cells[iz * cols + ix].push(i as u32);
+                    grid.cells[iy * cols + ix].push(i as u32);
                 }
             }
         }
@@ -127,8 +127,8 @@ impl Grid {
         Self::bucket(x - self.min_x, self.cell, self.cols)
     }
 
-    fn row(&self, z: f32) -> usize {
-        Self::bucket(z - self.min_z, self.cell, self.rows)
+    fn row(&self, y: f32) -> usize {
+        Self::bucket(y - self.min_y, self.cell, self.rows)
     }
 
     fn bucket(offset: f32, cell: f32, count: usize) -> usize {
@@ -142,28 +142,28 @@ impl Grid {
         }
     }
 
-    /// The items whose footprint could contain `(x, z)`. Everything that does
+    /// The items whose footprint could contain `(x, y)`. Everything that does
     /// contain it is here; some of what is here does not. Empty when the point
     /// falls outside the grid's extent, or the grid holds nothing.
-    pub fn at(&self, x: f32, z: f32) -> &[u32] {
-        if self.cells.is_empty() || !self.covers(x, z) {
+    pub fn at(&self, x: f32, y: f32) -> &[u32] {
+        if self.cells.is_empty() || !self.covers(x, y) {
             return &[];
         }
-        &self.cells[self.row(z) * self.cols + self.col(x)]
+        &self.cells[self.row(y) * self.cols + self.col(x)]
     }
 
-    /// Whether `(x, z)` is inside the grid's extent. Outside it, `col`/`row`
+    /// Whether `(x, y)` is inside the grid's extent. Outside it, `col`/`row`
     /// clamp to an edge cell, which is right for a nearest-item walk and wrong
     /// for a containment lookup.
-    fn covers(&self, x: f32, z: f32) -> bool {
-        let (dx, dz) = (x - self.min_x, z - self.min_z);
+    fn covers(&self, x: f32, y: f32) -> bool {
+        let (dx, dy) = (x - self.min_x, y - self.min_y);
         dx >= 0.0
-            && dz >= 0.0
+            && dy >= 0.0
             && dx <= self.cols as f32 * self.cell
-            && dz <= self.rows as f32 * self.cell
+            && dy <= self.rows as f32 * self.cell
     }
 
-    /// The nearest item to `(x, z)`, by whatever `consider` measures. Exact
+    /// The nearest item to `(x, y)`, by whatever `consider` measures. Exact
     /// distance ties go to the lowest item index, so the answer matches a
     /// linear scan of the item list and does not depend on the grid's layout.
     ///
@@ -178,13 +178,13 @@ impl Grid {
     pub fn nearest<T>(
         &self,
         x: f32,
-        z: f32,
+        y: f32,
         mut consider: impl FnMut(u32, f32) -> Option<(f32, T)>,
     ) -> Option<T> {
         if self.cells.is_empty() {
             return None;
         }
-        let (cx, cz) = (self.col(x) as isize, self.row(z) as isize);
+        let (cx, cy) = (self.col(x) as isize, self.row(y) as isize);
         let mut best: Option<(f32, u32, T)> = None;
         for r in 0..=self.cols.max(self.rows) as isize {
             // Cells in ring `r` or beyond sit at least `(r - 1)` whole cells
@@ -197,9 +197,9 @@ impl Grid {
                 }
             }
             let mut in_bounds = false;
-            for (ix, iz) in self.ring(cx, cz, r) {
+            for (ix, iy) in self.ring(cx, cy, r) {
                 in_bounds = true;
-                for &item in &self.cells[iz * self.cols + ix] {
+                for &item in &self.cells[iy * self.cols + ix] {
                     let ceiling = best.as_ref().map_or(f32::INFINITY, |(d2, _, _)| *d2);
                     let Some((d2, value)) = consider(item, ceiling) else {
                         continue;
@@ -219,20 +219,20 @@ impl Grid {
         best.map(|(_, _, value)| value)
     }
 
-    /// The in-bounds cells at Chebyshev distance `r` from `(cx, cz)`.
-    fn ring(&self, cx: isize, cz: isize, r: isize) -> impl Iterator<Item = (usize, usize)> + '_ {
+    /// The in-bounds cells at Chebyshev distance `r` from `(cx, cy)`.
+    fn ring(&self, cx: isize, cy: isize, r: isize) -> impl Iterator<Item = (usize, usize)> + '_ {
         let (cols, rows) = (self.cols as isize, self.rows as isize);
-        (cz - r..=cz + r)
-            .filter(move |iz| (0..rows).contains(iz))
-            .flat_map(move |iz| {
+        (cy - r..=cy + r)
+            .filter(move |iy| (0..rows).contains(iy))
+            .flat_map(move |iy| {
                 // Interior rows contribute only their two end columns; the top
                 // and bottom rows of the ring contribute all of theirs.
-                let edge = iz == cz - r || iz == cz + r;
+                let edge = iy == cy - r || iy == cy + r;
                 let step = if edge { 1 } else { (2 * r).max(1) };
                 (cx - r..=cx + r)
                     .step_by(step as usize)
                     .filter(move |ix| (0..cols).contains(ix))
-                    .map(move |ix| (ix as usize, iz as usize))
+                    .map(move |ix| (ix as usize, iy as usize))
             })
     }
 }
@@ -244,25 +244,25 @@ mod tests {
     /// One point per item, as a degenerate box.
     fn points(ps: &[(f32, f32)]) -> Vec<Aabb> {
         ps.iter()
-            .map(|&(x, z)| Aabb::around([(x, z)]).unwrap())
+            .map(|&(x, y)| Aabb::around([(x, y)]).unwrap())
             .collect()
     }
 
     /// Brute-force nearest, as the reference answer.
-    fn brute(ps: &[(f32, f32)], x: f32, z: f32) -> Option<usize> {
+    fn brute(ps: &[(f32, f32)], x: f32, y: f32) -> Option<usize> {
         ps.iter()
             .enumerate()
             .min_by(|(_, a), (_, b)| {
-                let d = |p: &(f32, f32)| (p.0 - x).powi(2) + (p.1 - z).powi(2);
+                let d = |p: &(f32, f32)| (p.0 - x).powi(2) + (p.1 - y).powi(2);
                 d(a).total_cmp(&d(b))
             })
             .map(|(i, _)| i)
     }
 
-    fn nearest(grid: &Grid, ps: &[(f32, f32)], x: f32, z: f32) -> Option<usize> {
-        grid.nearest(x, z, |i, _| {
+    fn nearest(grid: &Grid, ps: &[(f32, f32)], x: f32, y: f32) -> Option<usize> {
+        grid.nearest(x, y, |i, _| {
             let p = ps[i as usize];
-            Some(((p.0 - x).powi(2) + (p.1 - z).powi(2), i as usize))
+            Some(((p.0 - x).powi(2) + (p.1 - y).powi(2), i as usize))
         })
     }
 
@@ -289,15 +289,15 @@ mod tests {
         let grid = Grid::build(&points(&ps));
         for k in 0..200 {
             let t = k as f32 * 0.31;
-            for (x, z) in [
+            for (x, y) in [
                 (t.cos() * 150.0, t.sin() * 150.0),
                 (t * 2.0 - 100.0, t * -1.5 + 60.0),
                 (5000.0, -5000.0),
             ] {
                 assert_eq!(
-                    nearest(&grid, &ps, x, z),
-                    brute(&ps, x, z),
-                    "disagreed at ({x}, {z})"
+                    nearest(&grid, &ps, x, y),
+                    brute(&ps, x, y),
+                    "disagreed at ({x}, {y})"
                 );
             }
         }
@@ -343,8 +343,8 @@ mod tests {
         let wide = Aabb {
             min_x: -100.0,
             max_x: 100.0,
-            min_z: -100.0,
-            max_z: 100.0,
+            min_y: -100.0,
+            max_y: 100.0,
         };
         let mut bounds = points(&[(90.0, 90.0), (-90.0, -90.0)]);
         bounds.push(wide);
@@ -361,8 +361,8 @@ mod tests {
         let b = Aabb {
             min_x: 0.0,
             max_x: 2.0,
-            min_z: 0.0,
-            max_z: 2.0,
+            min_y: 0.0,
+            max_y: 2.0,
         };
         assert_eq!(b.dist2(1.0, 1.0), 0.0);
         assert_eq!(b.dist2(2.0, 0.0), 0.0);

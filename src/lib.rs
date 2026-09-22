@@ -36,13 +36,17 @@
 //!
 //! # Coordinate frame
 //!
-//! Baked geometry is right-handed, **Y-up, metres**, with the ground in the
-//! X-Z plane -- the frame most renderers and physics engines want.
+//! Baked geometry is OpenDRIVE's own frame: right-handed, **Z-up, metres**,
+//! with the reference line in the X-Y plane, `hdg` the heading within it, and
+//! elevation along +Z. A point imports unchanged, so a coordinate you read out
+//! of the `.xodr` is the coordinate you get back.
 //!
-//! OpenDRIVE itself is right-handed **Z-up**: the reference line lies in the
-//! X-Y plane, `hdg` is the heading within it, and elevation runs along +Z.
-//! The importer maps `(x, y, elev)` to `(x, elev, -y)`, so an OpenDRIVE left
-//! turn (increasing heading) curves toward -Z.
+//! An OpenDRIVE left turn (increasing `hdg`) curves toward +Y. Positive lane
+//! offset `t` is to the left of the heading, which for heading +X is +Y.
+//!
+//! A renderer or physics engine that wants Y-up has to rotate on the way in.
+//! Doing that here instead would mean every coordinate in this API disagreed
+//! with the file it came from, which is the harder bug to find.
 //!
 //! Travel direction follows right-hand traffic: negative-id (right) lanes run
 //! with `+s`, positive-id (left) lanes against it. OpenDRIVE encodes no travel

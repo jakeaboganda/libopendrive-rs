@@ -1,12 +1,12 @@
 use glam::{Quat, Vec3};
 
-/// A position plus a horizontal heading along a lane. Y is up (elevation).
+/// A position plus a horizontal heading along a lane. Z is up (elevation).
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Pose {
-    /// Position on the lane (Y-up, metres).
+    /// Position on the lane (Z-up, metres).
     pub position: Vec3,
-    /// Unit tangent in the XZ (ground) plane -- the direction of travel.
+    /// Unit tangent in the XY (ground) plane -- the direction of travel.
     pub heading: Vec3,
 }
 
@@ -17,15 +17,15 @@ pub struct Pose {
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RoadSample {
-    /// Centerline surface point (Y-up, m) -- already at the banked height.
+    /// Centerline surface point (Z-up, m) -- already at the banked height.
     pub point: Vec3,
-    /// Unit tangent in the XZ plane. The centerline's *stored* (geometry)
+    /// Unit tangent in the XY plane. The centerline's *stored* (geometry)
     /// direction, which for a `Backward` lane opposes travel; it is the frame
     /// `bank`/`up` are defined in.
     pub heading: Vec3,
     /// Superelevation (rad, signed; positive raises the +offset / left edge).
     pub bank: f32,
-    /// Surface up-normal: +Y rolled about `heading` by `bank`. Lateral cant
+    /// Surface up-normal: +Z rolled about `heading` by `bank`. Lateral cant
     /// only -- since `heading` is horizontal, `up.dot(heading) == 0`, so this
     /// carries no fore-aft **grade** pitch. Exact on a level road; on a graded
     /// lane it omits the small pitch component. Read the meshed vertices via
@@ -34,12 +34,12 @@ pub struct RoadSample {
 }
 
 impl RoadSample {
-    /// Build a sample, deriving the up-normal by rolling +Y about the horizontal
+    /// Build a sample, deriving the up-normal by rolling +Z about the horizontal
     /// `heading` by `bank`. `heading` must be the centerline's stored tangent so
     /// the roll frame agrees with how `bank` is defined (positive raises the
     /// left-hand-normal edge).
     pub fn new(point: Vec3, heading: Vec3, bank: f32) -> Self {
-        let up = (Quat::from_axis_angle(heading, bank) * Vec3::Y).normalize_or(Vec3::Y);
+        let up = (Quat::from_axis_angle(heading, bank) * Vec3::Z).normalize_or(Vec3::Z);
         Self {
             point,
             heading,
@@ -62,7 +62,7 @@ pub struct Projection {
     pub offset: f32,
 }
 
-/// A polyline in 3D (Y-up, meters), queried by arc length. This is the baked
+/// A polyline in 3D (Z-up, meters), queried by arc length. This is the baked
 /// form every curve reduces to: an importer samples clothoids/arcs into points;
 /// consumers only ever see the points. At least two points.
 ///
@@ -234,9 +234,9 @@ impl TryFrom<Vec<Vec3>> for Polyline {
     }
 }
 
-/// Drop a vector onto the XZ ground plane.
+/// Drop a vector onto the XY ground plane.
 fn horizontal(v: Vec3) -> Vec3 {
-    Vec3::new(v.x, 0.0, v.z)
+    Vec3::new(v.x, v.y, 0.0)
 }
 
 /// Per-vertex unit horizontal tangents: the bisector of the adjacent segment
@@ -260,10 +260,10 @@ fn vertex_tangents(points: &[Vec3]) -> Vec<Vec3> {
         .collect()
 }
 
-/// Unit left-hand normal of a horizontal `heading` (about +Y up). For heading
-/// +X this is −Z. Zero if the heading has no horizontal extent.
+/// Unit left-hand normal of a horizontal `heading` (about +Z up). For heading
+/// +X this is +Y. Zero if the heading has no horizontal extent.
 pub(crate) fn left_normal(heading: Vec3) -> Vec3 {
-    Vec3::Y.cross(horizontal(heading)).normalize_or_zero()
+    Vec3::Z.cross(horizontal(heading)).normalize_or_zero()
 }
 
 #[cfg(test)]
@@ -283,7 +283,7 @@ mod tests {
 
     #[test]
     fn length_sums_the_segments() {
-        let l = line(&[[0.0, 0.0, 0.0], [3.0, 0.0, 0.0], [3.0, 0.0, 4.0]]);
+        let l = line(&[[0.0, 0.0, 0.0], [3.0, 0.0, 0.0], [3.0, 4.0, 0.0]]);
         assert!((l.length() - 7.0).abs() < 1e-5);
     }
 
@@ -297,10 +297,10 @@ mod tests {
 
     #[test]
     fn pose_heading_exact_at_ends_and_continuous_across_a_vertex() {
-        let l = line(&[[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 0.0, 10.0]]);
+        let l = line(&[[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 10.0, 0.0]]);
         // Endpoints resolve to the exact segment directions.
         assert!(l.pose_at(0.0).heading.abs_diff_eq(Vec3::X, 1e-5));
-        assert!(l.pose_at(l.length()).heading.abs_diff_eq(Vec3::Z, 1e-5));
+        assert!(l.pose_at(l.length()).heading.abs_diff_eq(Vec3::Y, 1e-5));
         // No per-segment jump: heading just before and after the vertex agree.
         let before = l.pose_at(10.0 - 0.01).heading;
         let after = l.pose_at(10.0 + 0.01).heading;
@@ -310,43 +310,43 @@ mod tests {
     #[test]
     fn project_gives_arc_length_and_signed_offset() {
         let l = line(&[[0.0, 0.0, 0.0], [10.0, 0.0, 0.0]]);
-        // A point to the left of +X travel (toward −Z) is a positive offset.
-        let left = l.project(Vec3::new(5.0, 0.0, -3.0));
+        // A point to the left of +X travel (toward +Y) is a positive offset.
+        let left = l.project(Vec3::new(5.0, 3.0, 0.0));
         assert!((left.s - 5.0).abs() < 1e-4);
         assert!((left.offset - 3.0).abs() < 1e-4, "offset {}", left.offset);
-        // A point to the right (+Z) is negative.
-        let right = l.project(Vec3::new(5.0, 0.0, 3.0));
+        // A point to the right (-Y) is negative.
+        let right = l.project(Vec3::new(5.0, -3.0, 0.0));
         assert!((right.offset + 3.0).abs() < 1e-4, "offset {}", right.offset);
     }
 
     #[test]
     fn project_arc_length_spans_multiple_segments() {
-        let l = line(&[[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 0.0, 10.0]]);
+        let l = line(&[[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 10.0, 0.0]]);
         // A point beside the second segment lands past the first segment's end.
-        let p = l.project(Vec3::new(12.0, 0.0, 6.0));
+        let p = l.project(Vec3::new(12.0, 6.0, 0.0));
         assert!((p.s - 16.0).abs() < 1e-4, "s {}", p.s);
     }
 
     #[test]
-    fn left_normal_of_plus_x_is_minus_z() {
-        assert!(left_normal(Vec3::X).abs_diff_eq(Vec3::new(0.0, 0.0, -1.0), 1e-5));
+    fn left_normal_of_plus_x_is_plus_y() {
+        assert!(left_normal(Vec3::X).abs_diff_eq(Vec3::Y, 1e-5));
     }
 
     // --- RoadSample::new invariants ------------------------------------------
 
     // For any bank angle the up-normal stays unit length and orthogonal to the
-    // horizontal heading (the roll axis), and at bank 0 it is *exactly* +Y.
+    // horizontal heading (the roll axis), and at bank 0 it is *exactly* +Z.
     #[test]
     fn road_sample_up_is_unit_orthogonal_and_plumb_at_zero() {
         let headings = [
             Vec3::X,
-            Vec3::Z,
-            Vec3::new(1.0, 0.0, 1.0).normalize(),
-            Vec3::new(-2.0, 0.0, 1.0).normalize(),
+            Vec3::Y,
+            Vec3::new(1.0, 1.0, 0.0).normalize(),
+            Vec3::new(-2.0, 1.0, 0.0).normalize(),
         ];
         for h in headings {
             for bank in [0.0_f32, 0.2, -0.2, 1.5, -1.5] {
-                let s = RoadSample::new(Vec3::new(3.0, 1.0, -4.0), h, bank);
+                let s = RoadSample::new(Vec3::new(3.0, 4.0, 1.0), h, bank);
                 // Unit length.
                 assert!(
                     (s.up.length() - 1.0).abs() < 1e-5,
@@ -360,35 +360,35 @@ mod tests {
                     s.up.dot(h)
                 );
                 // Fields are stored verbatim.
-                assert_eq!(s.point, Vec3::new(3.0, 1.0, -4.0));
+                assert_eq!(s.point, Vec3::new(3.0, 4.0, 1.0));
                 assert_eq!(s.heading, h);
                 assert_eq!(s.bank, bank);
             }
-            // At bank 0 the up-normal is exactly +Y (not just approximately).
+            // At bank 0 the up-normal is exactly +Z (not just approximately).
             assert_eq!(
                 RoadSample::new(Vec3::ZERO, h, 0.0).up,
-                Vec3::Y,
-                "bank 0 up must be exactly +Y for heading {h:?}"
+                Vec3::Z,
+                "bank 0 up must be exactly +Z for heading {h:?}"
             );
         }
     }
 
-    // Sign: for heading +X, +bank leans the up-normal toward +Z (the left edge
-    // rises), and -bank leans it toward -Z. The two are mirror images.
+    // Sign: for heading +X, +bank raises the left (+Y) edge, so the surface
+    // tips down to the right and its up-normal leans toward -Y. -bank mirrors it.
     #[test]
     fn road_sample_up_sign_flips_with_bank_sign() {
         let pos = RoadSample::new(Vec3::ZERO, Vec3::X, 0.3);
         let neg = RoadSample::new(Vec3::ZERO, Vec3::X, -0.3);
-        assert!(pos.up.z > 0.05, "+bank should lean +Z: {:?}", pos.up);
-        assert!(neg.up.z < -0.05, "-bank should lean -Z: {:?}", neg.up);
-        // Mirror across the XZ->Y plane: same y, opposite z.
-        assert!((pos.up.y - neg.up.y).abs() < 1e-6);
-        assert!((pos.up.z + neg.up.z).abs() < 1e-6);
+        assert!(pos.up.y < -0.05, "+bank should lean -Y: {:?}", pos.up);
+        assert!(neg.up.y > 0.05, "-bank should lean +Y: {:?}", neg.up);
+        // Mirrored: same height component, opposite lateral one.
+        assert!((pos.up.z - neg.up.z).abs() < 1e-6);
+        assert!((pos.up.y + neg.up.y).abs() < 1e-6);
     }
 
     #[test]
     fn locate_finds_segment_and_fraction() {
-        let l = line(&[[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 0.0, 10.0]]);
+        let l = line(&[[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 10.0, 0.0]]);
         // Mid first segment.
         assert_eq!(l.locate(5.0), (0, 0.5));
         // Mid second segment (arc length 15 of 20).

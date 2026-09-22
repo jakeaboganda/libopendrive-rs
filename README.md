@@ -42,9 +42,13 @@ Geometry is cross-checked against the reference C++
 
 ## Coordinate frame
 
-Baked geometry is right-handed, Y-up, metres, with the ground in the X-Z plane.
-OpenDRIVE is right-handed Z-up, so the importer maps `(x, y, elev)` to
-`(x, elev, -y)` and an OpenDRIVE left turn curves toward -Z.
+Baked geometry is OpenDRIVE's own frame: right-handed, Z-up, metres, with the
+reference line in the X-Y plane and elevation along +Z. A point imports
+unchanged, so a coordinate you read out of the `.xodr` is the coordinate you
+get back. An OpenDRIVE left turn curves toward +Y, and positive lane offset `t`
+is to the left of the heading.
+
+A renderer that wants Y-up has to rotate on the way in.
 
 Travel direction follows right-hand traffic: negative-id lanes run with `+s`,
 positive-id lanes against it.

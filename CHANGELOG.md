@@ -15,6 +15,11 @@ reworked for standalone use.
 - Road/lane `<link>`s and `<junction>`s, resolved into a drive-direction lane
   graph.
 
+### Coordinates
+
+Baked geometry is OpenDRIVE's own frame: right-handed, Z-up, metres, with the
+reference line in the X-Y plane. A point imports verbatim.
+
 ### Queries
 
 - `nearest_lane`, `sample_near`, and `route` over the lane graph.
@@ -22,6 +27,11 @@ reworked for standalone use.
 
 ### Changes since the in-tree version
 
+- The baked frame is Z-up, matching OpenDRIVE, where the in-tree version
+  rotated to Y-up for its renderer. Every coordinate moves: `(x, y, z)`
+  becomes `(x, -z, y)`. Note that `height_at`'s second argument changed
+  meaning from `z` to `y` without changing type, so a call site that compiles
+  is not evidence it is right.
 - `RoadNetwork`'s lane list is private behind `new()` and `lanes()`, so the
   network can index itself with no way for the index to go stale.
 - `nearest_lane` and the new `Mesh::sampler` answer off a ground-plane grid

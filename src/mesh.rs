@@ -6,7 +6,7 @@ use crate::geometry::left_normal;
 use crate::grid::{Aabb, Grid};
 use crate::network::{LaneId, RoadNetwork};
 
-/// A triangle mesh (Y-up, meters): per-vertex positions and up-normals, plus
+/// A triangle mesh (Z-up, meters): per-vertex positions and up-normals, plus
 /// triangle indices. The road surface, shared by the physics collider (which
 /// needs only positions) and a renderer (which needs normals for lighting).
 ///
@@ -15,7 +15,7 @@ use crate::network::{LaneId, RoadNetwork};
 #[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Mesh {
-    /// Vertex positions (Y-up, metres).
+    /// Vertex positions (Z-up, metres).
     pub vertices: Vec<Vec3>,
     /// Per-vertex up-normals, parallel to `vertices`.
     pub normals: Vec<Vec3>,
@@ -92,7 +92,7 @@ impl Mesh {
         Ok(())
     }
 
-    /// The surface height (world Y) and up-normal directly under `(x, z)`, by a
+    /// The surface height (world Z) and up-normal directly under `(x, y)`, by a
     /// vertical ray against the triangles. `None` if no triangle covers the point
     /// (off the road). Where triangles overlap (a bridge over a road) it returns
     /// the highest -- the surface you would be standing on.
@@ -106,8 +106,8 @@ impl Mesh {
     ///
     /// Scans every triangle. For more than a query or two, build a
     /// [`Mesh::sampler`] instead -- it answers the same thing off an index.
-    pub fn height_at(&self, x: f32, z: f32) -> Option<(f32, Vec3)> {
-        self.highest(0..self.indices.len() / 3, x, z)
+    pub fn height_at(&self, x: f32, y: f32) -> Option<(f32, Vec3)> {
+        self.highest(0..self.indices.len() / 3, x, y)
     }
 
     /// An index over this mesh's triangles, for repeated [`Mesh::height_at`]
@@ -121,25 +121,25 @@ impl Mesh {
         MeshSampler::new(self)
     }
 
-    /// The highest of `triangles` covering `(x, z)`, with its normal.
+    /// The highest of `triangles` covering `(x, y)`, with its normal.
     fn highest(
         &self,
         triangles: impl IntoIterator<Item = usize>,
         x: f32,
-        z: f32,
+        y: f32,
     ) -> Option<(f32, Vec3)> {
         let mut best: Option<(f32, Vec3)> = None;
         for t in triangles {
             let tri = &self.indices[t * 3..t * 3 + 3];
             let (ia, ib, ic) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
             let (a, b, c) = (self.vertices[ia], self.vertices[ib], self.vertices[ic]);
-            // Barycentric coords of (x,z) in the triangle's XZ projection.
-            let det = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
+            // Barycentric coords of (x,y) in the triangle's XY projection.
+            let det = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
             if det.abs() < 1e-9 {
-                continue; // edge-on triangle: no XZ footprint
+                continue; // edge-on triangle: no XY footprint
             }
-            let l1 = ((b.z - c.z) * (x - c.x) + (c.x - b.x) * (z - c.z)) / det;
-            let l2 = ((c.z - a.z) * (x - c.x) + (a.x - c.x) * (z - c.z)) / det;
+            let l1 = ((b.y - c.y) * (x - c.x) + (c.x - b.x) * (y - c.y)) / det;
+            let l2 = ((c.y - a.y) * (x - c.x) + (a.x - c.x) * (y - c.y)) / det;
             let l3 = 1.0 - l1 - l2;
             // Reject outside-the-triangle, and non-finite with it. A query far
             // enough out overflows the barycentric arithmetic to infinity, and
@@ -148,8 +148,8 @@ impl Mesh {
             if !(l1 >= -1e-4 && l2 >= -1e-4 && l3 >= -1e-4) {
                 continue;
             }
-            let y = l1 * a.y + l2 * b.y + l3 * c.y;
-            if best.is_some_and(|(by, _)| y <= by) {
+            let height = l1 * a.z + l2 * b.z + l3 * c.z;
+            if best.is_some_and(|(best_height, _)| height <= best_height) {
                 continue;
             }
             // Smooth (interpolated vertex) normal, so a draped body doesn't snap
@@ -157,12 +157,12 @@ impl Mesh {
             // per-vertex normals.
             let n = if self.normals.len() == self.vertices.len() {
                 (l1 * self.normals[ia] + l2 * self.normals[ib] + l3 * self.normals[ic])
-                    .normalize_or(Vec3::Y)
+                    .normalize_or(Vec3::Z)
             } else {
-                (b - a).cross(c - a).normalize_or(Vec3::Y)
+                (b - a).cross(c - a).normalize_or(Vec3::Z)
             };
-            let n = if n.y < 0.0 { -n } else { n }; // face up regardless of winding
-            best = Some((y, n));
+            let n = if n.z < 0.0 { -n } else { n }; // face up regardless of winding
+            best = Some((height, n));
         }
         best
     }
@@ -187,7 +187,7 @@ impl<'a> MeshSampler<'a> {
             .filter_map(|tri| {
                 Aabb::around(
                     tri.iter()
-                        .filter_map(|&i| mesh.vertices.get(i as usize).map(|v| (v.x, v.z))),
+                        .filter_map(|&i| mesh.vertices.get(i as usize).map(|v| (v.x, v.y))),
                 )
             })
             .collect();
@@ -202,14 +202,14 @@ impl<'a> MeshSampler<'a> {
         self.mesh
     }
 
-    /// The surface height (world Y) and up-normal directly under `(x, z)` --
+    /// The surface height (world Z) and up-normal directly under `(x, y)` --
     /// see [`Mesh::height_at`], which this answers identically.
-    pub fn height_at(&self, x: f32, z: f32) -> Option<(f32, Vec3)> {
+    pub fn height_at(&self, x: f32, y: f32) -> Option<(f32, Vec3)> {
         // A triangle covering the point overlaps the cell holding it, so the
         // one cell is the whole candidate set.
-        let candidates = self.grid.at(x, z);
+        let candidates = self.grid.at(x, y);
         self.mesh
-            .highest(candidates.iter().map(|&t| t as usize), x, z)
+            .highest(candidates.iter().map(|&t| t as usize), x, y)
     }
 }
 
@@ -239,9 +239,9 @@ impl RoadNetwork {
                 // it the horizontal left normal, so the mesh is unchanged.
                 let bank = lane.bank.get(i).copied().unwrap_or(0.0);
                 let lateral = Quat::from_axis_angle(along, bank) * left_normal(along);
-                // Surface up-normal: along × lateral is +Y for a flat road, and
+                // Surface up-normal: along × lateral is +Z for a flat road, and
                 // tilts with grade/bank.
-                let up = along.cross(lateral).normalize_or(Vec3::Y);
+                let up = along.cross(lateral).normalize_or(Vec3::Z);
                 mesh.vertices.push(points[i] + lateral * half);
                 mesh.normals.push(up);
                 mesh.vertices.push(points[i] - lateral * half);
@@ -291,10 +291,10 @@ mod tests {
         assert_eq!(mesh.vertices.len(), 6);
         assert_eq!(mesh.normals.len(), 6);
         assert_eq!(mesh.indices.len(), 12);
-        // The first rib straddles the centerline by +/-half-width in Z.
-        assert!((mesh.vertices[0].z - mesh.vertices[1].z).abs() > 3.9);
+        // The first rib straddles the centerline by +/-half-width in Y.
+        assert!((mesh.vertices[0].y - mesh.vertices[1].y).abs() > 3.9);
         // A flat road faces straight up.
-        assert!(mesh.normals[0].abs_diff_eq(Vec3::Y, 1e-5));
+        assert!(mesh.normals[0].abs_diff_eq(Vec3::Z, 1e-5));
     }
 
     #[test]
@@ -315,8 +315,8 @@ mod tests {
         assert_eq!(Mesh::default().validate(), Err(MeshError::Empty));
 
         let sound = Mesh {
-            vertices: vec![Vec3::ZERO, Vec3::X, Vec3::Z],
-            normals: vec![Vec3::Y; 3],
+            vertices: vec![Vec3::ZERO, Vec3::X, Vec3::Y],
+            normals: vec![Vec3::Z; 3],
             indices: vec![0, 1, 2],
             ..Default::default()
         };
@@ -365,15 +365,15 @@ mod tests {
         mesh.validate().expect("a banked lane is a valid trimesh");
         // Left (index 0) above right (index 1) of the first rib pair.
         assert!(
-            mesh.vertices[0].y - mesh.vertices[1].y > 0.5,
+            mesh.vertices[0].z - mesh.vertices[1].z > 0.5,
             "outer/left {} should ride above inner/right {}",
-            mesh.vertices[0].y,
-            mesh.vertices[1].y
+            mesh.vertices[0].z,
+            mesh.vertices[1].z
         );
         // The up-normal is tilted but still points up.
-        assert!(mesh.normals[0].y < 0.99 && mesh.normals[0].y > 0.9);
+        assert!(mesh.normals[0].z < 0.99 && mesh.normals[0].z > 0.9);
         assert!(
-            (mesh.normals[0] - Vec3::Y).length() > 0.05,
+            (mesh.normals[0] - Vec3::Z).length() > 0.05,
             "normal should tilt"
         );
     }
@@ -393,19 +393,19 @@ mod tests {
         }])
     }
 
-    // A CURVED banked lane: a right-hand arc (curving toward +Z), so the left
+    // A CURVED banked lane: a right-hand arc (curving toward -Y), so the left
     // edge is the OUTER edge. With a constant positive bank the outer edge must
     // ride above the inner one all the way round, every normal still points up,
     // and the mesh is a valid trimesh.
     #[test]
     fn a_banked_curve_lifts_the_outer_edge_and_stays_valid() {
         let r = 20.0_f32;
-        // Circle centered at (0,0,r): point = (r sinθ, 0, r - r cosθ). θ=0 -> +X
-        // heading, z grows -> a right turn, so left_normal (-Z at start) is outer.
+        // Circle centered at (0,-r,0): point = (r sinθ, r cosθ - r, 0). θ=0 -> +X
+        // heading, y falls -> a right turn, so left_normal (+Y at start) is outer.
         let points: Vec<Vec3> = (0..=8)
             .map(|k| {
                 let th = (k as f32) * (std::f32::consts::FRAC_PI_4 / 8.0);
-                Vec3::new(r * th.sin(), 0.0, r - r * th.cos())
+                Vec3::new(r * th.sin(), r * th.cos() - r, 0.0)
             })
             .collect();
         let net = banked_net(points.clone(), vec![0.15; points.len()], 5.0);
@@ -414,26 +414,26 @@ mod tests {
 
         // Every normal still points generally up.
         assert!(
-            mesh.normals.iter().all(|n| n.y > 0.9),
+            mesh.normals.iter().all(|n| n.z > 0.9),
             "some normal fell below 0.9: {:?}",
-            mesh.normals.iter().map(|n| n.y).fold(1.0_f32, f32::min)
+            mesh.normals.iter().map(|n| n.z).fold(1.0_f32, f32::min)
         );
         // Outer (left, even index) rib rides above the inner (right, odd) rib at
         // every rib pair -- the physically-correct banked-curve profile.
         for i in 0..points.len() {
-            let outer = mesh.vertices[2 * i].y;
-            let inner = mesh.vertices[2 * i + 1].y;
+            let outer = mesh.vertices[2 * i].z;
+            let inner = mesh.vertices[2 * i + 1].z;
             assert!(
                 outer - inner > 0.5,
                 "rib {i}: outer {outer} should ride above inner {inner}"
             );
         }
         // The normals are genuinely tilted, not vertical.
-        assert!(mesh.normals.iter().any(|n| (n.y - 1.0).abs() > 0.005));
+        assert!(mesh.normals.iter().any(|n| (n.z - 1.0).abs() > 0.005));
     }
 
     // Negative bank rolls the surface the other way: the RIGHT rib rides above
-    // the left, and the normal leans toward -Z -- the mirror of positive bank.
+    // the left, and the normal leans toward +Y -- the mirror of positive bank.
     #[test]
     fn negative_bank_raises_the_opposite_rib() {
         let pts = vec![
@@ -446,31 +446,31 @@ mod tests {
         neg.validate().expect("valid trimesh");
         // Right (index 1) above left (index 0) for negative bank.
         assert!(
-            neg.vertices[1].y - neg.vertices[0].y > 0.5,
+            neg.vertices[1].z - neg.vertices[0].z > 0.5,
             "negative bank should raise the right rib: left {} right {}",
-            neg.vertices[0].y,
-            neg.vertices[1].y
+            neg.vertices[0].z,
+            neg.vertices[1].z
         );
         // Exact mirror of the positive-bank mesh.
-        assert!((neg.vertices[0].y + pos.vertices[0].y).abs() < 1e-5);
-        assert!((neg.vertices[1].y + pos.vertices[1].y).abs() < 1e-5);
-        // Normal leans toward -Z (positive bank leans +Z).
-        assert!(neg.normals[0].z < -0.05, "neg normal {:?}", neg.normals[0]);
-        assert!(pos.normals[0].z > 0.05, "pos normal {:?}", pos.normals[0]);
-        assert!(neg.normals.iter().all(|n| n.y > 0.9));
+        assert!((neg.vertices[0].z + pos.vertices[0].z).abs() < 1e-5);
+        assert!((neg.vertices[1].z + pos.vertices[1].z).abs() < 1e-5);
+        // Normal leans toward +Y (positive bank leans -Y).
+        assert!(neg.normals[0].y > 0.05, "neg normal {:?}", neg.normals[0]);
+        assert!(pos.normals[0].y < -0.05, "pos normal {:?}", pos.normals[0]);
+        assert!(neg.normals.iter().all(|n| n.z > 0.9));
     }
 
     // The two independent consumers of `bank` must agree: at each centerline
     // vertex the mesh's per-vertex up-normal equals the up-normal
-    // `Lane::sample_at` derives at that vertex's arc length. Both roll +Y about
+    // `Lane::sample_at` derives at that vertex's arc length. Both roll +Z about
     // the same stored tangent by the same bank, so they cannot diverge.
     #[test]
     fn mesh_normal_matches_sample_at_up_at_each_vertex() {
         let pts = vec![
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(8.0, 0.0, 0.0),
-            Vec3::new(16.0, 0.0, 6.0),
-            Vec3::new(20.0, 0.0, 16.0),
+            Vec3::new(16.0, 6.0, 0.0),
+            Vec3::new(20.0, 16.0, 0.0),
         ];
         let bank = vec![0.05, 0.12, 0.18, 0.1];
         let net = banked_net(pts.clone(), bank, 5.0);
@@ -493,7 +493,7 @@ mod tests {
 
     #[test]
     fn height_at_reads_the_surface_under_a_point() {
-        // One flat 4 m-wide lane heading +X, from x=0 to x=10 at y=0.
+        // One flat 4 m-wide lane heading +X, from x=0 to x=10 at z=0.
         let net = RoadNetwork::new(vec![Lane {
             id: LaneId(0),
             kind: LaneKind::Driving,
@@ -506,10 +506,10 @@ mod tests {
             neighbors: Vec::new(),
         }]);
         let mesh = net.surface_mesh();
-        // On the lane: y = 0, normal up.
-        let (y, n) = mesh.height_at(5.0, 1.0).expect("on the lane");
-        assert!(y.abs() < 1e-5, "y {y}");
-        assert!(n.abs_diff_eq(Vec3::Y, 1e-5), "n {n:?}");
+        // On the lane: z = 0, normal up.
+        let (z, n) = mesh.height_at(5.0, 1.0).expect("on the lane");
+        assert!(z.abs() < 1e-5, "z {z}");
+        assert!(n.abs_diff_eq(Vec3::Z, 1e-5), "n {n:?}");
         // Off the lane (beyond the half-width): nothing under the point.
         assert!(mesh.height_at(5.0, 10.0).is_none());
     }
@@ -527,8 +527,8 @@ mod tests {
         let mut s = 0.0;
         while s < std::f32::consts::PI {
             let x = 35.0 + 26.0 * s.cos();
-            let z = 26.0 * s.sin();
-            if let Some((_, n)) = mesh.height_at(x, z) {
+            let y = -26.0 * s.sin();
+            if let Some((_, n)) = mesh.height_at(x, y) {
                 if let Some(p) = prev {
                     worst = worst.max((n as Vec3).angle_between(p).to_degrees());
                 }
@@ -560,16 +560,16 @@ mod tests {
             neighbors: Vec::new(),
         }]);
         let mesh = net.surface_mesh();
-        // +z is to the right of +X travel (negative offset); the left (+bank)
-        // edge is toward -z and rides higher.
-        let (left, _) = mesh.height_at(5.0, -2.0).expect("left of centre");
-        let (right, _) = mesh.height_at(5.0, 2.0).expect("right of centre");
+        // -y is to the right of +X travel (negative offset); the left (+bank)
+        // edge is toward +y and rides higher.
+        let (left, _) = mesh.height_at(5.0, 2.0).expect("left of centre");
+        let (right, _) = mesh.height_at(5.0, -2.0).expect("right of centre");
         assert!(
             left > right + 0.3,
             "left {left} should ride above right {right}"
         );
         let (_, n) = mesh.height_at(5.0, 0.0).expect("centre");
-        assert!(n.y < 0.999 && n.y > 0.9, "normal should tilt: {n:?}");
+        assert!(n.z < 0.999 && n.z > 0.9, "normal should tilt: {n:?}");
     }
 
     #[test]
@@ -583,6 +583,6 @@ mod tests {
             .iter()
             .all(|&i| (i as usize) < mesh.vertices.len()));
         // The graded road tilts slightly but every normal still points upward.
-        assert!(mesh.normals.iter().all(|n| n.y > 0.9));
+        assert!(mesh.normals.iter().all(|n| n.z > 0.9));
     }
 }

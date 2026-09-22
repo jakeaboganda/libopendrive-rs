@@ -52,12 +52,12 @@ fn reference_line() -> Polyline {
     // Straight along +X.
     let mut x = 0.0;
     while x <= STRAIGHT {
-        points.push(Vec3::new(x, x * GRADE, 0.0));
+        points.push(Vec3::new(x, 0.0, x * GRADE));
         x += STEP;
     }
 
-    // A 90° left arc off the end of the straight. Heading rotates +X → −Z; the
-    // arc centre sits a radius to the left, at (STRAIGHT, ·, −RADIUS). Sample
+    // A 90° left arc off the end of the straight. Heading rotates +X → +Y; the
+    // arc centre sits a radius to the left, at (STRAIGHT, +RADIUS, ·). Sample
     // evenly and land exactly on 90° at the end (skip angle 0. it duplicates
     // the straight's last point).
     let steps = (FRAC_PI_2 * RADIUS / STEP).ceil() as usize;
@@ -66,8 +66,8 @@ fn reference_line() -> Polyline {
         let s = STRAIGHT + RADIUS * angle;
         points.push(Vec3::new(
             STRAIGHT + RADIUS * angle.sin(),
+            RADIUS * (1.0 - angle.cos()),
             s * GRADE,
-            RADIUS * (angle.cos() - 1.0),
         ));
     }
 
@@ -96,16 +96,16 @@ mod tests {
     }
 
     #[test]
-    fn forward_lane_starts_plus_x_ends_minus_z_and_climbs() {
+    fn forward_lane_starts_plus_x_ends_plus_y_and_climbs() {
         let net = demo_road();
         let lane = net.lane(LaneId(0)).expect("forward lane");
         let start = lane.center.pose_at(0.0);
         let end = lane.center.pose_at(lane.center.length());
-        // Straight start faces +X; after the 90° left curve it faces −Z.
+        // Straight start faces +X; after the 90° left curve it faces +Y.
         assert!(start.heading.x > 0.9, "start {:?}", start.heading);
-        assert!(end.heading.z < -0.9, "end {:?}", end.heading);
+        assert!(end.heading.y > 0.9, "end {:?}", end.heading);
         // The constant grade climbs.
-        assert!(end.position.y > start.position.y + 1.0);
+        assert!(end.position.z > start.position.z + 1.0);
     }
 
     #[test]
@@ -117,12 +117,12 @@ mod tests {
     #[test]
     fn nearest_lane_resolves_each_side_of_the_road() {
         let net = demo_road();
-        // Forward lane (offset −w/2 by left_normal(+X)=−Z) lands on the +Z side;
-        // backward lane on the −Z side.
-        let (near_plus_z, _) = net.nearest_lane(Vec3::new(1.0, 0.0, 1.6)).unwrap();
-        let (near_minus_z, _) = net.nearest_lane(Vec3::new(1.0, 0.0, -1.6)).unwrap();
-        assert_eq!(near_plus_z, LaneId(0));
-        assert_eq!(near_minus_z, LaneId(1));
+        // Forward lane (offset −w/2 by left_normal(+X)=+Y) lands on the −Y side;
+        // backward lane on the +Y side.
+        let (near_minus_y, _) = net.nearest_lane(Vec3::new(1.0, -1.6, 0.0)).unwrap();
+        let (near_plus_y, _) = net.nearest_lane(Vec3::new(1.0, 1.6, 0.0)).unwrap();
+        assert_eq!(near_minus_y, LaneId(0));
+        assert_eq!(near_plus_y, LaneId(1));
     }
 
     #[test]

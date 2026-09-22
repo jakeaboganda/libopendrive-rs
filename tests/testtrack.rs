@@ -18,8 +18,8 @@ fn curvature(lane: &libopendrive::Lane, s: f32) -> f32 {
         lane.center.pose_at(s + SPAN * 0.5).heading,
     );
     // Signed angle between the two headings, in the ground plane.
-    let cross = a.z * b.x - a.x * b.z;
-    let dot = a.x * b.x + a.z * b.z;
+    let cross = a.x * b.y - a.y * b.x;
+    let dot = a.x * b.x + a.y * b.y;
     (cross.atan2(dot) / SPAN).abs()
 }
 
@@ -58,20 +58,20 @@ fn the_test_track_has_the_sections_it_claims() {
 
     // It climbs and comes back down -- the crest and dip are the point of the
     // elevation profile, so a flat import would be a silent loss.
-    let heights: Vec<f32> = lane.center.points().iter().map(|p| p.y).collect();
+    let heights: Vec<f32> = lane.center.points().iter().map(|p| p.z).collect();
     let low = heights.iter().copied().fold(f32::INFINITY, f32::min);
     let high = heights.iter().copied().fold(f32::NEG_INFINITY, f32::max);
     assert!(
         high - low > 3.0,
         "the track is nearly flat: {low:.2} m to {high:.2} m"
     );
-    let crest = lane.center.point_at(405.0).y;
+    let crest = lane.center.point_at(405.0).z;
     assert!(
-        crest > lane.center.point_at(300.0).y + 2.0,
+        crest > lane.center.point_at(300.0).z + 2.0,
         "no crest: {crest:.2} m against the climb's start"
     );
     assert!(
-        crest > lane.center.point_at(470.0).y + 1.0,
+        crest > lane.center.point_at(470.0).z + 1.0,
         "the crest does not fall away into the dip"
     );
 
@@ -266,10 +266,10 @@ fn the_cant_is_baked_into_the_real_surface_mesh() {
         "no mesh rib near the R25 apex: nearest left vertex {left:?} vs apex {apex:?}"
     );
     assert!(
-        right.y - left.y > 0.2,
-        "the outer edge does not ride higher at the apex: left.y {:.3}, right.y {:.3}",
-        left.y,
-        right.y
+        right.z - left.z > 0.2,
+        "the outer edge does not ride higher at the apex: left.z {:.3}, right.z {:.3}",
+        left.z,
+        right.z
     );
 
     // Global invariant: across the whole mesh no rib is canted the wrong way
@@ -277,7 +277,7 @@ fn the_cant_is_baked_into_the_real_surface_mesh() {
     // and the deepest section lifts it by the full ~2*half*sin(0.2) ~ 0.68 m.
     let (mut min_d, mut max_d) = (f32::INFINITY, f32::NEG_INFINITY);
     for p in mesh.vertices.chunks_exact(2) {
-        let d = p[1].y - p[0].y;
+        let d = p[1].z - p[0].z;
         min_d = min_d.min(d);
         max_d = max_d.max(d);
     }

@@ -42,34 +42,34 @@ pub(crate) fn banked_oval() -> RoadNetwork {
     let curve_pts = ((PI * RADIUS) / STEP).ceil() as usize;
     let mut raw: Vec<(Vec3, f32)> = Vec::new();
 
-    // Phase 1 -- bottom straight (z = -R), heading +X, flat.
+    // Phase 1 -- the y = +R straight, heading +X, flat.
     let mut x = -half_s;
     while x <= half_s + 1e-3 {
-        raw.push((Vec3::new(x, 0.0, -RADIUS), 0.0));
+        raw.push((Vec3::new(x, RADIUS, 0.0), 0.0));
         x += STEP;
     }
     // Phase 2 -- right curve, center (half_s, 0, 0), theta -pi/2 -> +pi/2.
     for k in 1..=curve_pts {
         let f = k as f32 / curve_pts as f32;
         let theta = -PI / 2.0 + f * PI;
-        let p = Vec3::new(half_s + RADIUS * theta.cos(), 0.0, RADIUS * theta.sin());
+        let p = Vec3::new(half_s + RADIUS * theta.cos(), -RADIUS * theta.sin(), 0.0);
         raw.push((p, PEAK_BANK * curve_ramp(f)));
     }
-    // Phase 3 -- top straight (z = +R), heading -X, flat.
+    // Phase 3 -- the y = -R straight, heading -X, flat.
     let mut x = half_s;
     while x >= -half_s - 1e-3 {
-        raw.push((Vec3::new(x, 0.0, RADIUS), 0.0));
+        raw.push((Vec3::new(x, -RADIUS, 0.0), 0.0));
         x -= STEP;
     }
     // Phase 4 -- left curve, center (-half_s, 0, 0), theta +pi/2 -> +3pi/2.
     for k in 1..=curve_pts {
         let f = k as f32 / curve_pts as f32;
         let theta = PI / 2.0 + f * PI;
-        let p = Vec3::new(-half_s + RADIUS * theta.cos(), 0.0, RADIUS * theta.sin());
+        let p = Vec3::new(-half_s + RADIUS * theta.cos(), -RADIUS * theta.sin(), 0.0);
         raw.push((p, PEAK_BANK * curve_ramp(f)));
     }
     // Close the loop back onto the first point.
-    raw.push((Vec3::new(-half_s, 0.0, -RADIUS), 0.0));
+    raw.push((Vec3::new(-half_s, RADIUS, 0.0), 0.0));
 
     // Dedup consecutive near-equal points (phase joins land on the same point).
     let mut points: Vec<Vec3> = Vec::new();
@@ -126,8 +126,8 @@ mod tests {
     #[test]
     fn straights_are_flat_and_curves_are_banked() {
         let net = banked_oval();
-        // A point partway along the bottom straight: near-zero bank.
-        let on_straight = sample_near(&net, Vec3::new(0.0, 0.0, -RADIUS));
+        // A point partway along the y = +R straight: near-zero bank.
+        let on_straight = sample_near(&net, Vec3::new(0.0, RADIUS, 0.0));
         assert!(
             on_straight.bank.abs() < 0.01,
             "straight bank {}",
@@ -147,14 +147,14 @@ mod tests {
     #[test]
     fn straight_up_is_vertical_curve_up_is_tilted() {
         let net = banked_oval();
-        let straight = sample_near(&net, Vec3::new(0.0, 0.0, -RADIUS));
-        assert!(straight.up.abs_diff_eq(Vec3::Y, 1e-3));
+        let straight = sample_near(&net, Vec3::new(0.0, RADIUS, 0.0));
+        assert!(straight.up.abs_diff_eq(Vec3::Z, 1e-3));
         let half_s = STRAIGHT * 0.5;
         let apex = sample_near(&net, Vec3::new(half_s + RADIUS, 0.0, 0.0));
         // Tilted: the up-normal leans off vertical but still points up.
-        assert!(apex.up.y < 0.99 && apex.up.y > 0.9, "up.y {}", apex.up.y);
+        assert!(apex.up.z < 0.99 && apex.up.z > 0.9, "up.z {}", apex.up.z);
         assert!(
-            (apex.up - Vec3::Y).length() > 0.05,
+            (apex.up - Vec3::Z).length() > 0.05,
             "curve up should be visibly tilted"
         );
     }
@@ -169,12 +169,12 @@ mod tests {
         // right-curve apex and check the left (outer) vertex rides above the
         // right (inner) one; on a straight rib they are level.
         let half_s = STRAIGHT * 0.5;
-        let apex_xz = Vec3::new(half_s + RADIUS, 0.0, 0.0);
+        let apex_xy = Vec3::new(half_s + RADIUS, 0.0, 0.0);
         let mut best = 0usize;
         let mut best_d = f32::INFINITY;
         for i in (0..mesh.vertices.len()).step_by(2) {
             let mid = (mesh.vertices[i] + mesh.vertices[i + 1]) * 0.5;
-            let d = (Vec3::new(mid.x, 0.0, mid.z) - apex_xz).length();
+            let d = (Vec3::new(mid.x, mid.y, 0.0) - apex_xy).length();
             if d < best_d {
                 best_d = d;
                 best = i;
@@ -183,26 +183,26 @@ mod tests {
         let left = mesh.vertices[best];
         let right = mesh.vertices[best + 1];
         assert!(
-            left.y - right.y > 0.5,
+            left.z - right.z > 0.5,
             "outer (left) edge {} should ride above inner (right) {} at the apex",
-            left.y,
-            right.y
+            left.z,
+            right.z
         );
 
-        // A straight rib (near the bottom straight center) is level.
-        let straight_xz = Vec3::new(0.0, 0.0, -RADIUS);
+        // A straight rib (near the y = +R straight's centre) is level.
+        let straight_xy = Vec3::new(0.0, RADIUS, 0.0);
         let mut s_best = 0usize;
         let mut s_d = f32::INFINITY;
         for i in (0..mesh.vertices.len()).step_by(2) {
             let mid = (mesh.vertices[i] + mesh.vertices[i + 1]) * 0.5;
-            let d = (Vec3::new(mid.x, 0.0, mid.z) - straight_xz).length();
+            let d = (Vec3::new(mid.x, mid.y, 0.0) - straight_xy).length();
             if d < s_d {
                 s_d = d;
                 s_best = i;
             }
         }
         assert!(
-            (mesh.vertices[s_best].y - mesh.vertices[s_best + 1].y).abs() < 0.05,
+            (mesh.vertices[s_best].z - mesh.vertices[s_best + 1].z).abs() < 0.05,
             "straight rib should be level"
         );
     }
@@ -210,14 +210,10 @@ mod tests {
     #[test]
     fn sample_near_tracks_heading_around_the_loop() {
         let net = banked_oval();
-        // On the bottom straight the car heads +X; on the top straight, -X.
-        let bottom = sample_near(&net, Vec3::new(0.0, 0.0, -RADIUS));
-        assert!(
-            bottom.heading.x > 0.9,
-            "bottom heading {:?}",
-            bottom.heading
-        );
-        let top = sample_near(&net, Vec3::new(0.0, 0.0, RADIUS));
-        assert!(top.heading.x < -0.9, "top heading {:?}", top.heading);
+        // On the y = +R straight the car heads +X; on the y = -R straight, -X.
+        let near = sample_near(&net, Vec3::new(0.0, RADIUS, 0.0));
+        assert!(near.heading.x > 0.9, "+R heading {:?}", near.heading);
+        let far = sample_near(&net, Vec3::new(0.0, -RADIUS, 0.0));
+        assert!(far.heading.x < -0.9, "-R heading {:?}", far.heading);
     }
 }

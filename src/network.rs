@@ -43,7 +43,7 @@ pub struct Lane {
     pub kind: LaneKind,
     /// Which way traffic runs along `center`.
     pub direction: Direction,
-    /// Lane centerline, Y-up, meters.
+    /// Lane centerline, Z-up, meters.
     pub center: Polyline,
     /// Constant lane width (per-vertex widths can come later).
     pub width: f32,
@@ -87,7 +87,7 @@ pub struct Lane {
 )]
 pub struct RoadNetwork {
     lanes: Vec<Lane>,
-    /// Driving lanes bucketed by their XZ footprint, for [`Self::nearest_lane`].
+    /// Driving lanes bucketed by their XY footprint, for [`Self::nearest_lane`].
     /// Derived from `lanes`, so it takes no part in equality.
     index: LaneIndex,
 }
@@ -112,7 +112,7 @@ impl From<RoadNetwork> for Vec<Lane> {
     }
 }
 
-/// The driving lanes' XZ footprints, and a grid over them. Entries index
+/// The driving lanes' XY footprints, and a grid over them. Entries index
 /// `lanes` directly, so a hit resolves without a second lookup.
 #[derive(Debug, Clone, Default)]
 struct LaneIndex {
@@ -129,7 +129,7 @@ impl LaneIndex {
                 continue;
             }
             // A centerline always has at least two points, so this is Some.
-            if let Some(b) = Aabb::around(lane.center.points().iter().map(|p| (p.x, p.z))) {
+            if let Some(b) = Aabb::around(lane.center.points().iter().map(|p| (p.x, p.y))) {
                 bounds.push(b);
                 positions.push(i);
             }
@@ -202,7 +202,7 @@ impl RoadNetwork {
         self.lanes.iter().filter(|l| l.kind == LaneKind::Driving)
     }
 
-    /// The lowest point of any lane centerline (Y-up, metres) -- how far down
+    /// The lowest point of any lane centerline (Z-up, metres) -- how far down
     /// the road legitimately reaches. `None` if the network has no lanes. Used
     /// to set an off-map fall floor relative to the terrain, so a map that dips
     /// well below zero (a valley, an underpass) isn't mistaken for freefall.
@@ -210,7 +210,7 @@ impl RoadNetwork {
         self.lanes
             .iter()
             .flat_map(|l| l.center.points())
-            .map(|p| p.y)
+            .map(|p| p.z)
             .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
     }
 
@@ -230,20 +230,20 @@ impl RoadNetwork {
     /// so the cost tracks the local lane density rather than the size of the
     /// map.
     ///
-    /// Nearest is by full 3D distance, but the index prunes in XZ only. That
+    /// Nearest is by full 3D distance, but the index prunes in XY only. That
     /// is sound -- a horizontal distance is never more than the 3D one, so
     /// pruning on it can only keep candidates, never drop a winner -- and it
     /// is what makes stacked roads (a bridge over a road) both still
     /// candidates for a point between them.
     pub fn nearest_lane(&self, point: Vec3) -> Option<(LaneId, Projection)> {
         let index = &self.index;
-        index.grid.nearest(point.x, point.z, |item, best| {
+        index.grid.nearest(point.x, point.y, |item, best| {
             let i = item as usize;
             // The footprint is a lower bound on the distance to the
             // centerline, so a lane whose box already loses needs no
             // projection -- which is most of them, and all the repeats of a
             // long lane that spans several cells.
-            if index.bounds[i].dist2(point.x, point.z) > best {
+            if index.bounds[i].dist2(point.x, point.y) > best {
                 return None;
             }
             let lane = &self.lanes[index.positions[i]];
@@ -287,12 +287,12 @@ mod tests {
     #[test]
     fn nearest_lane_picks_the_closer_centerline() {
         let net = RoadNetwork::new(vec![
-            lane(0, &[[0.0, 0.0, 2.0], [10.0, 0.0, 2.0]]),
-            lane(1, &[[0.0, 0.0, -2.0], [10.0, 0.0, -2.0]]),
+            lane(0, &[[0.0, 2.0, 0.0], [10.0, 2.0, 0.0]]),
+            lane(1, &[[0.0, -2.0, 0.0], [10.0, -2.0, 0.0]]),
         ]);
-        let (id, proj) = net.nearest_lane(Vec3::new(5.0, 0.0, 1.5)).expect("a lane");
+        let (id, proj) = net.nearest_lane(Vec3::new(5.0, 1.5, 0.0)).expect("a lane");
         assert_eq!(id, LaneId(0));
-        assert!((proj.point - Vec3::new(5.0, 0.0, 2.0)).length() < 1e-4);
+        assert!((proj.point - Vec3::new(5.0, 2.0, 0.0)).length() < 1e-4);
     }
 
     #[test]
@@ -312,28 +312,28 @@ mod tests {
             s.heading
         );
         // The up-normal leans off vertical but still points up.
-        assert!(s.up.y < 1.0 && s.up.y > 0.9, "up {:?}", s.up);
-        assert!((s.up - Vec3::Y).length() > 0.05, "up should tilt");
+        assert!(s.up.z < 1.0 && s.up.z > 0.9, "up {:?}", s.up);
+        assert!((s.up - Vec3::Z).length() > 0.05, "up should tilt");
 
         // A flat lane samples bank 0 and a vertical up-normal.
         let flat = lane(1, &[[0.0, 0.0, 0.0], [10.0, 0.0, 0.0]]);
         let fs = flat.sample_at(5.0);
         assert_eq!(fs.bank, 0.0);
-        assert!(fs.up.abs_diff_eq(Vec3::Y, 1e-5), "flat up {:?}", fs.up);
+        assert!(fs.up.abs_diff_eq(Vec3::Z, 1e-5), "flat up {:?}", fs.up);
     }
 
     #[test]
     fn sample_near_samples_the_nearest_lane() {
-        let mut banked = lane(0, &[[0.0, 0.0, 2.0], [10.0, 0.0, 2.0]]);
+        let mut banked = lane(0, &[[0.0, 2.0, 0.0], [10.0, 2.0, 0.0]]);
         banked.bank = vec![0.1, 0.1];
-        let flat = lane(1, &[[0.0, 0.0, -2.0], [10.0, 0.0, -2.0]]);
+        let flat = lane(1, &[[0.0, -2.0, 0.0], [10.0, -2.0, 0.0]]);
         let net = RoadNetwork::new(vec![banked, flat]);
         // Nearer the banked lane -> its bank.
-        let a = net.sample_near(Vec3::new(5.0, 0.0, 1.8)).expect("a sample");
+        let a = net.sample_near(Vec3::new(5.0, 1.8, 0.0)).expect("a sample");
         assert!((a.bank - 0.1).abs() < 1e-5, "bank {}", a.bank);
         // Nearer the flat lane -> bank 0.
         let b = net
-            .sample_near(Vec3::new(5.0, 0.0, -1.8))
+            .sample_near(Vec3::new(5.0, -1.8, 0.0))
             .expect("a sample");
         assert_eq!(b.bank, 0.0);
     }
@@ -361,10 +361,10 @@ mod tests {
         assert_eq!(f.bank, b.bank);
         assert!(f.heading.abs_diff_eq(b.heading, 1e-6));
         // Raised edge is the +offset (left of the stored tangent): for heading
-        // +X, left is -Z, so the up-normal leans toward +Z.
+        // +X, left is +Y, so the up-normal leans toward -Y.
         assert!(
-            b.up.z > 0.05,
-            "up should lean off the raised -Z edge: {:?}",
+            b.up.y < -0.05,
+            "up should lean away from the raised +Y edge: {:?}",
             b.up
         );
     }
@@ -376,8 +376,8 @@ mod tests {
     // to the heading at every station.
     #[test]
     fn sample_at_on_a_curved_banked_lane() {
-        // Two segments: +X for 10 m, then turning toward +Z. Bank ramps 0 -> 0.2.
-        let mut l = lane(0, &[[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [20.0, 0.0, 10.0]]);
+        // Two segments: +X for 10 m, then turning toward +Y. Bank ramps 0 -> 0.2.
+        let mut l = lane(0, &[[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [20.0, 10.0, 0.0]]);
         l.bank = vec![0.0, 0.1, 0.2];
         let seg1 = 10.0_f32;
         let seg2 = (100.0_f32 + 100.0).sqrt(); // sqrt(200)
@@ -388,8 +388,8 @@ mod tests {
             "start heading {:?}",
             l.sample_at(0.0).heading
         );
-        // Heading at the very end is the last segment direction (+X+Z / sqrt2).
-        let end_dir = Vec3::new(1.0, 0.0, 1.0).normalize();
+        // Heading at the very end is the last segment direction (+X+Y / sqrt2).
+        let end_dir = Vec3::new(1.0, 1.0, 0.0).normalize();
         assert!(
             l.sample_at(seg1 + seg2).heading.abs_diff_eq(end_dir, 1e-4),
             "end heading {:?} want {end_dir:?}",
@@ -412,10 +412,10 @@ mod tests {
             let rs = l.sample_at(s);
             assert!((rs.up.length() - 1.0).abs() < 1e-5, "up not unit @ {s}");
             assert!(rs.up.dot(rs.heading).abs() < 1e-6, "up.heading != 0 @ {s}");
-            assert!(rs.up.y > 0.9, "up.y too low @ {s}: {}", rs.up.y);
+            assert!(rs.up.z > 0.9, "up.z too low @ {s}: {}", rs.up.z);
             if rs.bank.abs() > 1e-3 {
                 assert!(
-                    (rs.up - Vec3::Y).length() > 0.02,
+                    (rs.up - Vec3::Z).length() > 0.02,
                     "up should tilt where banked @ {s}: {:?}",
                     rs.up
                 );
@@ -433,11 +433,11 @@ mod tests {
         neg.bank = vec![-0.25, -0.25];
         let p = pos.sample_at(5.0);
         let n = neg.sample_at(5.0);
-        // Heading +X: +bank leans up toward +Z, -bank toward -Z.
-        assert!(p.up.z > 0.05, "+bank up {:?}", p.up);
-        assert!(n.up.z < -0.05, "-bank up {:?}", n.up);
-        assert!((p.up.z + n.up.z).abs() < 1e-6, "should be mirrored in z");
-        assert!((p.up.y - n.up.y).abs() < 1e-6, "same height component");
+        // Heading +X: +bank leans up toward -Y, -bank toward +Y.
+        assert!(p.up.y < -0.05, "+bank up {:?}", p.up);
+        assert!(n.up.y > 0.05, "-bank up {:?}", n.up);
+        assert!((p.up.y + n.up.y).abs() < 1e-6, "should be mirrored in y");
+        assert!((p.up.z - n.up.z).abs() < 1e-6, "same height component");
     }
 
     // The documented lane-boundary vertical step: two adjacent banked lanes sit
@@ -445,30 +445,30 @@ mod tests {
     // and bank -- stepping as the nearest lane flips across the boundary.
     #[test]
     fn sample_near_steps_at_a_banked_lane_boundary() {
-        // Lane A raised (+z side), lane B lowered (-z side); each carries its own
-        // bank. The reference-line pivot makes their centerlines differ in y.
-        let mut a = lane(0, &[[0.0, 0.3, 2.0], [10.0, 0.3, 2.0]]);
+        // Lane A raised (+y side), lane B lowered (-y side); each carries its own
+        // bank. The reference-line pivot makes their centerlines differ in z.
+        let mut a = lane(0, &[[0.0, 2.0, 0.3], [10.0, 2.0, 0.3]]);
         a.bank = vec![0.1, 0.1];
-        let mut b = lane(1, &[[0.0, -0.3, -2.0], [10.0, -0.3, -2.0]]);
+        let mut b = lane(1, &[[0.0, -2.0, -0.3], [10.0, -2.0, -0.3]]);
         b.bank = vec![-0.15, -0.15];
         let net = RoadNetwork::new(vec![a, b]);
 
         // Just on A's side of the midline -> A's height and bank.
-        let sa = net.sample_near(Vec3::new(5.0, 0.0, 0.1)).expect("sample A");
+        let sa = net.sample_near(Vec3::new(5.0, 0.1, 0.0)).expect("sample A");
         assert!((sa.bank - 0.1).abs() < 1e-5, "A bank {}", sa.bank);
-        assert!((sa.point.y - 0.3).abs() < 1e-5, "A height {}", sa.point.y);
+        assert!((sa.point.z - 0.3).abs() < 1e-5, "A height {}", sa.point.z);
         // Just on B's side -> B's height and bank.
         let sb = net
-            .sample_near(Vec3::new(5.0, 0.0, -0.1))
+            .sample_near(Vec3::new(5.0, -0.1, 0.0))
             .expect("sample B");
         assert!((sb.bank + 0.15).abs() < 1e-5, "B bank {}", sb.bank);
-        assert!((sb.point.y + 0.3).abs() < 1e-5, "B height {}", sb.point.y);
+        assert!((sb.point.z + 0.3).abs() < 1e-5, "B height {}", sb.point.z);
         // The seam is a real vertical step, not a blend.
         assert!(
-            (sa.point.y - sb.point.y).abs() > 0.5,
+            (sa.point.z - sb.point.z).abs() > 0.5,
             "expected a vertical step across the boundary: {} vs {}",
-            sa.point.y,
-            sb.point.y
+            sa.point.z,
+            sb.point.z
         );
     }
 
@@ -493,10 +493,10 @@ mod tests {
 
     #[test]
     fn min_elevation_is_the_lowest_centerline_point() {
-        // A network that dips to y=-40 (a deep valley) reports -40, not 0.
+        // A network that dips to z=-40 (a deep valley) reports -40, not 0.
         let net = RoadNetwork::new(vec![
-            lane(0, &[[0.0, 5.0, 0.0], [10.0, 2.0, 0.0]]),
-            lane(1, &[[0.0, -40.0, 0.0], [10.0, -12.0, 0.0]]),
+            lane(0, &[[0.0, 0.0, 5.0], [10.0, 0.0, 2.0]]),
+            lane(1, &[[0.0, 0.0, -40.0], [10.0, 0.0, -12.0]]),
         ]);
         assert_eq!(net.min_elevation(), Some(-40.0));
         assert_eq!(RoadNetwork::default().min_elevation(), None);
@@ -513,7 +513,7 @@ mod tests {
             },
             Lane {
                 id: LaneId(4),
-                ..lane(1, &[[0.0, 0.0, 5.0], [1.0, 0.0, 5.0]])
+                ..lane(1, &[[0.0, 5.0, 0.0], [1.0, 5.0, 0.0]])
             },
         ]);
         assert_eq!(net.lane(LaneId(17)).map(|l| l.id), Some(LaneId(17)));

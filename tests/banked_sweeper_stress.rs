@@ -68,8 +68,8 @@ fn grade_and_bank_compose_to_elev_plus_t_sin_phi() {
     let i = 20usize;
     let want_grade = 0.05_f32 * 40.0;
     let want_off = 2.0 * sin_phi; // t = +/-2.0
-    let ly = left.center.points()[i].y;
-    let ry = right.center.points()[i].y;
+    let ly = left.center.points()[i].z;
+    let ry = right.center.points()[i].z;
     assert!(
         (ly - (want_grade + want_off)).abs() < 2e-3,
         "left height {ly} != grade {want_grade} + t*sin phi {want_off}"
@@ -129,26 +129,26 @@ fn right_hand_arc_raises_the_opposite_edge_from_the_left_sweeper() {
     }
 
     // Peak height per lane centerline.
-    let peak_y = |dir: Direction| {
+    let peak_z = |dir: Direction| {
         net.driving_lanes()
             .filter(|l| l.direction == dir)
             .map(|l| {
                 l.center
                     .points()
                     .iter()
-                    .map(|p| p.y)
+                    .map(|p| p.z)
                     .fold(f32::MIN, f32::max)
             })
             .collect::<Vec<_>>()
     };
-    let min_y = |dir: Direction| {
+    let min_z = |dir: Direction| {
         net.driving_lanes()
             .filter(|l| l.direction == dir)
             .map(|l| {
                 l.center
                     .points()
                     .iter()
-                    .map(|p| p.y)
+                    .map(|p| p.z)
                     .fold(f32::MAX, f32::min)
             })
             .collect::<Vec<_>>()
@@ -156,7 +156,7 @@ fn right_hand_arc_raises_the_opposite_edge_from_the_left_sweeper() {
 
     // Right (Forward) lanes are the raised side here -- the mirror of the left
     // sweeper, where the left (Backward) lanes rose.
-    let mut right = peak_y(Direction::Forward);
+    let mut right = peak_z(Direction::Forward);
     right.sort_by(|a, b| a.total_cmp(b));
     assert_eq!(right.len(), 2, "two right lanes");
     assert!(
@@ -172,7 +172,7 @@ fn right_hand_arc_raises_the_opposite_edge_from_the_left_sweeper() {
 
     // The left (Backward) lanes dip BELOW the reference line -- the opposite edge
     // to the original left sweeper, where they climbed.
-    let left = min_y(Direction::Backward);
+    let left = min_z(Direction::Backward);
     assert_eq!(left.len(), 2, "two left lanes");
     assert!(
         left.iter().all(|&y| y < -0.3),
@@ -182,7 +182,7 @@ fn right_hand_arc_raises_the_opposite_edge_from_the_left_sweeper() {
 
 // ---------------------------------------------------------------------------
 // 3. sample_near swept around the whole arc: bank rises 0 -> 0.2 -> 0, up stays
-//    a unit, up.y > 0.9 everywhere, no NaN.
+//    a unit, up.z > 0.9 everywhere, no NaN.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -202,9 +202,9 @@ fn sample_near_swept_around_the_arc_is_continuous_and_upright() {
         assert!(s.bank.is_finite(), "non-finite bank {}", s.bank);
         assert!(s.up.is_normalized(), "up not unit: {:?}", s.up);
         assert!(
-            s.up.y > 0.9,
-            "up.y fell to {} -- surface tipped over",
-            s.up.y
+            s.up.z > 0.9,
+            "up.z fell to {} -- surface tipped over",
+            s.up.z
         );
         banks.push(s.bank);
     }
@@ -259,8 +259,8 @@ fn meshed_outer_rib_rides_above_inner_near_the_apex_on_disk() {
         let mesh = solo.surface_mesh();
         mesh.validate().expect("a banked lane tessellates");
         let i = peak_bank_vertex(lane);
-        let left = mesh.vertices[2 * i].y; // +t rib
-        let right = mesh.vertices[2 * i + 1].y; // -t rib
+        let left = mesh.vertices[2 * i].z; // +t rib
+        let right = mesh.vertices[2 * i + 1].z; // -t rib
                                                 // +bank raises the +t rib; the fixture's arc banks positive.
         assert!(
             left - right > 0.5,
@@ -316,16 +316,16 @@ fn mid_road_superelevation_is_flat_before_its_start() {
         let pts = lane.center.points();
         // s=10 -> vertex 5.
         assert!(
-            pts[5].y.abs() < 1e-4,
+            pts[5].z.abs() < 1e-4,
             "flat-region height {} should be 0",
-            pts[5].y
+            pts[5].z
         );
         // s=50 -> vertex 25.
         let want = 2.0 * sin_phi;
         assert!(
-            (pts[25].y.abs() - want).abs() < 2e-3,
+            (pts[25].z.abs() - want).abs() < 2e-3,
             "banked-region |height| {} should be {want}",
-            pts[25].y.abs()
+            pts[25].z.abs()
         );
     }
 }
@@ -400,10 +400,10 @@ fn lane_offset_shifts_the_bank_pivot() {
     // Right lane t_lane = -sign*(width/2) = -2.0; laneOffset base = +2.0.
     // Total t = 2.0 + (-2.0) = 0.0, so the lane rides exactly on the pivot: its
     // height is ~0 despite the bank. This is the composition laneOffset feeds.
-    let y = lane.center.points()[10].y;
+    let z = lane.center.points()[10].z;
     assert!(
-        y.abs() < 2e-3,
-        "offset lane at the pivot should ride at 0, got {y}"
+        z.abs() < 2e-3,
+        "offset lane at the pivot should ride at 0, got {z}"
     );
     // But the surface is still canted (bank angle carried through).
     assert!(
@@ -416,7 +416,7 @@ fn lane_offset_shifts_the_bank_pivot() {
 // A steep bank (0.6 rad ~= 34 deg): must bake finite and faithfully carry the
 // angle. Note the surface normal legitimately drops to cos(0.6) ~= 0.825, i.e.
 // BELOW the 0.9 "generally up" bar the gentle fixtures pass -- that is physics,
-// not a bug, so this test asserts the true angle, not up.y > 0.9.
+// not a bug, so this test asserts the true angle, not up.z > 0.9.
 const STEEP_BANK: &str = r#"<?xml version="1.0"?>
 <OpenDRIVE>
   <header revMajor="1" revMinor="7" name="steep_bank" version="1.00"/>
@@ -453,15 +453,15 @@ fn a_steep_bank_bakes_finite_and_carries_the_angle() {
         assert!(up.is_normalized(), "up not unit {up:?}");
         // cos(0.6) ~= 0.8253 -- the normal has genuinely leaned past 0.9.
         assert!(
-            (up.y - 0.6_f32.cos()).abs() < 1e-3,
-            "up.y {} should be cos(0.6)",
-            up.y
+            (up.z - 0.6_f32.cos()).abs() < 1e-3,
+            "up.z {} should be cos(0.6)",
+            up.z
         );
     }
-    // Every mesh normal is still upright (positive y) and finite, just tilted.
-    assert!(mesh.normals.iter().all(|n| n.y > 0.5 && n.is_finite()));
+    // Every mesh normal is still upright (positive z) and finite, just tilted.
+    assert!(mesh.normals.iter().all(|n| n.z > 0.5 && n.is_finite()));
     assert!(
-        mesh.normals.iter().any(|n| n.y < 0.9),
+        mesh.normals.iter().any(|n| n.z < 0.9),
         "no normal leaned past 0.9 -- steep bank lost"
     );
 }
