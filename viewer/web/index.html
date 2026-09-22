@@ -26,6 +26,11 @@
           border-radius: 5px; font-variant-numeric: tabular-nums; white-space: pre; display: none; z-index: 5; }
   #tip b { color: #8ec07c; }
   #hint { position: absolute; left: 12px; bottom: 10px; color: #6b7280; font-size: 11px; }
+  #tools { position: absolute; left: 12px; top: 12px; z-index: 6; display: flex; gap: 6px;
+           background: #0b0d11cc; border: 1px solid #2a2f3a; border-radius: 6px; padding: 6px 8px; align-items: center; }
+  #tools label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  #tools select { background: #1b1f27; color: inherit; border: 1px solid #2a2f3a; border-radius: 4px; padding: 2px 4px; }
+  #flagcount { color: #e88; font-variant-numeric: tabular-nums; }
   #err { position: absolute; inset: 0; display: none; place-content: center; text-align: center; padding: 40px; color: #e88; }
   #err code { color: #d8dee9; background: #1b1f27; padding: 2px 6px; border-radius: 4px; }
 </style>
@@ -42,7 +47,17 @@
   </aside>
   <div id="view">
     <div id="tip"></div>
-    <div id="hint">drag: orbit · scroll: zoom · right-drag: pan · hover a lane for coordinates</div>
+    <div id="tools">
+      <label>view
+        <select id="mode">
+          <option value="solid">solid</option>
+          <option value="wire">wireframe</option>
+          <option value="both">solid + wireframe</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="flag"> flag bad tris <span id="flagcount"></span></label>
+    </div>
+    <div id="hint">drag: orbit · scroll: zoom · right-drag: pan · [w] cycles wireframe · hover a lane for coordinates</div>
     <div id="err"></div>
   </div>
 </div>
@@ -67,7 +82,7 @@ const countEl = document.getElementById('count');
 const searchEl = document.getElementById('search');
 
 let scene, camera, renderer, controls, raycaster;
-let roadMesh, highlight, highlightLine;
+let roadMesh, wireMesh, badMesh, highlight, highlightLine;
 let lanes = [];              // enriched lane records
 let spanIndex = [];          // {start,end,lane} sorted by index-range start, for picking
 let laneById = new Map();
@@ -110,10 +125,21 @@ async function init() {
   buildSidebar();
   frameOn(roadMesh);
 
+  applyMode();
+  document.getElementById('mode').addEventListener('change', applyMode);
+  document.getElementById('flag').addEventListener('change', applyMode);
+
   raycaster = new THREE.Raycaster();
   renderer.domElement.addEventListener('pointermove', onHover);
   renderer.domElement.addEventListener('pointerleave', () => hideTip());
   searchEl.addEventListener('input', renderSidebar);
+  addEventListener('keydown', e => {
+    if (e.key !== 'w' || document.activeElement === searchEl) return;
+    const sel = document.getElementById('mode');
+    const order = ['solid', 'wire', 'both'];
+    sel.value = order[(order.indexOf(sel.value) + 1) % order.length];
+    applyMode();
+  });
 
   addEventListener('resize', resize);
   resize();
@@ -133,6 +159,20 @@ function buildMesh(data) {
     side: THREE.DoubleSide, flatShading: false,
   }));
   scene.add(roadMesh);
+
+  // Wireframe overlay: every triangle edge, so slivers, folds, and t-junctions
+  // between lanes are visible. Hidden until the view mode asks for it.
+  wireMesh = new THREE.LineSegments(
+    new THREE.WireframeGeometry(g),
+    new THREE.LineBasicMaterial({ color: 0x39d0ff }));
+  wireMesh.visible = false;
+  scene.add(wireMesh);
+
+  // Diagnostic: the triangles whose geometric normal faces down (inverted /
+  // folded) or is ~zero (degenerate sliver), pulled into their own mesh and
+  // drawn on top (depthTest off) so none hide inside the surface.
+  badMesh = buildBadMesh(data.mesh);
+  scene.add(badMesh);
 
   // A yellow overlay drawn over the base mesh for the hovered lane section,
   // sharing the base position buffer and swapping only its index slice.
@@ -158,6 +198,44 @@ function buildMesh(data) {
   grid.rotation.x = Math.PI / 2;                       // grid is XZ by default; lay it in XY
   grid.position.set((bb.min.x + bb.max.x) / 2, (bb.min.y + bb.max.y) / 2, bb.min.z - 0.05);
   scene.add(grid);
+}
+
+// Collect the triangles a road surface should never contain: inverted (normal
+// faces down) or degenerate (near-zero area). Returned as a standalone mesh
+// drawn over everything, so a lingering fold is impossible to miss.
+function buildBadMesh(mesh) {
+  const p = mesh.positions, ix = mesh.indices;
+  const pos = [];
+  for (let t = 0; t < ix.length; t += 3) {
+    const a = ix[t] * 3, b = ix[t + 1] * 3, c = ix[t + 2] * 3;
+    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
+    const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const len = Math.hypot(nx, ny, nz);
+    const z = len > 0 ? nz / len : 0;
+    if (z > 1e-4) continue;                 // healthy, up-facing
+    for (const v of [a, b, c]) pos.push(p[v], p[v + 1], p[v + 2]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    color: 0xff2d55, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.9,
+  }));
+  m.renderOrder = 5;
+  m.visible = false;
+  m.userData.count = pos.length / 9;
+  return m;
+}
+
+// Apply the current view controls to the road / wireframe / diagnostic meshes.
+function applyMode() {
+  const mode = document.getElementById('mode').value;
+  roadMesh.visible = mode !== 'wire';
+  wireMesh.visible = mode !== 'solid';
+  const flag = document.getElementById('flag').checked;
+  badMesh.visible = flag;
+  const n = badMesh.userData.count;
+  document.getElementById('flagcount').textContent = flag ? `(${n})` : '';
 }
 
 function buildLanes(data) {
