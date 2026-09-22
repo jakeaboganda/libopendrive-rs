@@ -20,6 +20,10 @@ reworked for standalone use.
 Baked geometry is OpenDRIVE's own frame: right-handed, Z-up, metres, with the
 reference line in the X-Y plane. A point imports verbatim.
 
+Positions are `Point` and directions are `Vector`, both defined here. There is
+no math crate in the public API, and no required dependency beyond `roxmltree`
+and `thiserror`.
+
 ### Queries
 
 - `nearest_lane`, `sample_near`, and `route` over the lane graph.
@@ -27,6 +31,10 @@ reference line in the X-Y plane. A point imports verbatim.
 
 ### Changes since the in-tree version
 
+- `glam::Vec3` no longer appears in the API. A position is a `Point` and a
+  direction is a `Vector`, which makes `nearest_lane(sample.up)` and adding
+  two positions compile errors rather than silent nonsense. glam is gone as a
+  dependency, so it no longer constrains a consumer's version of it.
 - The baked frame is Z-up, matching OpenDRIVE, where the in-tree version
   rotated to Y-up for its renderer. Every coordinate moves: `(x, y, z)`
   becomes `(x, -z, y)`. Note that `height_at`'s second argument changed

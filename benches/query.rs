@@ -5,8 +5,7 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use glam::Vec3;
-use libopendrive::{load_file, RoadNetwork};
+use libopendrive::{load_file, Point, RoadNetwork};
 
 const TOWN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/town07.xodr");
 
@@ -16,7 +15,7 @@ fn town() -> RoadNetwork {
 
 /// Points spread across the map, each sitting on some lane's centerline -- the
 /// realistic case, where a query does land on the road.
-fn probes(net: &RoadNetwork, count: usize) -> Vec<Vec3> {
+fn probes(net: &RoadNetwork, count: usize) -> Vec<Point> {
     let lanes: Vec<_> = net.driving_lanes().collect();
     (0..count)
         .map(|i| {

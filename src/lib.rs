@@ -9,7 +9,19 @@
 //! downstream touches OpenDRIVE again -- consumers sample points, walk the
 //! lane graph, and tessellate a surface mesh.
 //!
-//! No C++ dependency, no bindings, no `unsafe`.
+//! No C++ dependency, no bindings, no `unsafe`, and no math crate in the
+//! public API.
+//!
+//! # Coordinate types
+//!
+//! A position is a [`Point`] and a direction or displacement is a [`Vector`].
+//! They are separate types carrying the arithmetic that relates them:
+//! `point - point` is a `Vector`, `point + vector` is a `Point`, and adding
+//! two positions does not compile. One three-float type used for all three
+//! roles would make `nearest_lane(sample.up)` legal, which it is not.
+//!
+//! Both are `#[repr(C)]` structs of three public `f32` fields, so handing one
+//! to another math library is `Point::to_array`.
 //!
 //! ```no_run
 //! let net = libopendrive::load_file("maps/town07.xodr")?;

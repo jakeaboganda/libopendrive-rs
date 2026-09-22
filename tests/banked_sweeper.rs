@@ -7,7 +7,7 @@
 //! the arc and is flat on the straights, and a road-surface sample that leans.
 
 use libopendrive::load_file;
-use libopendrive::RoadNetwork;
+use libopendrive::{Point, RoadNetwork};
 
 const SWEEPER: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -103,7 +103,7 @@ fn sample_near_leans_on_the_banked_arc() {
     let net = load_file(SWEEPER).expect("the banked sweeper loads");
     // The arc apex on the reference line (~45 deg through a R=50 left turn from
     // (50,0)): OD (85.36, 14.66), which the baked frame keeps verbatim.
-    let apex = glam::Vec3::new(85.36, 14.66, 0.0);
+    let apex = Point::new(85.36, 14.66, 0.0);
     let s = net.sample_near(apex).expect("a sample on the arc");
     assert!(s.point.is_finite(), "sample point {:?}", s.point);
     assert!((s.bank.abs() - 0.2).abs() < 0.03, "apex bank {}", s.bank);

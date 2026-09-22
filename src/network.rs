@@ -1,8 +1,7 @@
 //! The baked road-network model: lanes, their connectivity graph, and the
 //! queries over both. Format-agnostic -- nothing here knows OpenDRIVE.
 
-use glam::Vec3;
-
+use crate::coords::Point;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
 
@@ -43,7 +42,7 @@ pub struct Lane {
     pub kind: LaneKind,
     /// Which way traffic runs along `center`.
     pub direction: Direction,
-    /// Lane centerline, Z-up, meters.
+    /// Lane centerline.
     pub center: Polyline,
     /// Constant lane width (per-vertex widths can come later).
     pub width: f32,
@@ -235,7 +234,7 @@ impl RoadNetwork {
     /// pruning on it can only keep candidates, never drop a winner -- and it
     /// is what makes stacked roads (a bridge over a road) both still
     /// candidates for a point between them.
-    pub fn nearest_lane(&self, point: Vec3) -> Option<(LaneId, Projection)> {
+    pub fn nearest_lane(&self, point: Point) -> Option<(LaneId, Projection)> {
         let index = &self.index;
         index.grid.nearest(point.x, point.y, |item, best| {
             let i = item as usize;
@@ -260,7 +259,7 @@ impl RoadNetwork {
     /// `None` if there are no driving lanes. NB: on a banked
     /// multi-lane road, adjacent lanes differ in height, so this can step
     /// vertically as the nearest lane flips at a lane boundary.
-    pub fn sample_near(&self, point: Vec3) -> Option<RoadSample> {
+    pub fn sample_near(&self, point: Point) -> Option<RoadSample> {
         let (id, proj) = self.nearest_lane(point)?;
         self.lane(id).map(|lane| lane.sample_at(proj.s))
     }
@@ -269,13 +268,14 @@ impl RoadNetwork {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::coords::Vector;
 
     fn lane(id: usize, points: &[[f32; 3]]) -> Lane {
         Lane {
             id: LaneId(id),
             kind: LaneKind::Driving,
             direction: Direction::Forward,
-            center: Polyline::new(points.iter().map(|p| Vec3::from_array(*p)).collect()),
+            center: Polyline::new(points.iter().map(|p| Point::from_array(*p)).collect()),
             width: 3.5,
             bank: Vec::new(),
             successors: Vec::new(),
@@ -290,14 +290,14 @@ mod tests {
             lane(0, &[[0.0, 2.0, 0.0], [10.0, 2.0, 0.0]]),
             lane(1, &[[0.0, -2.0, 0.0], [10.0, -2.0, 0.0]]),
         ]);
-        let (id, proj) = net.nearest_lane(Vec3::new(5.0, 1.5, 0.0)).expect("a lane");
+        let (id, proj) = net.nearest_lane(Point::new(5.0, 1.5, 0.0)).expect("a lane");
         assert_eq!(id, LaneId(0));
-        assert!((proj.point - Vec3::new(5.0, 2.0, 0.0)).length() < 1e-4);
+        assert!((proj.point - Point::new(5.0, 2.0, 0.0)).length() < 1e-4);
     }
 
     #[test]
     fn nearest_lane_is_none_when_empty() {
-        assert!(RoadNetwork::default().nearest_lane(Vec3::ZERO).is_none());
+        assert!(RoadNetwork::default().nearest_lane(Point::ORIGIN).is_none());
     }
 
     #[test]
@@ -307,19 +307,19 @@ mod tests {
         let s = banked.sample_at(5.0);
         assert!((s.bank - 0.2).abs() < 1e-5, "bank {}", s.bank);
         assert!(
-            s.heading.abs_diff_eq(Vec3::X, 1e-4),
+            s.heading.abs_diff_eq(Vector::X, 1e-4),
             "heading {:?}",
             s.heading
         );
         // The up-normal leans off vertical but still points up.
         assert!(s.up.z < 1.0 && s.up.z > 0.9, "up {:?}", s.up);
-        assert!((s.up - Vec3::Z).length() > 0.05, "up should tilt");
+        assert!((s.up - Vector::Z).length() > 0.05, "up should tilt");
 
         // A flat lane samples bank 0 and a vertical up-normal.
         let flat = lane(1, &[[0.0, 0.0, 0.0], [10.0, 0.0, 0.0]]);
         let fs = flat.sample_at(5.0);
         assert_eq!(fs.bank, 0.0);
-        assert!(fs.up.abs_diff_eq(Vec3::Z, 1e-5), "flat up {:?}", fs.up);
+        assert!(fs.up.abs_diff_eq(Vector::Z, 1e-5), "flat up {:?}", fs.up);
     }
 
     #[test]
@@ -329,18 +329,20 @@ mod tests {
         let flat = lane(1, &[[0.0, -2.0, 0.0], [10.0, -2.0, 0.0]]);
         let net = RoadNetwork::new(vec![banked, flat]);
         // Nearer the banked lane -> its bank.
-        let a = net.sample_near(Vec3::new(5.0, 1.8, 0.0)).expect("a sample");
+        let a = net
+            .sample_near(Point::new(5.0, 1.8, 0.0))
+            .expect("a sample");
         assert!((a.bank - 0.1).abs() < 1e-5, "bank {}", a.bank);
         // Nearer the flat lane -> bank 0.
         let b = net
-            .sample_near(Vec3::new(5.0, -1.8, 0.0))
+            .sample_near(Point::new(5.0, -1.8, 0.0))
             .expect("a sample");
         assert_eq!(b.bank, 0.0);
     }
 
     #[test]
     fn sample_near_is_none_when_empty() {
-        assert!(RoadNetwork::default().sample_near(Vec3::ZERO).is_none());
+        assert!(RoadNetwork::default().sample_near(Point::ORIGIN).is_none());
     }
 
     #[test]
@@ -384,12 +386,12 @@ mod tests {
 
         // Heading at the very start is the first segment direction (+X).
         assert!(
-            l.sample_at(0.0).heading.abs_diff_eq(Vec3::X, 1e-5),
+            l.sample_at(0.0).heading.abs_diff_eq(Vector::X, 1e-5),
             "start heading {:?}",
             l.sample_at(0.0).heading
         );
         // Heading at the very end is the last segment direction (+X+Y / sqrt2).
-        let end_dir = Vec3::new(1.0, 1.0, 0.0).normalize();
+        let end_dir = Vector::new(1.0, 1.0, 0.0).normalize_or_zero();
         assert!(
             l.sample_at(seg1 + seg2).heading.abs_diff_eq(end_dir, 1e-4),
             "end heading {:?} want {end_dir:?}",
@@ -415,7 +417,7 @@ mod tests {
             assert!(rs.up.z > 0.9, "up.z too low @ {s}: {}", rs.up.z);
             if rs.bank.abs() > 1e-3 {
                 assert!(
-                    (rs.up - Vec3::Z).length() > 0.02,
+                    (rs.up - Vector::Z).length() > 0.02,
                     "up should tilt where banked @ {s}: {:?}",
                     rs.up
                 );
@@ -454,12 +456,14 @@ mod tests {
         let net = RoadNetwork::new(vec![a, b]);
 
         // Just on A's side of the midline -> A's height and bank.
-        let sa = net.sample_near(Vec3::new(5.0, 0.1, 0.0)).expect("sample A");
+        let sa = net
+            .sample_near(Point::new(5.0, 0.1, 0.0))
+            .expect("sample A");
         assert!((sa.bank - 0.1).abs() < 1e-5, "A bank {}", sa.bank);
         assert!((sa.point.z - 0.3).abs() < 1e-5, "A height {}", sa.point.z);
         // Just on B's side -> B's height and bank.
         let sb = net
-            .sample_near(Vec3::new(5.0, -0.1, 0.0))
+            .sample_near(Point::new(5.0, -0.1, 0.0))
             .expect("sample B");
         assert!((sb.bank + 0.15).abs() < 1e-5, "B bank {}", sb.bank);
         assert!((sb.point.z + 0.3).abs() < 1e-5, "B height {}", sb.point.z);
@@ -520,7 +524,7 @@ mod tests {
         assert_eq!(net.lane(LaneId(4)).map(|l| l.id), Some(LaneId(4)));
         assert!(net.lane(LaneId(0)).is_none()); // position 0, but not id 0
                                                 // nearest_lane's returned id round-trips through lane().
-        let (id, _) = net.nearest_lane(Vec3::new(0.5, 0.0, 0.0)).unwrap();
+        let (id, _) = net.nearest_lane(Point::new(0.5, 0.0, 0.0)).unwrap();
         assert!(net.lane(id).is_some());
     }
 

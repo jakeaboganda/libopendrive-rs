@@ -8,8 +8,8 @@
 //! Geometry is cross-checked against the reference C++
 //! [libOpenDRIVE](https://github.com/pageldev/libOpenDRIVE).
 
+use crate::coords::Point;
 use crate::{Direction, Lane, LaneId, LaneKind, Polyline, RoadNetwork};
-use glam::Vec3;
 
 mod links;
 use links::{LaneMeta, RoadInfo, Topology};
@@ -574,7 +574,7 @@ fn sample_lane(
     inner: &[LaneDef],
     sign: f64,
     sample_s: &[f64],
-) -> Vec<Vec3> {
+) -> Vec<Point> {
     sample_s
         .iter()
         .map(|&s| {
@@ -599,7 +599,7 @@ fn sample_lane(
             // The baked frame is OpenDRIVE's own, so the reference-line point
             // needs no mapping. Offset along the left-hand normal, which in the
             // reference line's plane is (-sin hdg, cos hdg).
-            Vec3::new(
+            Point::new(
                 (x - t_h * hdg.sin()) as f32,
                 (y + t_h * hdg.cos()) as f32,
                 (elev + t * sin_phi) as f32,
@@ -680,6 +680,7 @@ fn child<'a>(node: roxmltree::Node<'a, 'a>, tag: &str) -> Option<roxmltree::Node
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::coords::Vector;
 
     // A straight 40 m road climbing at 4%, one right (forward) driving lane.
     const STRAIGHT: &str = r#"<?xml version="1.0"?>
@@ -809,9 +810,9 @@ mod tests {
         // Reference line runs (100, 50) -> (100, 80); lane centre is t = -2,
         // which for heading +Y is 2 m toward +X. Elevation is a flat 3.
         for (s, want) in [
-            (0.0, Vec3::new(102.0, 50.0, 3.0)),
-            (15.0, Vec3::new(102.0, 65.0, 3.0)),
-            (30.0, Vec3::new(102.0, 80.0, 3.0)),
+            (0.0, Point::new(102.0, 50.0, 3.0)),
+            (15.0, Point::new(102.0, 65.0, 3.0)),
+            (30.0, Point::new(102.0, 80.0, 3.0)),
         ] {
             let got = lane.center.point_at(s);
             assert!(
@@ -820,8 +821,12 @@ mod tests {
             );
         }
         // Travel is along +Y and the surface is level.
-        assert!(lane.center.pose_at(15.0).heading.abs_diff_eq(Vec3::Y, 1e-4));
-        assert!(lane.sample_at(15.0).up.abs_diff_eq(Vec3::Z, 1e-5));
+        assert!(lane
+            .center
+            .pose_at(15.0)
+            .heading
+            .abs_diff_eq(Vector::Y, 1e-4));
+        assert!(lane.sample_at(15.0).up.abs_diff_eq(Vector::Z, 1e-5));
     }
 
     // A straight road with a constant laneOffset of +2.0 (shifts the whole

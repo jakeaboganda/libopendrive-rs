@@ -6,14 +6,13 @@
 //! brute-force answer on a real city export, which has the stacked roads,
 //! dead ground, and far-off-map queries a hand-written fixture would not.
 
-use glam::Vec3;
-use libopendrive::{load_file, LaneId, Projection, RoadNetwork};
+use libopendrive::{load_file, LaneId, Point, Projection, RoadNetwork, Vector};
 
 const TOWN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/town07.xodr");
 
 /// What `nearest_lane` did before the index: project onto every driving lane
 /// and keep the closest in 3D, first one winning a tie.
-fn scan_nearest(net: &RoadNetwork, point: Vec3) -> Option<(LaneId, Projection)> {
+fn scan_nearest(net: &RoadNetwork, point: Point) -> Option<(LaneId, Projection)> {
     net.driving_lanes()
         .map(|lane| (lane.id, lane.center.project(point)))
         .min_by(|(_, a), (_, b)| {
@@ -25,23 +24,23 @@ fn scan_nearest(net: &RoadNetwork, point: Vec3) -> Option<(LaneId, Projection)> 
 /// Query points covering the cases the grid has to get right: on the road,
 /// beside it, high above and far below it, out past the map, and at the
 /// coordinate extremes.
-fn probes(net: &RoadNetwork) -> Vec<Vec3> {
+fn probes(net: &RoadNetwork) -> Vec<Point> {
     let lanes: Vec<_> = net.driving_lanes().collect();
     let mut out = Vec::new();
     for i in 0..48 {
         let lane = lanes[i * lanes.len() / 48];
         let on = lane.center.point_at(lane.center.length() * 0.37);
         out.push(on);
-        out.push(on + Vec3::new(7.5, 0.0, -7.5)); // off to one side
-        out.push(on + Vec3::new(0.0, 60.0, 0.0)); // well above the surface
-        out.push(on + Vec3::new(0.0, -60.0, 0.0)); // well below it
-        out.push(on + Vec3::new(400.0, 0.0, 250.0)); // out past the map
+        out.push(on + Vector::new(7.5, 0.0, -7.5)); // off to one side
+        out.push(on + Vector::new(0.0, 60.0, 0.0)); // well above the surface
+        out.push(on + Vector::new(0.0, -60.0, 0.0)); // well below it
+        out.push(on + Vector::new(400.0, 0.0, 250.0)); // out past the map
     }
     out.extend([
-        Vec3::ZERO,
-        Vec3::new(1.0e9, 0.0, -1.0e9),
-        Vec3::new(-1.0e9, 1.0e9, 0.0),
-        Vec3::new(f32::MAX, 0.0, f32::MIN),
+        Point::ORIGIN,
+        Point::new(1.0e9, 0.0, -1.0e9),
+        Point::new(-1.0e9, 1.0e9, 0.0),
+        Point::new(f32::MAX, 0.0, f32::MIN),
     ]);
     out
 }
@@ -72,10 +71,10 @@ fn a_non_finite_query_returns_rather_than_panicking() {
     // saying so.
     let net = load_file(TOWN).expect("town07 loads");
     for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        let _ = net.nearest_lane(Vec3::new(bad, 0.0, 0.0));
-        let _ = net.nearest_lane(Vec3::new(0.0, bad, 0.0));
-        let _ = net.nearest_lane(Vec3::splat(bad));
-        let _ = net.sample_near(Vec3::new(0.0, 0.0, bad));
+        let _ = net.nearest_lane(Point::new(bad, 0.0, 0.0));
+        let _ = net.nearest_lane(Point::new(0.0, bad, 0.0));
+        let _ = net.nearest_lane(Point::splat(bad));
+        let _ = net.sample_near(Point::new(0.0, 0.0, bad));
     }
 }
 
@@ -99,9 +98,11 @@ fn the_mesh_sampler_agrees_with_a_full_scan() {
 #[test]
 fn an_empty_network_indexes_and_answers_nothing() {
     let empty = RoadNetwork::default();
-    assert!(empty.nearest_lane(Vec3::ZERO).is_none());
-    assert!(empty.sample_near(Vec3::ZERO).is_none());
-    assert!(empty.route(Vec3::ZERO, Vec3::X).is_none());
+    assert!(empty.nearest_lane(Point::ORIGIN).is_none());
+    assert!(empty.sample_near(Point::ORIGIN).is_none());
+    assert!(empty
+        .route(Point::ORIGIN, Point::new(1.0, 0.0, 0.0))
+        .is_none());
 
     let mesh = empty.surface_mesh();
     assert!(mesh.sampler().height_at(0.0, 0.0).is_none());

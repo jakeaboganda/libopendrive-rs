@@ -1,7 +1,6 @@
 use std::ops::Range;
 
-use glam::{Quat, Vec3};
-
+use crate::coords::{Point, Vector};
 use crate::geometry::left_normal;
 use crate::grid::{Aabb, Grid};
 use crate::network::{LaneId, RoadNetwork};
@@ -15,10 +14,10 @@ use crate::network::{LaneId, RoadNetwork};
 #[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Mesh {
-    /// Vertex positions (Z-up, metres).
-    pub vertices: Vec<Vec3>,
+    /// Vertex positions.
+    pub vertices: Vec<Point>,
     /// Per-vertex up-normals, parallel to `vertices`.
-    pub normals: Vec<Vec3>,
+    pub normals: Vec<Vector>,
     /// Triangle vertex indices, three per triangle.
     pub indices: Vec<u32>,
     /// Which lane each part of the mesh came from, in emission order.
@@ -106,7 +105,7 @@ impl Mesh {
     ///
     /// Scans every triangle. For more than a query or two, build a
     /// [`Mesh::sampler`] instead -- it answers the same thing off an index.
-    pub fn height_at(&self, x: f32, y: f32) -> Option<(f32, Vec3)> {
+    pub fn height_at(&self, x: f32, y: f32) -> Option<(f32, Vector)> {
         self.highest(0..self.indices.len() / 3, x, y)
     }
 
@@ -127,8 +126,8 @@ impl Mesh {
         triangles: impl IntoIterator<Item = usize>,
         x: f32,
         y: f32,
-    ) -> Option<(f32, Vec3)> {
-        let mut best: Option<(f32, Vec3)> = None;
+    ) -> Option<(f32, Vector)> {
+        let mut best: Option<(f32, Vector)> = None;
         for t in triangles {
             let tri = &self.indices[t * 3..t * 3 + 3];
             let (ia, ib, ic) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
@@ -157,9 +156,9 @@ impl Mesh {
             // per-vertex normals.
             let n = if self.normals.len() == self.vertices.len() {
                 (l1 * self.normals[ia] + l2 * self.normals[ib] + l3 * self.normals[ic])
-                    .normalize_or(Vec3::Z)
+                    .normalize_or(Vector::Z)
             } else {
-                (b - a).cross(c - a).normalize_or(Vec3::Z)
+                (b - a).cross(c - a).normalize_or(Vector::Z)
             };
             let n = if n.z < 0.0 { -n } else { n }; // face up regardless of winding
             best = Some((height, n));
@@ -204,7 +203,7 @@ impl<'a> MeshSampler<'a> {
 
     /// The surface height (world Z) and up-normal directly under `(x, y)` --
     /// see [`Mesh::height_at`], which this answers identically.
-    pub fn height_at(&self, x: f32, y: f32) -> Option<(f32, Vec3)> {
+    pub fn height_at(&self, x: f32, y: f32) -> Option<(f32, Vector)> {
         // A triangle covering the point overlaps the cell holding it, so the
         // one cell is the whole candidate set.
         let candidates = self.grid.at(x, y);
@@ -238,10 +237,10 @@ impl RoadNetwork {
                 // bank: +bank raises the left rib. Flat lanes (empty bank) leave
                 // it the horizontal left normal, so the mesh is unchanged.
                 let bank = lane.bank.get(i).copied().unwrap_or(0.0);
-                let lateral = Quat::from_axis_angle(along, bank) * left_normal(along);
+                let lateral = left_normal(along).rotate_about(along, bank);
                 // Surface up-normal: along × lateral is +Z for a flat road, and
                 // tilts with grade/bank.
-                let up = along.cross(lateral).normalize_or(Vec3::Z);
+                let up = along.cross(lateral).normalize_or(Vector::Z);
                 mesh.vertices.push(points[i] + lateral * half);
                 mesh.normals.push(up);
                 mesh.vertices.push(points[i] - lateral * half);
@@ -265,9 +264,9 @@ impl RoadNetwork {
 
 #[cfg(test)]
 mod tests {
+    use crate::coords::{Point, Vector};
     use crate::fixtures::demo_road;
     use crate::{Direction, Lane, LaneId, LaneKind, Mesh, Polyline, RoadNetwork};
-    use glam::Vec3;
 
     #[test]
     fn one_straight_lane_tessellates_to_two_quads() {
@@ -276,9 +275,9 @@ mod tests {
             kind: LaneKind::Driving,
             direction: Direction::Forward,
             center: Polyline::new(vec![
-                Vec3::new(0.0, 0.0, 0.0),
-                Vec3::new(5.0, 0.0, 0.0),
-                Vec3::new(10.0, 0.0, 0.0),
+                Point::new(0.0, 0.0, 0.0),
+                Point::new(5.0, 0.0, 0.0),
+                Point::new(10.0, 0.0, 0.0),
             ]),
             width: 4.0,
             bank: Vec::new(),
@@ -294,7 +293,7 @@ mod tests {
         // The first rib straddles the centerline by +/-half-width in Y.
         assert!((mesh.vertices[0].y - mesh.vertices[1].y).abs() > 3.9);
         // A flat road faces straight up.
-        assert!(mesh.normals[0].abs_diff_eq(Vec3::Z, 1e-5));
+        assert!(mesh.normals[0].abs_diff_eq(Vector::Z, 1e-5));
     }
 
     #[test]
@@ -315,8 +314,12 @@ mod tests {
         assert_eq!(Mesh::default().validate(), Err(MeshError::Empty));
 
         let sound = Mesh {
-            vertices: vec![Vec3::ZERO, Vec3::X, Vec3::Y],
-            normals: vec![Vec3::Z; 3],
+            vertices: vec![
+                Point::ORIGIN,
+                Point::new(1.0, 0.0, 0.0),
+                Point::new(0.0, 1.0, 0.0),
+            ],
+            normals: vec![Vector::Z; 3],
             indices: vec![0, 1, 2],
             ..Default::default()
         };
@@ -350,9 +353,9 @@ mod tests {
                 kind: LaneKind::Driving,
                 direction: Direction::Forward,
                 center: Polyline::new(vec![
-                    Vec3::new(0.0, 0.0, 0.0),
-                    Vec3::new(5.0, 0.0, 0.0),
-                    Vec3::new(10.0, 0.0, 0.0),
+                    Point::new(0.0, 0.0, 0.0),
+                    Point::new(5.0, 0.0, 0.0),
+                    Point::new(10.0, 0.0, 0.0),
                 ]),
                 width: 4.0,
                 bank: Vec::new(),
@@ -373,13 +376,13 @@ mod tests {
         // The up-normal is tilted but still points up.
         assert!(mesh.normals[0].z < 0.99 && mesh.normals[0].z > 0.9);
         assert!(
-            (mesh.normals[0] - Vec3::Z).length() > 0.05,
+            (mesh.normals[0] - Vector::Z).length() > 0.05,
             "normal should tilt"
         );
     }
 
     // Build a one-lane network from centerline points and a per-vertex bank.
-    fn banked_net(points: Vec<Vec3>, bank: Vec<f32>, width: f32) -> RoadNetwork {
+    fn banked_net(points: Vec<Point>, bank: Vec<f32>, width: f32) -> RoadNetwork {
         RoadNetwork::new(vec![Lane {
             id: LaneId(0),
             kind: LaneKind::Driving,
@@ -402,10 +405,10 @@ mod tests {
         let r = 20.0_f32;
         // Circle centered at (0,-r,0): point = (r sinθ, r cosθ - r, 0). θ=0 -> +X
         // heading, y falls -> a right turn, so left_normal (+Y at start) is outer.
-        let points: Vec<Vec3> = (0..=8)
+        let points: Vec<Point> = (0..=8)
             .map(|k| {
                 let th = (k as f32) * (std::f32::consts::FRAC_PI_4 / 8.0);
-                Vec3::new(r * th.sin(), r * th.cos() - r, 0.0)
+                Point::new(r * th.sin(), r * th.cos() - r, 0.0)
             })
             .collect();
         let net = banked_net(points.clone(), vec![0.15; points.len()], 5.0);
@@ -437,9 +440,9 @@ mod tests {
     #[test]
     fn negative_bank_raises_the_opposite_rib() {
         let pts = vec![
-            Vec3::new(0.0, 0.0, 0.0),
-            Vec3::new(5.0, 0.0, 0.0),
-            Vec3::new(10.0, 0.0, 0.0),
+            Point::new(0.0, 0.0, 0.0),
+            Point::new(5.0, 0.0, 0.0),
+            Point::new(10.0, 0.0, 0.0),
         ];
         let neg = banked_net(pts.clone(), vec![-0.2; 3], 4.0).surface_mesh();
         let pos = banked_net(pts, vec![0.2; 3], 4.0).surface_mesh();
@@ -467,10 +470,10 @@ mod tests {
     #[test]
     fn mesh_normal_matches_sample_at_up_at_each_vertex() {
         let pts = vec![
-            Vec3::new(0.0, 0.0, 0.0),
-            Vec3::new(8.0, 0.0, 0.0),
-            Vec3::new(16.0, 6.0, 0.0),
-            Vec3::new(20.0, 16.0, 0.0),
+            Point::new(0.0, 0.0, 0.0),
+            Point::new(8.0, 0.0, 0.0),
+            Point::new(16.0, 6.0, 0.0),
+            Point::new(20.0, 16.0, 0.0),
         ];
         let bank = vec![0.05, 0.12, 0.18, 0.1];
         let net = banked_net(pts.clone(), bank, 5.0);
@@ -498,7 +501,7 @@ mod tests {
             id: LaneId(0),
             kind: LaneKind::Driving,
             direction: Direction::Forward,
-            center: Polyline::new(vec![Vec3::ZERO, Vec3::new(10.0, 0.0, 0.0)]),
+            center: Polyline::new(vec![Point::ORIGIN, Point::new(10.0, 0.0, 0.0)]),
             width: 4.0,
             bank: Vec::new(),
             successors: Vec::new(),
@@ -509,7 +512,7 @@ mod tests {
         // On the lane: z = 0, normal up.
         let (z, n) = mesh.height_at(5.0, 1.0).expect("on the lane");
         assert!(z.abs() < 1e-5, "z {z}");
-        assert!(n.abs_diff_eq(Vec3::Z, 1e-5), "n {n:?}");
+        assert!(n.abs_diff_eq(Vector::Z, 1e-5), "n {n:?}");
         // Off the lane (beyond the half-width): nothing under the point.
         assert!(mesh.height_at(5.0, 10.0).is_none());
     }
@@ -530,7 +533,8 @@ mod tests {
             let y = -26.0 * s.sin();
             if let Some((_, n)) = mesh.height_at(x, y) {
                 if let Some(p) = prev {
-                    worst = worst.max((n as Vec3).angle_between(p).to_degrees());
+                    let cos = n.dot(p).clamp(-1.0, 1.0);
+                    worst = worst.max(cos.acos().to_degrees());
                 }
                 prev = Some(n);
             }
@@ -552,7 +556,7 @@ mod tests {
             id: LaneId(0),
             kind: LaneKind::Driving,
             direction: Direction::Forward,
-            center: Polyline::new(vec![Vec3::ZERO, Vec3::new(10.0, 0.0, 0.0)]),
+            center: Polyline::new(vec![Point::ORIGIN, Point::new(10.0, 0.0, 0.0)]),
             width: 6.0,
             bank: vec![0.2, 0.2],
             successors: Vec::new(),

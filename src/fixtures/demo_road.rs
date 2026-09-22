@@ -1,6 +1,6 @@
 use std::f32::consts::FRAC_PI_2;
 
-use glam::Vec3;
+use crate::coords::Point;
 
 use crate::geometry::{left_normal, Polyline};
 use crate::network::{Direction, Lane, LaneId, LaneKind, RoadNetwork};
@@ -52,7 +52,7 @@ fn reference_line() -> Polyline {
     // Straight along +X.
     let mut x = 0.0;
     while x <= STRAIGHT {
-        points.push(Vec3::new(x, 0.0, x * GRADE));
+        points.push(Point::new(x, 0.0, x * GRADE));
         x += STEP;
     }
 
@@ -64,7 +64,7 @@ fn reference_line() -> Polyline {
     for k in 1..=steps {
         let angle = FRAC_PI_2 * k as f32 / steps as f32;
         let s = STRAIGHT + RADIUS * angle;
-        points.push(Vec3::new(
+        points.push(Point::new(
             STRAIGHT + RADIUS * angle.sin(),
             RADIUS * (1.0 - angle.cos()),
             s * GRADE,
@@ -119,8 +119,8 @@ mod tests {
         let net = demo_road();
         // Forward lane (offset −w/2 by left_normal(+X)=+Y) lands on the −Y side;
         // backward lane on the +Y side.
-        let (near_minus_y, _) = net.nearest_lane(Vec3::new(1.0, -1.6, 0.0)).unwrap();
-        let (near_plus_y, _) = net.nearest_lane(Vec3::new(1.0, 1.6, 0.0)).unwrap();
+        let (near_minus_y, _) = net.nearest_lane(Point::new(1.0, -1.6, 0.0)).unwrap();
+        let (near_plus_y, _) = net.nearest_lane(Point::new(1.0, 1.6, 0.0)).unwrap();
         assert_eq!(near_minus_y, LaneId(0));
         assert_eq!(near_plus_y, LaneId(1));
     }

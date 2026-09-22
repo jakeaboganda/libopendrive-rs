@@ -26,10 +26,9 @@ exclude = [
 [features]
 # Serialize the baked network and its surface mesh, for shipping a map to a
 # viewer or another process, or caching an import.
-serde = ["dep:serde", "glam/serde"]
+serde = ["dep:serde"]
 
 [dependencies]
-glam = "0.32"
 roxmltree = "0.21"
 serde = { version = "1", features = ["derive"], optional = true }
 thiserror = "2"

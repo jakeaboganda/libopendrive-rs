@@ -8,17 +8,16 @@
 //!
 //! Companion to the inline tests in `src/mesh.rs`.
 
-use glam::Vec3;
-use libopendrive::Mesh;
+use libopendrive::{Mesh, Point, Vector};
 
 /// A single flat quad at height `z` spanning x∈[0,2], y∈[0,2], split on the
 /// (0,0)-(2,2) diagonal. `flip` reverses the winding of both triangles.
 fn flat_quad(z: f32, flip: bool) -> Mesh {
     let vertices = vec![
-        Vec3::new(0.0, 0.0, z), // 0
-        Vec3::new(2.0, 0.0, z), // 1
-        Vec3::new(2.0, 2.0, z), // 2
-        Vec3::new(0.0, 2.0, z), // 3
+        Point::new(0.0, 0.0, z), // 0
+        Point::new(2.0, 0.0, z), // 1
+        Point::new(2.0, 2.0, z), // 2
+        Point::new(0.0, 2.0, z), // 3
     ];
     let indices = if flip {
         vec![0, 2, 1, 0, 3, 2]
@@ -27,7 +26,7 @@ fn flat_quad(z: f32, flip: bool) -> Mesh {
     };
     Mesh {
         vertices,
-        normals: vec![Vec3::Z; 4],
+        normals: vec![Vector::Z; 4],
         indices,
         ..Default::default()
     }
@@ -40,7 +39,7 @@ fn dead_centre_of_a_quad_resolves() {
     // claimed by (at least) one triangle, not fall through the split.
     let (z, n) = mesh.height_at(1.0, 1.0).expect("centre of the quad");
     assert!((z - 3.0).abs() < 1e-5, "z {z}");
-    assert!(n.abs_diff_eq(Vec3::Z, 1e-6), "n {n:?}");
+    assert!(n.abs_diff_eq(Vector::Z, 1e-6), "n {n:?}");
 }
 
 #[test]
@@ -84,11 +83,11 @@ fn a_degenerate_or_empty_mesh_returns_none() {
     // divide-by-zero into a bogus hit.
     let edge_on = Mesh {
         vertices: vec![
-            Vec3::new(1.0, 1.0, 0.0),
-            Vec3::new(1.0, 1.0, 5.0),
-            Vec3::new(1.0, 1.0, 2.0),
+            Point::new(1.0, 1.0, 0.0),
+            Point::new(1.0, 1.0, 5.0),
+            Point::new(1.0, 1.0, 2.0),
         ],
-        normals: vec![Vec3::Z; 3],
+        normals: vec![Vector::Z; 3],
         indices: vec![0, 1, 2],
         ..Default::default()
     };
@@ -140,7 +139,7 @@ fn the_returned_normal_is_a_unit_up_vector_for_both_windings() {
         assert!(n.z > 0.0, "normal {n:?} must point up (flip={flip})");
         // A flat quad's normal is exactly +Z whichever way it is wound.
         assert!(
-            n.abs_diff_eq(Vec3::Z, 1e-6),
+            n.abs_diff_eq(Vector::Z, 1e-6),
             "flat normal {n:?} should be +Z (flip={flip})"
         );
     }
@@ -153,15 +152,15 @@ fn a_tilted_surface_returns_its_interpolated_leaning_normal_for_both_windings() 
     // surface tilted about the X axis carries a leaning up-normal at every vertex;
     // the query must return that lean, unit and upward, whichever way it is wound.
     let vertices = vec![
-        Vec3::new(0.0, 0.0, 0.0),
-        Vec3::new(2.0, 0.0, 0.0),
-        Vec3::new(2.0, 2.0, 1.0),
-        Vec3::new(0.0, 2.0, 1.0),
+        Point::new(0.0, 0.0, 0.0),
+        Point::new(2.0, 0.0, 0.0),
+        Point::new(2.0, 2.0, 1.0),
+        Point::new(0.0, 2.0, 1.0),
     ];
     // The surface's true up-normal (perpendicular to the plane, pointing up).
     let up = (vertices[1] - vertices[0])
         .cross(vertices[3] - vertices[0])
-        .normalize();
+        .normalize_or_zero();
     let up = if up.z < 0.0 { -up } else { up };
     assert!(up.z < 0.999, "the test surface should actually tilt");
     for flip in [false, true] {

@@ -6,7 +6,7 @@
 
 use std::time::Instant;
 
-use libopendrive::load_file;
+use libopendrive::{load_file, Point};
 
 const TOWN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/town07.xodr");
 
@@ -26,7 +26,7 @@ fn routing_across_town07_stays_under_its_budget() {
     );
 
     // Spread the sample across the map so the routes are long ones.
-    let picks: Vec<glam::Vec3> = (0..16)
+    let picks: Vec<Point> = (0..16)
         .map(|i| {
             let lane = lanes[i * lanes.len() / 16];
             lane.center.point_at(lane.center.length() * 0.5)
@@ -59,7 +59,7 @@ fn routing_across_town07_stays_under_its_budget() {
 }
 
 /// Time `f` over every probe, returning the total.
-fn time(probes: &[glam::Vec3], mut f: impl FnMut(glam::Vec3)) -> f64 {
+fn time(probes: &[Point], mut f: impl FnMut(Point)) -> f64 {
     let start = Instant::now();
     for &p in probes {
         f(p);
@@ -84,7 +84,7 @@ fn the_indexed_lookups_beat_the_scans_they_replaced() {
          proves nothing",
         lanes.len()
     );
-    let probes: Vec<glam::Vec3> = (0..64)
+    let probes: Vec<Point> = (0..64)
         .map(|i| {
             let lane = lanes[i * lanes.len() / 64];
             lane.center.point_at(lane.center.length() * 0.5)

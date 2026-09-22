@@ -7,16 +7,16 @@ surface mesh.
 No C++ dependency, no bindings, no `unsafe`.
 
 ```rust
-use libopendrive::{glam::Vec3, load_file};
+use libopendrive::{load_file, Point};
 
 let net = load_file("maps/town07.xodr")?;
 
 // Where is the road under this point, and which way does it lean?
-let sample = net.sample_near(Vec3::new(12.0, 0.0, -30.0)).expect("on the map");
+let sample = net.sample_near(Point::new(12.0, -30.0, 0.0)).expect("on the map");
 println!("{:?} banked {} rad", sample.point, sample.bank);
 
 // Drive somewhere.
-let waypoints = net.route(sample.point, Vec3::new(280.0, 0.0, 95.0));
+let waypoints = net.route(sample.point, Point::new(280.0, 95.0, 0.0));
 
 // Hand the surface to a collider or a renderer.
 let mesh = net.surface_mesh();
@@ -78,10 +78,23 @@ imported map.
 libopendrive = { version = "0.1", features = ["serde"] }
 ```
 
-## Public dependencies
+## Coordinate types
 
-`glam` is public: `Vec3` appears throughout the API. It is re-exported as
-`libopendrive::glam` so you can match the version.
+A position is a `Point` and a direction is a `Vector`. They are separate types
+with the arithmetic that relates them, so `point - point` is a `Vector`,
+`point + vector` is a `Point`, and adding two positions does not compile. One
+three-float type used for everything makes `nearest_lane(sample.up)` legal,
+which it is not.
+
+Both are `#[repr(C)]` structs of three public `f32` fields, so handing one to
+another math library is one call:
+
+```rust
+let v = glam::Vec3::from(point.to_array());
+```
+
+There are no required dependencies beyond `roxmltree` and `thiserror`, so
+nothing here constrains which math or engine crate you use, or its version.
 
 ## Performance
 

@@ -11,7 +11,7 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 
-use glam::Vec3;
+use crate::coords::Point;
 
 use crate::network::{Direction, Lane, LaneId, RoadNetwork};
 
@@ -29,7 +29,7 @@ impl RoadNetwork {
     /// graph, or `None` if unreachable. Snaps each endpoint to its nearest
     /// driving lane, finds the shortest lane path over successor + lane-change
     /// edges, and samples the lane centerlines (in travel order) into points.
-    pub fn route(&self, from: Vec3, to: Vec3) -> Option<Vec<Vec3>> {
+    pub fn route(&self, from: Point, to: Point) -> Option<Vec<Point>> {
         let (start, start_proj) = self.nearest_lane(from)?;
         let (goal, goal_proj) = self.nearest_lane(to)?;
         let path = self.lane_path(start, goal)?;
@@ -76,12 +76,12 @@ impl RoadNetwork {
     /// Sample the lane path into points: each lane's centerline traversed in its
     /// travel direction, from the first lane's entry projection to the last
     /// lane's exit projection.
-    fn sample_route(&self, path: &[LaneId], start_s: f32, goal_s: f32) -> Vec<Vec3> {
+    fn sample_route(&self, path: &[LaneId], start_s: f32, goal_s: f32) -> Vec<Point> {
         let last = path.len().saturating_sub(1);
-        let mut pts: Vec<Vec3> = Vec::new();
+        let mut pts: Vec<Point> = Vec::new();
         // The handoff point between lanes; the next lane starts where this maps
         // onto it (so a lane change enters the neighbor beside where we left).
-        let mut cursor: Option<Vec3> = None;
+        let mut cursor: Option<Point> = None;
         for (i, &lid) in path.iter().enumerate() {
             let Some(lane) = self.lane(lid) else { continue };
             let len = lane.center.length();
@@ -123,7 +123,7 @@ fn advance(from: f32, toward: f32, dist: f32) -> f32 {
 
 /// Append points along `lane`'s centerline from arc length `entry` to `exit`
 /// (either direction), spaced ~`ROUTE_STEP`, deduping the join with prior lanes.
-fn sample_segment(lane: &Lane, entry: f32, exit: f32, pts: &mut Vec<Vec3>) {
+fn sample_segment(lane: &Lane, entry: f32, exit: f32, pts: &mut Vec<Point>) {
     let span = exit - entry;
     if span.abs() < 1e-4 {
         push_dedup(pts, lane.center.point_at(entry));
@@ -136,8 +136,8 @@ fn sample_segment(lane: &Lane, entry: f32, exit: f32, pts: &mut Vec<Vec3>) {
     }
 }
 
-fn push_dedup(pts: &mut Vec<Vec3>, p: Vec3) {
-    if pts.last().is_none_or(|q| q.distance_squared(p) > 1e-6) {
+fn push_dedup(pts: &mut Vec<Point>, p: Point) {
+    if pts.last().is_none_or(|q| q.distance_squared_to(p) > 1e-6) {
         pts.push(p);
     }
 }
@@ -189,7 +189,7 @@ mod tests {
             id: LaneId(id),
             kind: LaneKind::Driving,
             direction: dir,
-            center: Polyline::new(pts.iter().map(|p| Vec3::from_array(*p)).collect()),
+            center: Polyline::new(pts.iter().map(|p| Point::from_array(*p)).collect()),
             width: 3.5,
             bank: Vec::new(),
             successors: succ.iter().map(|&s| LaneId(s)).collect(),
@@ -208,7 +208,7 @@ mod tests {
             &[],
         )]);
         let path = net
-            .route(Vec3::new(2.0, 0.0, 0.0), Vec3::new(15.0, 0.0, 0.0))
+            .route(Point::new(2.0, 0.0, 0.0), Point::new(15.0, 0.0, 0.0))
             .expect("route");
         assert!(path.first().unwrap().x < 4.0, "starts near x=2");
         assert!(path.last().unwrap().x > 13.0, "ends near x=15");
@@ -236,7 +236,7 @@ mod tests {
             ),
         ]);
         let path = net
-            .route(Vec3::new(2.0, 0.0, 0.0), Vec3::new(38.0, 0.0, 0.0))
+            .route(Point::new(2.0, 0.0, 0.0), Point::new(38.0, 0.0, 0.0))
             .expect("route");
         assert!(path.first().unwrap().x < 4.0);
         assert!(path.last().unwrap().x > 36.0);
@@ -262,7 +262,7 @@ mod tests {
             ),
         ]);
         assert!(net
-            .route(Vec3::new(2.0, 0.0, 0.0), Vec3::new(110.0, 0.0, 0.0))
+            .route(Point::new(2.0, 0.0, 0.0), Point::new(110.0, 0.0, 0.0))
             .is_none());
     }
 
@@ -307,19 +307,19 @@ mod tests {
         // would read as a route the vehicle could drive.
         let net = two_components();
         assert!(net
-            .route(Vec3::new(2.0, 0.0, 0.0), Vec3::new(538.0, 0.0, 0.0))
+            .route(Point::new(2.0, 0.0, 0.0), Point::new(538.0, 0.0, 0.0))
             .is_none());
         // Unreachable in both directions, not just one.
         assert!(net
-            .route(Vec3::new(502.0, 0.0, 0.0), Vec3::new(38.0, 0.0, 0.0))
+            .route(Point::new(502.0, 0.0, 0.0), Point::new(38.0, 0.0, 0.0))
             .is_none());
         // And each component still routes within itself, so the graph is sound
         // and it really is the gap that stopped it.
         assert!(net
-            .route(Vec3::new(2.0, 0.0, 0.0), Vec3::new(38.0, 0.0, 0.0))
+            .route(Point::new(2.0, 0.0, 0.0), Point::new(38.0, 0.0, 0.0))
             .is_some());
         assert!(net
-            .route(Vec3::new(502.0, 0.0, 0.0), Vec3::new(538.0, 0.0, 0.0))
+            .route(Point::new(502.0, 0.0, 0.0), Point::new(538.0, 0.0, 0.0))
             .is_some());
     }
 
@@ -361,15 +361,15 @@ mod tests {
             ),
         ]);
         assert!(net
-            .route(Vec3::new(1.0, 0.0, 0.0), Vec3::new(20.0, 0.0, 18.0))
+            .route(Point::new(1.0, 0.0, 0.0), Point::new(20.0, 0.0, 18.0))
             .is_some());
         // All the way round, back to where it started.
         assert!(net
-            .route(Vec3::new(1.0, 0.0, 0.0), Vec3::new(19.0, 0.0, 0.0))
+            .route(Point::new(1.0, 0.0, 0.0), Point::new(19.0, 0.0, 0.0))
             .is_some());
         // Into the one-way spur: unreachable, and the cycle must not spin.
         assert!(net
-            .route(Vec3::new(1.0, 0.0, 0.0), Vec3::new(118.0, 0.0, 0.0))
+            .route(Point::new(1.0, 0.0, 0.0), Point::new(118.0, 0.0, 0.0))
             .is_none());
     }
 
@@ -410,11 +410,11 @@ mod tests {
             ),
         ]);
         let first = net
-            .route(Vec3::new(1.0, 0.0, 0.0), Vec3::new(58.0, 0.0, 0.0))
+            .route(Point::new(1.0, 0.0, 0.0), Point::new(58.0, 0.0, 0.0))
             .expect("route");
         for _ in 0..20 {
             let again = net
-                .route(Vec3::new(1.0, 0.0, 0.0), Vec3::new(58.0, 0.0, 0.0))
+                .route(Point::new(1.0, 0.0, 0.0), Point::new(58.0, 0.0, 0.0))
                 .expect("route");
             assert_eq!(first, again, "the same request produced a different path");
         }
@@ -426,7 +426,7 @@ mod tests {
         // whatever applies forces from there.
         let net = two_components();
         let route = net
-            .route(Vec3::new(2.0, 0.0, 0.0), Vec3::new(38.0, 0.0, 0.0))
+            .route(Point::new(2.0, 0.0, 0.0), Point::new(38.0, 0.0, 0.0))
             .expect("route");
         assert!(route.iter().all(|p| p.is_finite()));
 
@@ -434,8 +434,8 @@ mod tests {
         // snap to the nearest lane, so a far-away request is still answered in
         // real coordinates.
         let far = net.route(
-            Vec3::new(1.0e30, 0.0, -1.0e30),
-            Vec3::new(-1.0e30, 0.0, 1.0e30),
+            Point::new(1.0e30, 0.0, -1.0e30),
+            Point::new(-1.0e30, 0.0, 1.0e30),
         );
         assert!(far.is_none_or(|r| r.iter().all(|p| p.is_finite())));
 
@@ -480,7 +480,7 @@ mod tests {
             ),
         ]);
         let path = net
-            .route(Vec3::new(0.0, 0.0, 0.0), Vec3::new(38.0, 0.0, -3.5))
+            .route(Point::new(0.0, 0.0, 0.0), Point::new(38.0, 0.0, -3.5))
             .expect("route");
         assert!(
             path.iter().any(|p| p.z.abs() < 0.5),
