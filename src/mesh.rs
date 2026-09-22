@@ -213,41 +213,117 @@ impl<'a> MeshSampler<'a> {
 }
 
 impl RoadNetwork {
-    /// Tessellate every driving lane into one surface mesh-- a quad strip per
-    /// lane, each rib offset +/-width/2 from the centerline along the per-vertex
-    /// cross axis, carrying the centerline's elevation. On a superelevated lane
-    /// the cross axis is tilted about the tangent by the local `bank`, so the
+    /// Tessellate every driving lane into one surface mesh, a quad strip per
+    /// lane. Each rib sits +/-width/2 from the centerline along the per-vertex
+    /// cross axis and carries the centerline's elevation. On a superelevated
+    /// lane the cross axis tilts about the tangent by the local `bank`, so the
     /// outer edge of a banked curve rides above the inner one. Winding is
-    /// consistent (triangles face up).
+    /// consistent, so triangles face up.
     ///
-    /// Note: ribs use the vertex bisector normal, which keeps width consistent
-    /// across vertices but does not guard against self-intersection on curves
-    /// tighter than the half-width. An importer contract to enforce at bake.
+    /// Ribs follow the vertex bisector normal, which holds the width steady
+    /// across vertices. Two shapes would flip a triangle's winding, and the
+    /// loop guards both.
+    ///
+    /// A stub segment far shorter than the width, a joint sample landing a few
+    /// cm from a section end, tessellates to a near-collinear sliver whose
+    /// normal flips. So near-duplicate centerline points are welded first and
+    /// the last survivor snapped onto the true endpoint, which keeps the lane's
+    /// length and its join to the next section.
+    ///
+    /// On a corner tighter than the half-width the inner rib would cross the
+    /// next inner vertex and fold the strip into a bowtie. So the inner offset
+    /// is clamped, pinching the lane at the apex, while the outer rib keeps its
+    /// full half-width and radius.
     pub fn surface_mesh(&self) -> Mesh {
+        // Below this spacing in metres a point is a stub, not a real sample.
+        // Real samples are metres apart, and welding moves an endpoint by at
+        // most this far.
+        const WELD_EPS: f32 = 0.1;
+        let horizontal = |v: Vector| Vector::new(v.x, v.y, 0.0);
         let mut mesh = Mesh::default();
         for lane in self.driving_lanes() {
-            let points = lane.center.points();
-            let tangents = lane.center.tangents();
+            let raw = lane.center.points();
+            let mut points: Vec<Point> = Vec::with_capacity(raw.len());
+            let mut bank: Vec<f32> = Vec::with_capacity(raw.len());
+            for (i, &p) in raw.iter().enumerate() {
+                if points.last().is_none_or(|&q| (p - q).length() > WELD_EPS) {
+                    points.push(p);
+                    bank.push(lane.bank.get(i).copied().unwrap_or(0.0));
+                }
+            }
+            if let (Some(&end), Some(slot)) = (raw.last(), points.last_mut()) {
+                *slot = end; // snap the last survivor onto the true endpoint
+            }
+            if points.len() < 2 {
+                // A sub-epsilon lane still keeps a span: its two endpoints as one
+                // thin quad, which cannot fold.
+                let end = raw[raw.len() - 1];
+                if (end - raw[0]).length() < 1e-6 {
+                    continue; // a zero-length lane has no surface to tessellate
+                }
+                points = vec![raw[0], end];
+                bank = vec![
+                    lane.bank.first().copied().unwrap_or(0.0),
+                    lane.bank.last().copied().unwrap_or(0.0),
+                ];
+            }
             let half = lane.width * 0.5;
+            let n = points.len();
             let base = mesh.vertices.len() as u32;
             let first_index = mesh.indices.len() as u32;
-            for i in 0..points.len() {
-                let along = tangents[i];
-                // Cross axis, rolled about the (stored) tangent by the local
-                // bank: +bank raises the left rib. Flat lanes (empty bank) leave
-                // it the horizontal left normal, so the mesh is unchanged.
-                let bank = lane.bank.get(i).copied().unwrap_or(0.0);
-                let lateral = left_normal(along).rotate_about(along, bank);
-                // Surface up-normal: along × lateral is +Z for a flat road, and
-                // tilts with grade/bank.
+            for i in 0..n {
+                // Horizontal vertex-bisector tangent. On an un-welded lane this
+                // equals `Polyline`'s stored tangents, so a clean lane is
+                // byte-identical to before welding.
+                let inc = if i > 0 {
+                    horizontal(points[i] - points[i - 1]).normalize_or(Vector::ZERO)
+                } else {
+                    Vector::ZERO
+                };
+                let out = if i + 1 < n {
+                    horizontal(points[i + 1] - points[i]).normalize_or(Vector::ZERO)
+                } else {
+                    Vector::ZERO
+                };
+                let along = (inc + out).normalize_or(Vector::ZERO);
+                // Cross axis, rolled about the tangent by the local bank.
+                // Positive bank raises the left rib. A flat lane leaves it the
+                // horizontal left normal, so the mesh is unchanged.
+                let lateral = left_normal(along).rotate_about(along, bank[i]);
+                // Surface up-normal. along × lateral is +Z on a flat road and
+                // tilts with grade or bank.
                 let up = along.cross(lateral).normalize_or(Vector::Z);
-                mesh.vertices.push(points[i] + lateral * half);
+
+                // Offset `m` slides the inner vertex back along each segment by
+                // `m * sin(turn/2)`. Cap that at ~half the shorter segment so the
+                // two ends stay within it and the ribs never reverse. Endpoints
+                // have no corner, so both keep the full half-width.
+                let (mut left_mag, mut right_mag) = (half, half);
+                if i > 0 && i + 1 < n {
+                    let seg = (points[i] - points[i - 1])
+                        .length()
+                        .min((points[i + 1] - points[i]).length());
+                    // sin(turn/2), the along-segment eat-in per unit offset.
+                    let cos_turn = inc.dot(out).clamp(-1.0, 1.0);
+                    let eat = ((1.0 - cos_turn) * 0.5).max(0.0).sqrt();
+                    if eat > 1e-4 && seg > 1e-6 {
+                        let inner = half.min(0.49 * seg / eat);
+                        // Pinch the rib the curve turns toward (the inner one).
+                        if (out - inc).dot(left_normal(along)) > 0.0 {
+                            left_mag = inner;
+                        } else {
+                            right_mag = inner;
+                        }
+                    }
+                }
+
+                mesh.vertices.push(points[i] + lateral * left_mag);
                 mesh.normals.push(up);
-                mesh.vertices.push(points[i] - lateral * half);
+                mesh.vertices.push(points[i] - lateral * right_mag);
                 mesh.normals.push(up);
             }
             // Two triangles per segment, over the [left, right] rib pairs.
-            for i in 0..points.len() as u32 - 1 {
+            for i in 0..n as u32 - 1 {
                 let l0 = base + i * 2;
                 let (r0, l1, r1) = (l0 + 1, l0 + 2, l0 + 3);
                 mesh.indices.extend_from_slice(&[l0, r0, r1, l0, r1, l1]);

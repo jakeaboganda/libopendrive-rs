@@ -123,7 +123,9 @@ impl Polyline {
         &self.points
     }
 
-    /// Per-vertex horizontal unit tangents (see the field docs).
+    /// Per-vertex horizontal unit tangents. Test-only now that the tessellator
+    /// recomputes them from its welded points.
+    #[cfg(test)]
     pub(crate) fn tangents(&self) -> &[Vector] {
         &self.tangents
     }

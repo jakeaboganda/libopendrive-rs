@@ -1,0 +1,88 @@
+//! `surface_mesh` must not fold. A road surface is Z-up and its banking is
+//! gentle, so every non-degenerate triangle faces up. A downward-facing one is
+//! an inverted bowtie where the inner rib crossed itself. Two shapes cause it,
+//! and both are guarded. A stub segment a few cm long at a lane-section joint
+//! tessellates to a near-collinear sliver whose winding flips. A corner tighter
+//! than the lane half-width lets the inner offset push past the curve's center.
+
+use libopendrive::{
+    load_file, Direction, Lane, LaneId, LaneKind, Point, Polyline, RoadNetwork, Vector,
+};
+
+const TOWN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/town07.xodr");
+
+/// Up-component of a triangle's geometric normal, from its vertex winding.
+fn facet_up(a: Point, b: Point, c: Point) -> f32 {
+    (b - a).cross(c - a).normalize_or(Vector::ZERO).z
+}
+
+/// Count of downward-facing, inverted triangles. Zero-area facets from a
+/// zero-width lane are not inversions, so they are left out.
+fn inverted(mesh: &libopendrive::Mesh) -> usize {
+    mesh.indices
+        .chunks_exact(3)
+        .filter(|t| {
+            facet_up(
+                mesh.vertices[t[0] as usize],
+                mesh.vertices[t[1] as usize],
+                mesh.vertices[t[2] as usize],
+            ) < -1e-4
+        })
+        .count()
+}
+
+#[test]
+fn town07_surface_has_no_inverted_triangles() {
+    let net = load_file(TOWN).expect("load town07");
+    let mesh = net.surface_mesh();
+    let bad = inverted(&mesh);
+    assert_eq!(
+        bad,
+        0,
+        "town07 tessellated {bad} inverted triangles out of {}; a lane rib folded",
+        mesh.indices.len() / 3,
+    );
+}
+
+/// A quarter circle of radius 1 m carries a 3 m lane, so the half-width of
+/// 1.5 m exceeds the radius. An unclamped inner rib would push past the arc's
+/// center and fold. The clamp pinches it instead, leaving no inversion.
+#[test]
+fn a_corner_tighter_than_the_half_width_does_not_fold() {
+    let r = 1.0_f32;
+    let width = 3.0_f32;
+    // About 17 deg per step gives ~0.3 m chords, well above the weld threshold,
+    // so this exercises the tight curve, not a stub segment.
+    let pts: Vec<Point> = (0..=6)
+        .map(|k| {
+            let a = k as f32 * 0.3;
+            Point::new(r * a.cos(), r * a.sin(), 0.0)
+        })
+        .collect();
+    let net = RoadNetwork::new(vec![Lane {
+        id: LaneId(0),
+        kind: LaneKind::Driving,
+        direction: Direction::Forward,
+        center: Polyline::new(pts),
+        width,
+        bank: Vec::new(),
+        successors: Vec::new(),
+        predecessors: Vec::new(),
+        neighbors: Vec::new(),
+    }]);
+    let mesh = net.surface_mesh();
+
+    assert_eq!(inverted(&mesh), 0, "tight curve folded the inner rib");
+
+    // Confirm the clamp engaged. Some rib pair is pinched below the full width,
+    // so this is a real regression, not a curve that never needed it.
+    let min_rib = mesh
+        .vertices
+        .chunks_exact(2)
+        .map(|p| (p[0] - p[1]).length())
+        .fold(f32::INFINITY, f32::min);
+    assert!(
+        min_rib < width - 0.01,
+        "inner rib was never pinched (min width {min_rib}); clamp did nothing",
+    );
+}

@@ -128,10 +128,11 @@
 //!
 //! - build lane geometry with [`Polyline::try_new`] and surface an error on
 //!   degenerate input, rather than the panicking [`Polyline::new`];
-//! - keep [`LaneId`]s opaque, and never assume one indexes the lane list;
-//! - avoid lane curvature tighter than the half-width, or the
-//!   [`RoadNetwork::surface_mesh`] ribs can self-intersect (the tessellator
-//!   does not yet guard against it).
+//! - keep [`LaneId`]s opaque, and never assume one indexes the lane list.
+//!
+//! On curves tighter than the half-width, [`RoadNetwork::surface_mesh`] pinches
+//! the inner rib so the surface strip stays fold-free; the outer edge keeps its
+//! full width and radius.
 
 mod coords;
 mod geometry;
