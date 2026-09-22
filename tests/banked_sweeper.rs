@@ -2,9 +2,9 @@
 //!
 //! Superelevation is the reason this file exists: before the `<lateralProfile>`
 //! importer, a banked road could not survive import (the tessellator couldn't
-//! bank), so this exercises the whole real parse path from disk -- geometry +
-//! superelevation -> a canted, collider-ready mesh, an angle that peaks through
-//! the arc and is flat on the straights, and a road-surface sample that leans.
+//! bank), so this exercises the whole real parse path from disk. Geometry and
+//! superelevation become a canted, collider-ready mesh, an angle that peaks
+//! through the arc and is flat on the straights, and a sample that leans.
 
 use libopendrive::load_file;
 use libopendrive::{Point, RoadNetwork};
@@ -65,7 +65,7 @@ fn the_banked_sweeper_tessellates_to_a_valid_trimesh() {
     // The cant is real: some normal leans measurably off vertical.
     assert!(
         mesh.normals.iter().any(|n| n.z < 0.99),
-        "no normal is tilted -- the arc didn't bank"
+        "no normal is tilted, so the arc didn't bank"
     );
 }
 

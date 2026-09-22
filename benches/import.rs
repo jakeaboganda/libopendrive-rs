@@ -1,6 +1,6 @@
 //! Import cost: parsing and baking a whole `.xodr` into a `RoadNetwork`.
 //!
-//! Loading is a one-off, but it is a *startup* one-off -- it sits between the
+//! Loading is a one-off, but it is a *startup* one-off. It sits between the
 //! user asking for a map and the scene existing.
 
 use std::hint::black_box;

@@ -66,7 +66,7 @@ impl Point {
         Self::new(a[0], a[1], a[2])
     }
 
-    /// Write to `[x, y, z]` -- the handoff to a vertex buffer or another math
+    /// Write to `[x, y, z]`, the handoff to a vertex buffer or another math
     /// library.
     pub const fn to_array(self) -> [f32; 3] {
         [self.x, self.y, self.z]

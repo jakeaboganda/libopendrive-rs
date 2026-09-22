@@ -6,7 +6,7 @@
 //! OpenDRIVE describes roads analytically: clothoids, arcs, cubic elevation
 //! and width profiles, lane links. This crate evaluates all of it once, at
 //! load, and hands back a [`RoadNetwork`] of plain polylines. Nothing
-//! downstream touches OpenDRIVE again -- consumers sample points, walk the
+//! downstream touches OpenDRIVE again. Consumers sample points, walk the
 //! lane graph, and tessellate a surface mesh.
 //!
 //! No C++ dependency, no bindings, no `unsafe`, and no math crate in the
@@ -40,7 +40,7 @@
 //!   outer lane rides higher and its surface normal leans.
 //! - Per-lane widths, `laneOffset`, and multiple lane sections.
 //! - Road/lane `<link>`s and `<junction>`s, resolved into a drive-direction
-//!   lane graph -- "successor" means "a lane you can drive into off this
+//!   lane graph. "Successor" means "a lane you can drive into off this
 //!   lane's exit end", not a raw mirror of the file's `+s` links.
 //!
 //! Not yet: `<lateralProfile>` `<shape>` (per-`t` crowning and camber), and
@@ -71,7 +71,7 @@
 //! interpret is skipped rather than fatal, because losing a whole city map to
 //! one junk road is the worse failure; [`load_str`] still errors if the
 //! document yielded no lanes at all. Non-finite attribute values are rejected
-//! at parse -- Rust's float parser accepts `NaN` and turns `1e400` into
+//! at parse. Rust's float parser accepts `NaN` and turns `1e400` into
 //! infinity, and one such value poisons every point derived from it.
 //!
 //! # Importer contract
@@ -80,7 +80,7 @@
 //!
 //! - build lane geometry with [`Polyline::try_new`] and surface an error on
 //!   degenerate input, rather than the panicking [`Polyline::new`];
-//! - keep [`LaneId`]s opaque -- never assume one indexes the lane list;
+//! - keep [`LaneId`]s opaque, and never assume one indexes the lane list;
 //! - avoid lane curvature tighter than the half-width, or the
 //!   [`RoadNetwork::surface_mesh`] ribs can self-intersect (the tessellator
 //!   does not yet guard against it).

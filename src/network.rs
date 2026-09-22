@@ -1,13 +1,13 @@
 //! The baked road-network model: lanes, their connectivity graph, and the
-//! queries over both. Format-agnostic -- nothing here knows OpenDRIVE.
+//! queries over both. Format-agnostic: nothing here knows OpenDRIVE.
 
 use crate::coords::Point;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
 
-/// An opaque lane identifier. **Not** a vector index into `RoadNetwork.lanes` --
-/// an importer may assign arbitrary ids (e.g. from OpenDRIVE lane keys), so
-/// look lanes up with [`RoadNetwork::lane`], never by position.
+/// An opaque lane identifier. **Not** a vector index into `RoadNetwork.lanes`.
+/// An importer may assign arbitrary ids, such as OpenDRIVE lane keys, so look
+/// lanes up with [`RoadNetwork::lane`], never by position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LaneId(pub usize);
@@ -47,7 +47,7 @@ pub struct Lane {
     /// Constant lane width (per-vertex widths can come later).
     pub width: f32,
     /// Per-centerline-vertex superelevation angle (radians, signed), parallel to
-    /// `center.points()`. Positive raises the **+offset** edge -- the left-hand
+    /// `center.points()`. Positive raises the **+offset** edge, the left-hand
     /// normal of the centerline's *stored* tangent (its geometry direction), which
     /// for a `Backward` lane is opposite its travel direction. Consumers deriving
     /// a surface normal must roll about `center.tangents()`, not travel, or a
@@ -61,7 +61,7 @@ pub struct Lane {
     /// May fan out (a junction) or be empty (a dead end / unlinked lane). Built
     /// by an importer from road/lane links and junctions; empty otherwise.
     pub successors: Vec<LaneId>,
-    /// Lanes that drive into this lane -- the reverse of `successors`.
+    /// Lanes that drive into this lane, the reverse of `successors`.
     pub predecessors: Vec<LaneId>,
     /// Adjacent same-section, same-direction lanes you can change into (lateral
     /// lane-change edges). Empty if there's no neighbor to change to.
@@ -72,7 +72,7 @@ pub struct Lane {
 ///
 /// Immutable once built. The lane list is private so the network can derive
 /// lookup structures from it in [`RoadNetwork::new`] without any way for them
-/// to go stale -- a map that changed under its own index would answer
+/// to go stale. A map that changed under its own index would answer
 /// `nearest_lane` with a lane that is no longer there.
 ///
 /// Serializes as its lanes alone; the index is rebuilt on the way back in, so
@@ -145,7 +145,7 @@ impl LaneIndex {
 impl Lane {
     /// Superelevation angle (radians, signed) at arc length `s`, interpolated
     /// between vertices; zero everywhere on a flat lane. Positive raises the
-    /// left edge -- see [`Lane::bank`].
+    /// left edge. See [`Lane::bank`].
     pub fn bank_at(&self, s: f32) -> f32 {
         if self.bank.is_empty() {
             return 0.0;
@@ -177,7 +177,7 @@ impl RoadNetwork {
     }
 
     /// Every lane, in the order the importer emitted them. Positions are not
-    /// ids -- look a specific lane up with [`RoadNetwork::lane`].
+    /// ids. Look a specific lane up with [`RoadNetwork::lane`].
     pub fn lanes(&self) -> &[Lane] {
         &self.lanes
     }
@@ -186,8 +186,8 @@ impl RoadNetwork {
     /// however an importer assigns them.
     ///
     /// Importers hand out ids sequentially, so the id is almost always its own
-    /// index -- try that first and verify, falling back to a scan when it is
-    /// not. The fallback keeps the by-identity contract; the fast path keeps
+    /// index, so try that first and verify, falling back to a scan when it is
+    /// not. The fallback keeps the by-identity contract. The fast path keeps
     /// the router off an O(lanes) probe per Dijkstra pop.
     pub fn lane(&self, id: LaneId) -> Option<&Lane> {
         match self.lanes.get(id.0) {
@@ -201,7 +201,7 @@ impl RoadNetwork {
         self.lanes.iter().filter(|l| l.kind == LaneKind::Driving)
     }
 
-    /// The lowest point of any lane centerline (Z-up, metres) -- how far down
+    /// The lowest point of any lane centerline (Z-up, metres), so how far down
     /// the road legitimately reaches. `None` if the network has no lanes. Used
     /// to set an off-map fall floor relative to the terrain, so a map that dips
     /// well below zero (a valley, an underpass) isn't mistaken for freefall.
@@ -222,7 +222,7 @@ impl RoadNetwork {
     }
 
     /// The driving lane whose centerline is nearest `point`, with the
-    /// projection onto it -- the lane a body is in, and its lane-keeping
+    /// projection onto it. That is the lane a body is in, and its lane-keeping
     /// error.
     ///
     /// Answered through the ground-plane index built in [`RoadNetwork::new`],
@@ -230,9 +230,9 @@ impl RoadNetwork {
     /// map.
     ///
     /// Nearest is by full 3D distance, but the index prunes in XY only. That
-    /// is sound -- a horizontal distance is never more than the 3D one, so
-    /// pruning on it can only keep candidates, never drop a winner -- and it
-    /// is what makes stacked roads (a bridge over a road) both still
+    /// is sound, because a horizontal distance is never more than the 3D one,
+    /// so pruning on it can only keep candidates, never drop a winner. It is
+    /// also what keeps both of two stacked roads, a bridge over a road,
     /// candidates for a point between them.
     pub fn nearest_lane(&self, point: Point) -> Option<(LaneId, Projection)> {
         let index = &self.index;
@@ -240,7 +240,7 @@ impl RoadNetwork {
             let i = item as usize;
             // The footprint is a lower bound on the distance to the
             // centerline, so a lane whose box already loses needs no
-            // projection -- which is most of them, and all the repeats of a
+            // projection. That is most of them, and all the repeats of a
             // long lane that spans several cells.
             if index.bounds[i].dist2(point.x, point.y) > best {
                 return None;
@@ -444,7 +444,7 @@ mod tests {
 
     // The documented lane-boundary vertical step: two adjacent banked lanes sit
     // at different heights, and sample_near returns the *nearest* lane's height
-    // and bank -- stepping as the nearest lane flips across the boundary.
+    // and bank, stepping as the nearest lane flips across the boundary.
     #[test]
     fn sample_near_steps_at_a_banked_lane_boundary() {
         // Lane A raised (+y side), lane B lowered (-y side); each carries its own
@@ -508,7 +508,7 @@ mod tests {
 
     #[test]
     fn lane_lookup_is_by_id_not_position() {
-        // Ids need not equal vec positions -- an importer may assign arbitrary
+        // Ids need not equal vec positions. An importer may assign arbitrary
         // ones. Position 0 holds id 17, position 1 holds id 4.
         let net = RoadNetwork::new(vec![
             Lane {
@@ -543,7 +543,7 @@ mod tests {
 
     // A non-empty profile interpolates linearly between vertices and clamps past
     // both ends. Centerline at x = 0, 2, 4 (two 2 m segments); bank = 0, 0.1,
-    // 0.2 -- so bank_at grows linearly with s and flattens outside [0, 4].
+    // 0.2, so bank_at grows linearly with s and flattens outside [0, 4].
     #[test]
     fn bank_at_interpolates_between_vertices_and_clamps() {
         let l = Lane {

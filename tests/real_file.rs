@@ -1,8 +1,8 @@
 //! Smoke test: the importer survives a real, tool-exported OpenDRIVE map.
 //!
 //! `real_roads.xodr` is CARLA's Town07 (MIT-licensed; header preserved in the
-//! file) -- 234 roads of lines + arcs + `laneOffset` + many lane sections, no
-//! spirals. It pins the "loads without panicking, produces finite geometry"
+//! file). It has 234 roads of lines, arcs, `laneOffset` and many lane
+//! sections, with no spirals. It pins the "loads without panicking, produces finite geometry"
 //! bar for real files, and is what multiple lane sections were built for.
 
 use libopendrive::load_file;
@@ -54,7 +54,7 @@ fn spiral_road_actually_curves() {
 }
 
 // A real, junction-rich map (Town07: 234 roads, 31 junctions) should resolve
-// into a populated connectivity graph -- most lanes lead somewhere, and every
+// into a populated connectivity graph. Most lanes lead somewhere, and every
 // successor is a real lane in the network.
 #[test]
 fn real_map_builds_a_connected_graph() {

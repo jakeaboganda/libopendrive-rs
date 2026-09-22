@@ -1,7 +1,7 @@
 //! A banked oval racetrack: a closed stadium loop, flat on the straights and
 //! super-elevated (canted) through the two curves. A plain [`RoadNetwork`]:
 //! the single lane carries the cant in its `bank` profile, so `surface_mesh`
-//! tessellates a canted surface and `sample_near` reads the lean -- the same
+//! tessellates a canted surface and `sample_near` reads the lean, the same
 //! paths an imported banked `.xodr` uses, without needing the parser. Its
 //! closed loop also exercises a cyclic lane graph.
 
@@ -14,7 +14,7 @@ use crate::network::{Direction, Lane, LaneId, LaneKind, RoadNetwork};
 
 const STRAIGHT: f32 = 70.0; // length of each straight (m)
 const RADIUS: f32 = 26.0; // curve radius at the centerline (m)
-const WIDTH: f32 = 10.0; // lane width (m) -- wide, so the cant reads
+const WIDTH: f32 = 10.0; // lane width (m), wide so the cant reads
 const STEP: f32 = 2.5; // centerline sample spacing (m)
 /// Superelevation at the curve apex (rad, ~12 deg). Positive raises the LEFT
 /// edge; the oval turns consistently right, so its left edge is always the outer
@@ -28,7 +28,7 @@ fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
 }
 
 /// Bank envelope across a curve, as a fraction `f` in `[0, 1]`: rises over the
-/// first quarter, holds at 1, falls over the last quarter -- so the cant meets
+/// first quarter, holds at 1, falls over the last quarter, so the cant meets
 /// the flat straights at 0 at both curve ends.
 fn curve_ramp(f: f32) -> f32 {
     const E: f32 = 0.25;
@@ -42,26 +42,26 @@ pub(crate) fn banked_oval() -> RoadNetwork {
     let curve_pts = ((PI * RADIUS) / STEP).ceil() as usize;
     let mut raw: Vec<(Point, f32)> = Vec::new();
 
-    // Phase 1 -- the y = +R straight, heading +X, flat.
+    // Phase 1. The y = +R straight, heading +X, flat.
     let mut x = -half_s;
     while x <= half_s + 1e-3 {
         raw.push((Point::new(x, RADIUS, 0.0), 0.0));
         x += STEP;
     }
-    // Phase 2 -- right curve, center (half_s, 0, 0), theta -pi/2 -> +pi/2.
+    // Phase 2. Right curve, center (half_s, 0, 0), theta -pi/2 to +pi/2.
     for k in 1..=curve_pts {
         let f = k as f32 / curve_pts as f32;
         let theta = -PI / 2.0 + f * PI;
         let p = Point::new(half_s + RADIUS * theta.cos(), -RADIUS * theta.sin(), 0.0);
         raw.push((p, PEAK_BANK * curve_ramp(f)));
     }
-    // Phase 3 -- the y = -R straight, heading -X, flat.
+    // Phase 3. The y = -R straight, heading -X, flat.
     let mut x = half_s;
     while x >= -half_s - 1e-3 {
         raw.push((Point::new(x, -RADIUS, 0.0), 0.0));
         x -= STEP;
     }
-    // Phase 4 -- left curve, center (-half_s, 0, 0), theta +pi/2 -> +3pi/2.
+    // Phase 4. Left curve, center (-half_s, 0, 0), theta +pi/2 to +3pi/2.
     for k in 1..=curve_pts {
         let f = k as f32 / curve_pts as f32;
         let theta = PI / 2.0 + f * PI;
@@ -88,7 +88,7 @@ pub(crate) fn banked_oval() -> RoadNetwork {
         center: Polyline::new(points),
         width: WIDTH,
         // The cant, per centerline vertex. surface_mesh tilts the ribs by it
-        // and sample_near reads it -- no bespoke banked bundle needed.
+        // and sample_near reads it, so no bespoke banked bundle is needed.
         bank,
         // A closed loop: driving off the exit end re-enters the same lane.
         successors: vec![LaneId(0)],
@@ -111,7 +111,7 @@ mod tests {
         let net = banked_oval();
         let lanes: Vec<_> = net.driving_lanes().collect();
         assert_eq!(lanes.len(), 1);
-        // Successor wraps to itself -- the loop can be lapped.
+        // Successor wraps to itself, so the loop can be lapped.
         assert_eq!(lanes[0].successors, vec![LaneId(0)]);
         // Geometrically closed: first and last centerline points coincide.
         let pts = lanes[0].center.points();
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn surface_mesh_raises_the_outer_edge_at_a_curve_apex() {
-        // The shared tessellator cants the ribs from the lane's bank -- exactly
+        // The shared tessellator cants the ribs from the lane's bank, exactly
         // what the retired `banked_mesh` did.
         let mesh = banked_oval().surface_mesh();
         mesh.validate().expect("banked oval is a valid trimesh");

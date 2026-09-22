@@ -94,17 +94,17 @@ impl Mesh {
     /// The surface height (world Z) and up-normal directly under `(x, y)`, by a
     /// vertical ray against the triangles. `None` if no triangle covers the point
     /// (off the road). Where triangles overlap (a bridge over a road) it returns
-    /// the highest -- the surface you would be standing on.
+    /// the highest, the surface you would be standing on.
     ///
-    /// Height is the *actual* baked surface, faceted between vertices -- what the
-    /// collider and viewer use, so a body draped against it sits on the road that
-    /// is drawn. The normal, though, is barycentric-interpolated from the smooth
+    /// Height is the *actual* baked surface, faceted between vertices. That is
+    /// what the collider and viewer use, so a body draped against it sits on
+    /// the road that is drawn. The normal, though, is barycentric-interpolated from the smooth
     /// per-vertex normals, not the flat triangle normal: a body oriented to the
     /// flat normal snaps as each wheel crosses a facet edge (visible attitude
     /// vibration), while the interpolated normal varies continuously.
     ///
     /// Scans every triangle. For more than a query or two, build a
-    /// [`Mesh::sampler`] instead -- it answers the same thing off an index.
+    /// [`Mesh::sampler`] instead. It answers the same thing off an index.
     pub fn height_at(&self, x: f32, y: f32) -> Option<(f32, Vector)> {
         self.highest(0..self.indices.len() / 3, x, y)
     }
@@ -142,7 +142,7 @@ impl Mesh {
             let l3 = 1.0 - l1 - l2;
             // Reject outside-the-triangle, and non-finite with it. A query far
             // enough out overflows the barycentric arithmetic to infinity, and
-            // every comparison against the resulting NaN is false -- so the
+            // every comparison against the resulting NaN is false, so the
             // bounds test alone would wave it through and report a NaN height.
             if !(l1 >= -1e-4 && l2 >= -1e-4 && l3 >= -1e-4) {
                 continue;
@@ -201,8 +201,8 @@ impl<'a> MeshSampler<'a> {
         self.mesh
     }
 
-    /// The surface height (world Z) and up-normal directly under `(x, y)` --
-    /// see [`Mesh::height_at`], which this answers identically.
+    /// The surface height (world Z) and up-normal directly under `(x, y)`.
+    /// See [`Mesh::height_at`], which this answers identically.
     pub fn height_at(&self, x: f32, y: f32) -> Option<(f32, Vector)> {
         // A triangle covering the point overlaps the cell holding it, so the
         // one cell is the whole candidate set.
@@ -422,7 +422,7 @@ mod tests {
             mesh.normals.iter().map(|n| n.z).fold(1.0_f32, f32::min)
         );
         // Outer (left, even index) rib rides above the inner (right, odd) rib at
-        // every rib pair -- the physically-correct banked-curve profile.
+        // every rib pair, the physically-correct banked-curve profile.
         for i in 0..points.len() {
             let outer = mesh.vertices[2 * i].z;
             let inner = mesh.vertices[2 * i + 1].z;
@@ -436,7 +436,7 @@ mod tests {
     }
 
     // Negative bank rolls the surface the other way: the RIGHT rib rides above
-    // the left, and the normal leans toward +Y -- the mirror of positive bank.
+    // the left, and the normal leans toward +Y, the mirror of positive bank.
     #[test]
     fn negative_bank_raises_the_opposite_rib() {
         let pts = vec![
@@ -521,7 +521,7 @@ mod tests {
     fn height_at_normal_is_continuous_across_facets() {
         // The banked oval's curves are faceted (a polyline of segments). A body
         // oriented to the flat per-triangle normal snaps as it crosses each facet
-        // edge -- visible attitude vibration. height_at interpolates the smooth
+        // edge, which is visible attitude vibration. height_at interpolates the smooth
         // vertex normals, so the normal must vary continuously as the sample point
         // walks across facet boundaries, not jump.
         let mesh = crate::fixtures::banked_oval().surface_mesh();
@@ -544,14 +544,14 @@ mod tests {
         // per-facet normal would jump several degrees at each edge.
         assert!(
             worst < 1.5,
-            "normal jumps {worst:.2} deg across a facet -- not interpolated?"
+            "normal jumps {worst:.2} deg across a facet; not interpolated?"
         );
     }
 
     #[test]
     fn height_at_follows_a_banked_cross_section() {
         // A banked lane: the surface height varies across the width, and the
-        // normal tilts -- height_at reports the faceted surface, not a plane.
+        // normal tilts. height_at reports the faceted surface, not a plane.
         let net = RoadNetwork::new(vec![Lane {
             id: LaneId(0),
             kind: LaneKind::Driving,

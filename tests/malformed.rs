@@ -1,7 +1,7 @@
 //! The importer's behavior on files it should not trust.
 //!
-//! `.xodr` files come from outside your program -- exported by another tool,
-//! or handed over by whoever wants their map driven on. Everything downstream
+//! `.xodr` files come from outside your program, exported by another tool or
+//! handed over by whoever wants their map driven on. Everything downstream
 //! (the lane polylines, the surface trimesh a physics collider is built from,
 //! the routing graph) treats the imported network as sound, so this is the
 //! boundary where that has to be made true.

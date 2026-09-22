@@ -2,7 +2,7 @@
 //!
 //! `testtrack.xodr` exists so vehicle behaviour is exercised deliberately
 //! rather than by whatever a city map happens to contain. That only works if
-//! the sections it documents actually survive import -- a straight really
+//! the sections it documents actually survive import. A straight really
 //! straight, a tight corner really tight, a crest that really rises and falls.
 //! Otherwise a vehicle-tuning session is reading a road that isn't there.
 
@@ -56,7 +56,7 @@ fn the_test_track_has_the_sections_it_claims() {
         "the spiral did not tighten: {entry:.5} -> {exit:.5} per metre"
     );
 
-    // It climbs and comes back down -- the crest and dip are the point of the
+    // It climbs and comes back down. The crest and dip are the point of the
     // elevation profile, so a flat import would be a silent loss.
     let heights: Vec<f32> = lane.center.points().iter().map(|p| p.z).collect();
     let low = heights.iter().copied().fold(f32::INFINITY, f32::min);
@@ -88,7 +88,7 @@ fn the_test_track_curves_are_super_elevated() {
     let len = lane.center.length();
 
     // The opening straight (before any curve, so no arc-length drift) is dead
-    // flat -- superelevation is confined to the curves.
+    // flat, because superelevation is confined to the curves.
     assert!(
         lane.bank_at(150.0).abs() < 1e-3,
         "opening straight is banked: {}",
@@ -138,7 +138,7 @@ fn deepest_bank(lane: &libopendrive::Lane, lo: f32, hi: f32) -> f32 {
     best
 }
 
-/// Largest |bank| over `[lo, hi]` -- for asserting a stretch reads flat.
+/// Largest |bank| over `[lo, hi]`, for asserting a stretch reads flat.
 fn worst_abs_bank(lane: &libopendrive::Lane, lo: f32, hi: f32) -> f32 {
     let (mut m, mut s) = (0.0f32, lo);
     while s <= hi {
@@ -180,14 +180,14 @@ fn each_left_curve_banks_toward_its_outer_edge_at_its_own_peak() {
     );
 
     // Distinguish the curves: the corner out-banks the sweeper, the spiral is
-    // deepest of all -- a check that the profile isn't a single value smeared
+    // deepest of all, a check that the profile isn't a single value smeared
     // across every curve.
     assert!(
         spiral < r25 && r25 < r60,
         "banking should deepen R60 -> R25 -> spiral, got {r60} / {r25} / {spiral}"
     );
 
-    // No adverse (positive) bank anywhere inside a curve -- every turn cants the
+    // No adverse (positive) bank anywhere inside a curve. Every turn cants the
     // same way, never against the corner.
     for (name, lo, hi) in [
         ("R60", 610.0, 690.0),
@@ -249,8 +249,8 @@ fn the_cant_is_baked_into_the_real_surface_mesh() {
     let mesh = net.surface_mesh();
     // Rib pairs are pushed [left, right]; find the pair whose left vertex is
     // nearest the apex and confirm the RIGHT (outer, for a left turn) vertex
-    // rides physically higher -- the cant is in the collider/viz geometry, not
-    // just the `bank` scalar.
+    // rides physically higher, so the cant is in the collider and viz
+    // geometry, not only in the `bank` scalar.
     let pair = mesh
         .vertices
         .chunks_exact(2)
@@ -273,7 +273,7 @@ fn the_cant_is_baked_into_the_real_surface_mesh() {
     );
 
     // Global invariant: across the whole mesh no rib is canted the wrong way
-    // (right below left) -- every banked section raises its outer/right edge,
+    // (right below left). Every banked section raises its outer/right edge,
     // and the deepest section lifts it by the full ~2*half*sin(0.2) ~ 0.68 m.
     let (mut min_d, mut max_d) = (f32::INFINITY, f32::NEG_INFINITY);
     for p in mesh.vertices.chunks_exact(2) {

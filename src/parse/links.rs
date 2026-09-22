@@ -2,7 +2,7 @@
 //! then resolve them into **drive-direction** lane adjacency on the baked
 //! lanes. "Successor" here means "a lane you can drive into when leaving this
 //! lane's travel-direction exit end", already accounting for lane sign and the
-//! link `contactPoint` (start/end) -- so it's a routing graph, not a raw mirror
+//! link `contactPoint` (start/end). It is a routing graph, not a raw mirror
 //! of the file's `+s` links.
 
 use std::collections::HashMap;

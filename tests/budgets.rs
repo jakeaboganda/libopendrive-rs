@@ -2,7 +2,7 @@
 //!
 //! The bound is the point, not the number. Routing is typically answered
 //! inline on a simulation tick, so a request that takes long enough stalls
-//! every body in the scene -- one query becoming everyone's dropped frame.
+//! every body in the scene, one query becoming everyone's dropped frame.
 
 use std::time::Instant;
 
@@ -72,7 +72,7 @@ fn the_indexed_lookups_beat_the_scans_they_replaced() {
     // An absolute microsecond budget would either flake on a slow shared
     // runner or be too loose to catch anything. Racing the index against the
     // full scan in the same process measures the thing that actually matters
-    // -- that the index is still pruning -- and does it the same way on any
+    // (that the index is still pruning), and does it the same way on any
     // hardware.
     const SPEEDUP: f64 = 10.0;
 
@@ -108,7 +108,7 @@ fn the_indexed_lookups_beat_the_scans_they_replaced() {
     assert!(
         scanned > indexed * SPEEDUP,
         "nearest_lane is only {:.1}x faster than the full scan it replaced \
-         ({indexed:.6}s vs {scanned:.6}s) -- the lane index has stopped pruning",
+         ({indexed:.6}s vs {scanned:.6}s), so the lane index has stopped pruning",
         scanned / indexed.max(f64::MIN_POSITIVE)
     );
 

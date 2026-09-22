@@ -2,7 +2,7 @@
 //! drivable sequence of positions.
 //!
 //! Routes over both **longitudinal** (successor) and **lane-change** (lateral
-//! neighbor) edges -- Dijkstra with a flat lane-change penalty, then centerline
+//! neighbor) edges. Dijkstra with a flat lane-change penalty, then centerline
 //! sampling in travel order (a lane change drives a short way, then hops to the
 //! neighbor beside it for a path tracker to smooth). Speed is intentionally
 //! absent: the route is geometry, and the caller stamps its own speed onto the
@@ -303,7 +303,7 @@ mod tests {
     #[test]
     fn a_route_between_disconnected_components_is_none() {
         // `None` means "no path", and the caller decides what to do about it.
-        // Anything else -- an empty plan, or a straight line through the void --
+        // Anything else, an empty plan or a straight line through the void,
         // would read as a route the vehicle could drive.
         let net = two_components();
         assert!(net

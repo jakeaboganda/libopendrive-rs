@@ -154,7 +154,7 @@ fn right_hand_arc_raises_the_opposite_edge_from_the_left_sweeper() {
             .collect::<Vec<_>>()
     };
 
-    // Right (Forward) lanes are the raised side here -- the mirror of the left
+    // Right (Forward) lanes are the raised side here, the mirror of the left
     // sweeper, where the left (Backward) lanes rose.
     let mut right = peak_z(Direction::Forward);
     right.sort_by(|a, b| a.total_cmp(b));
@@ -170,7 +170,7 @@ fn right_hand_arc_raises_the_opposite_edge_from_the_left_sweeper() {
         right[0]
     );
 
-    // The left (Backward) lanes dip BELOW the reference line -- the opposite edge
+    // The left (Backward) lanes dip BELOW the reference line, the opposite edge
     // to the original left sweeper, where they climbed.
     let left = min_z(Direction::Backward);
     assert_eq!(left.len(), 2, "two left lanes");
@@ -203,7 +203,7 @@ fn sample_near_swept_around_the_arc_is_continuous_and_upright() {
         assert!(s.up.is_normalized(), "up not unit: {:?}", s.up);
         assert!(
             s.up.z > 0.9,
-            "up.z fell to {} -- surface tipped over",
+            "up.z fell to {}, so the surface tipped over",
             s.up.z
         );
         banks.push(s.bank);
@@ -415,7 +415,7 @@ fn lane_offset_shifts_the_bank_pivot() {
 
 // A steep bank (0.6 rad ~= 34 deg): must bake finite and faithfully carry the
 // angle. Note the surface normal legitimately drops to cos(0.6) ~= 0.825, i.e.
-// BELOW the 0.9 "generally up" bar the gentle fixtures pass -- that is physics,
+// BELOW the 0.9 "generally up" bar the gentle fixtures pass. That is physics,
 // not a bug, so this test asserts the true angle, not up.z > 0.9.
 const STEEP_BANK: &str = r#"<?xml version="1.0"?>
 <OpenDRIVE>
@@ -451,7 +451,7 @@ fn a_steep_bank_bakes_finite_and_carries_the_angle() {
         );
         let up = lane.sample_at(20.0).up;
         assert!(up.is_normalized(), "up not unit {up:?}");
-        // cos(0.6) ~= 0.8253 -- the normal has genuinely leaned past 0.9.
+        // cos(0.6) ~= 0.8253, so the normal has genuinely leaned past 0.9.
         assert!(
             (up.z - 0.6_f32.cos()).abs() < 1e-3,
             "up.z {} should be cos(0.6)",
@@ -462,12 +462,12 @@ fn a_steep_bank_bakes_finite_and_carries_the_angle() {
     assert!(mesh.normals.iter().all(|n| n.z > 0.5 && n.is_finite()));
     assert!(
         mesh.normals.iter().any(|n| n.z < 0.9),
-        "no normal leaned past 0.9 -- steep bank lost"
+        "no normal leaned past 0.9, so the steep bank was lost"
     );
 }
 
 // A <lateralProfile> that is present but empty: no superelevation records, so
-// the road is flat -- bank collapses to the empty sentinel, byte-identical to a
+// the road is flat, so bank collapses to the empty sentinel, byte-identical to a
 // road with no lateralProfile at all.
 const EMPTY_LATERAL: &str = r#"<?xml version="1.0"?>
 <OpenDRIVE>

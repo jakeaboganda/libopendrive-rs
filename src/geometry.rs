@@ -6,18 +6,18 @@ use crate::coords::{Point, Vector};
 pub struct Pose {
     /// Position on the lane.
     pub position: Point,
-    /// Unit tangent in the XY (ground) plane -- the direction of travel.
+    /// Unit tangent in the XY (ground) plane, the direction of travel.
     pub heading: Vector,
 }
 
 /// The road surface at one station: where a body sits and how it is oriented on
 /// a (possibly canted) road, plus the bank angle a vehicle model consumes. This
-/// is what draping a body onto the road needs -- see [`crate::Lane::sample_at`]
+/// is what draping a body onto the road needs. See [`crate::Lane::sample_at`]
 /// and [`crate::RoadNetwork::sample_near`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RoadSample {
-    /// Centerline surface point -- already at the banked height.
+    /// Centerline surface point, already at the banked height.
     pub point: Point,
     /// Unit tangent in the XY plane. The centerline's *stored* (geometry)
     /// direction, which for a `Backward` lane opposes travel; it is the frame
@@ -26,7 +26,7 @@ pub struct RoadSample {
     /// Superelevation (rad, signed; positive raises the +offset / left edge).
     pub bank: f32,
     /// Surface up-normal: +Z rolled about `heading` by `bank`. Lateral cant
-    /// only -- since `heading` is horizontal, `up.dot(heading) == 0`, so this
+    /// only. Since `heading` is horizontal, `up.dot(heading) == 0`, so this
     /// carries no fore-aft **grade** pitch. Exact on a level road; on a graded
     /// lane it omits the small pitch component. Read the meshed vertices via
     /// [`Mesh::height_at`](crate::Mesh::height_at) if you need the grade too.
@@ -68,7 +68,7 @@ pub struct Projection {
 /// form every curve reduces to: an importer samples clothoids/arcs into points;
 /// consumers only ever see the points. At least two points.
 ///
-/// Serializes as its points alone -- the cumulative lengths and tangents are
+/// Serializes as its points alone. The cumulative lengths and tangents are
 /// derived, so sending them would be both wasteful and a way to receive a
 /// polyline whose cached state disagrees with its geometry.
 #[derive(Debug, Clone, PartialEq)]
@@ -81,7 +81,7 @@ pub struct Polyline {
     points: Vec<Point>,
     /// Cumulative arc length at each point; `cumulative[0] == 0`.
     cumulative: Vec<f32>,
-    /// Per-vertex unit horizontal tangent -- the angle bisector at interior
+    /// Per-vertex unit horizontal tangent: the angle bisector at interior
     /// vertices, the lone segment direction at the ends. Interpolating these
     /// gives a heading that's continuous across vertices (no per-segment step),
     /// and their normals give a consistent lateral offset for lanes/meshes.
@@ -91,7 +91,7 @@ pub struct Polyline {
 impl Polyline {
     /// Build a polyline, or `None` if given fewer than two points. Importers
     /// baking **external** map data (which may be malformed) must use this and
-    /// surface the error, rather than crash -- see [`Polyline::new`].
+    /// surface the error, rather than crash. See [`Polyline::new`].
     pub fn try_new(points: Vec<Point>) -> Option<Self> {
         if points.len() < 2 {
             return None;
@@ -111,9 +111,9 @@ impl Polyline {
         })
     }
 
-    /// Build from trusted, in-code geometry. Panics on fewer than two points --
-    /// that's a construction bug, not a runtime condition. Importers handling
-    /// external files use [`Polyline::try_new`] instead.
+    /// Build from trusted, in-code geometry. Panics on fewer than two points,
+    /// which is a construction bug rather than a runtime condition. Importers
+    /// handling external files use [`Polyline::try_new`] instead.
     pub fn new(points: Vec<Point>) -> Self {
         Self::try_new(points).expect("a polyline needs at least two points")
     }
@@ -154,9 +154,9 @@ impl Polyline {
 
     /// The segment index containing arc length `s`, and the fractional position
     /// `t` in `[0, 1]` within it, both clamped to a valid segment. The one place
-    /// arc length becomes a `(vertex i, vertex i+1, t)` lerp -- shared by every
-    /// by-arc-length sampler (position, heading, and a lane's per-vertex bank),
-    /// so they can't disagree about where `s` lands.
+    /// arc length becomes a `(vertex i, vertex i+1, t)` lerp. Every
+    /// by-arc-length sampler shares it (position, heading, and a lane's
+    /// per-vertex bank), so they cannot disagree about where `s` lands.
     pub(crate) fn locate(&self, s: f32) -> (usize, f32) {
         let s = s.clamp(0.0, self.length());
         let i = self.segment(s);

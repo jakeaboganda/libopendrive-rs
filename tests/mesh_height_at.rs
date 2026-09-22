@@ -35,7 +35,7 @@ fn flat_quad(z: f32, flip: bool) -> Mesh {
 #[test]
 fn dead_centre_of_a_quad_resolves() {
     let mesh = flat_quad(3.0, false);
-    // (1,1) is the quad centre -- it lies on the shared diagonal, so it must be
+    // (1,1) is the quad centre. It lies on the shared diagonal, so it must be
     // claimed by (at least) one triangle, not fall through the split.
     let (z, n) = mesh.height_at(1.0, 1.0).expect("centre of the quad");
     assert!((z - 3.0).abs() < 1e-5, "z {z}");
@@ -97,7 +97,7 @@ fn a_degenerate_or_empty_mesh_returns_none() {
 #[test]
 fn overlapping_surfaces_return_the_higher_one() {
     // Two stacked quads over the same XY footprint (a bridge over a road): the
-    // sampler must return the surface you'd stand on -- the higher.
+    // sampler must return the surface you'd stand on, the higher one.
     let mut low = flat_quad(0.0, false);
     let high = flat_quad(5.0, false);
     let base = low.vertices.len() as u32;
@@ -148,7 +148,7 @@ fn the_returned_normal_is_a_unit_up_vector_for_both_windings() {
 #[test]
 fn a_tilted_surface_returns_its_interpolated_leaning_normal_for_both_windings() {
     // height_at returns the mesh's own (interpolated) vertex normals, not a flat
-    // per-facet normal -- so a body draped on it doesn't snap at facet edges. A
+    // per-facet normal, so a body draped on it doesn't snap at facet edges. A
     // surface tilted about the X axis carries a leaning up-normal at every vertex;
     // the query must return that lean, unit and upward, whichever way it is wound.
     let vertices = vec![
@@ -191,7 +191,7 @@ fn a_tilted_surface_returns_its_interpolated_leaning_normal_for_both_windings() 
 #[test]
 fn an_extreme_query_returns_none_rather_than_a_nan_height() {
     // The barycentric arithmetic overflows to infinity out here, and every
-    // comparison against the resulting NaN is false -- so an outside-the-
+    // comparison against the resulting NaN is false, so an outside-the-
     // triangle test written as `l < -eps` waves it through and reports a NaN
     // height, which lands in whatever is being draped onto the road.
     let mesh = flat_quad(1.0, false);

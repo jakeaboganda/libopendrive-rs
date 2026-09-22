@@ -28,7 +28,7 @@ mesh.validate()?;
 - Reference geometry: `line`, `arc`, `spiral` (clothoid), `paramPoly3`,
   `poly3`.
 - `<elevationProfile>`, and `<lateralProfile>` superelevation baked as a real
-  cant -- the cross-section rolls about the reference line, so an outer lane
+  cant. The cross-section rolls about the reference line, so an outer lane
   rides higher and its surface normal leans.
 - Per-lane widths, `laneOffset`, and multiple lane sections.
 - Road/lane `<link>`s and `<junction>`s, resolved into a drive-direction lane
@@ -55,7 +55,7 @@ positive-id lanes against it.
 
 ## Untrusted input
 
-A road the importer cannot interpret is skipped, not fatal -- losing a city map
+A road the importer cannot interpret is skipped, not fatal. Losing a city map
 to one junk road is the worse failure. `load_str` still errors if the document
 yielded no lanes at all. Non-finite attribute values are rejected at parse:
 Rust's float parser accepts `NaN` and turns `1e400` into infinity, and one such
@@ -66,8 +66,8 @@ value poisons every point derived from it.
 Rendering is not in scope here, but the output is shaped for it.
 `surface_mesh()` returns plain position, normal, and index buffers with no
 engine types in them, and a `LaneSpan` per lane saying which slice of those
-buffers it owns -- enough to pick the lane under a cursor or give one lane its
-own material without re-tessellating.
+buffers it owns. That is enough to pick the lane under a cursor, or give one
+lane its own material without re-tessellating.
 
 The optional `serde` feature serializes the network and its mesh, for a viewer
 in another process or a cached import. A `RoadNetwork` sends its lanes alone

@@ -170,7 +170,7 @@ impl Grid {
     /// `consider` is called with an item index and the best squared distance
     /// found so far, and returns that item's squared distance and result, or
     /// `None` to reject it. Passing the running best lets a caller cheaply
-    /// discard an item that cannot win before evaluating its geometry -- which
+    /// discard an item that cannot win before evaluating its geometry. That
     /// is also what keeps a large item appearing in many cells from being
     /// re-measured in each one. It is an upper bound to beat, not to match:
     /// an item exactly at that distance must still be offered, or the tie

@@ -13,8 +13,8 @@ fn town() -> RoadNetwork {
     load_file(TOWN).expect("town07 loads")
 }
 
-/// Points spread across the map, each sitting on some lane's centerline -- the
-/// realistic case, where a query does land on the road.
+/// Points spread across the map, each sitting on some lane's centerline, the
+/// realistic case where a query does land on the road.
 fn probes(net: &RoadNetwork, count: usize) -> Vec<Point> {
     let lanes: Vec<_> = net.driving_lanes().collect();
     (0..count)

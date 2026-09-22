@@ -23,8 +23,8 @@ pub enum ImportError {
     /// The document is not well-formed XML.
     #[error("invalid OpenDRIVE XML: {0}")]
     Xml(#[from] roxmltree::Error),
-    /// The XML parsed, but it is not a usable map -- unreadable from disk, or
-    /// carrying no driving lanes at all.
+    /// The XML parsed, but it is not a usable map. Either it was unreadable
+    /// from disk, or it carries no driving lanes at all.
     #[error("malformed OpenDRIVE: {0}")]
     Malformed(String),
 }
@@ -80,8 +80,8 @@ enum Geom {
         curvature: f64,
     },
     /// A curve with no elementary arc-length form (spiral/clothoid or
-    /// paramPoly3), baked to `(ds, x, y, hdg)` samples at load -- see
-    /// `bake_spiral` / `bake_param_poly3`. `pose` interpolates them by arc
+    /// paramPoly3), baked to `(ds, x, y, hdg)` samples at load. See
+    /// `bake_spiral` and `bake_param_poly3`. `pose` interpolates them by arc
     /// length `ds`.
     Baked {
         samples: Vec<(f64, f64, f64, f64)>,
@@ -233,9 +233,9 @@ impl Cubic {
 /// start). `None` if `s` precedes them all / the list is empty.
 ///
 /// A scan, not a binary search, even though this runs once per profile per
-/// sampled station. Real files keep these lists short -- across Town07's 234
+/// sampled station. Real files keep these lists short. Across Town07's 234
 /// roads the longest elevation, width and laneOffset lists are 13, 17 and a
-/// handful of records -- and at that size `partition_point` measured slower
+/// handful of records, and at that size `partition_point` measured slower
 /// than walking back from the end.
 fn active(records: &[Cubic], s: f64) -> Option<&Cubic> {
     records.iter().rev().find(|r| r.start <= s + 1e-9)
@@ -265,10 +265,10 @@ fn attr_f64(node: roxmltree::Node, name: &str) -> Option<f64> {
 
 /// Bakes one `<road>`'s lanes into `out`.
 ///
-/// A road the importer cannot interpret -- no length, no `<planView>`, no
-/// supported geometry, no `<lanes>` -- is *skipped*, not fatal: real exports
-/// carry the occasional junk road, and losing a whole city map to one of them
-/// is the worse failure. Individual malformed lanes are already skipped the
+/// A road the importer cannot interpret is *skipped*, not fatal. That covers
+/// no length, no `<planView>`, no supported geometry, and no `<lanes>`. Real
+/// exports carry the occasional junk road, and losing a whole city map to one
+/// of them is the worse failure. Individual malformed lanes are already skipped the
 /// same way. `load_str` still errors if the document as a whole yielded no
 /// lanes at all, so a thoroughly broken file is never silently accepted.
 fn parse_road(road: roxmltree::Node, out: &mut Vec<Lane>, topo: &mut Topology) {
@@ -310,7 +310,7 @@ fn parse_road(road: roxmltree::Node, out: &mut Vec<Lane>, topo: &mut Topology) {
         } else if let Some(pp) = child(g, "paramPoly3") {
             let coeff = |n: &str| attr_f64(pp, n).unwrap_or(0.0);
             // "arcLength" -> p in [0,len]; anything else, including an absent
-            // attribute, is "normalized" p in [0,1] -- matching libOpenDRIVE's
+            // attribute, is "normalized" p in [0,1], matching libOpenDRIVE's
             // default and case-insensitive compare (files set it explicitly).
             let p_max = match pp.attribute("pRange").map(str::to_ascii_lowercase) {
                 Some(ref r) if r == "arclength" => length,
@@ -477,8 +477,8 @@ fn emit_section(
     let sample_s = sample_positions(s_start, s_end);
     // The bank profile is a road-level property (the cross-section's roll about
     // the reference line), identical for every lane in the section, sampled
-    // parallel to `sample_s`. Collapse an all-flat profile to empty -- the
-    // "flat lane" sentinel -- so unbanked roads stay byte-identical.
+    // parallel to `sample_s`. Collapse an all-flat profile to empty, the
+    // "flat lane" sentinel, so unbanked roads stay byte-identical.
     let bank: Vec<f32> = sample_s
         .iter()
         .map(|&s| active(superelevations, s).map(|e| e.eval(s)).unwrap_or(0.0) as f32)
@@ -501,8 +501,8 @@ fn emit_section(
         } else {
             Direction::Forward
         };
-        // Lanes emitted on this side, center-outward, as (id, index in `out`) --
-        // consecutive ones are lateral neighbors (lane-change edges).
+        // Lanes emitted on this side, center-outward, as (id, index in `out`).
+        // Consecutive ones are lateral neighbors (lane-change edges).
         let mut emitted: Vec<(LaneId, usize)> = Vec::new();
         for (i, lane) in side.iter().enumerate() {
             let points = sample_lane(
@@ -722,7 +722,7 @@ mod tests {
         assert!(end.position.z > start.position.z + 1.0, "no climb");
     }
 
-    // A straight then a 90-degree left arc (radius 30), two opposing lanes --
+    // A straight then a 90-degree left arc (radius 30), two opposing lanes,
     // the same shape as the hand-authored demo_road.
     const STRAIGHT_ARC: &str = r#"<?xml version="1.0"?>
 <OpenDRIVE>
@@ -908,7 +908,7 @@ mod tests {
     #[test]
     fn spiral_heading_matches_closed_form() {
         // Sampled at s=5 (interior, where the polyline's interpolated tangent is
-        // accurate -- the very endpoint tangent is a last-segment artifact).
+        // accurate, since the very endpoint tangent is a last-segment artifact).
         // Reference heading there = 0.5*c_dot*s^2 = 0.5*0.01*25 = 0.125 rad.
         let net = load_str(SPIRAL_ONLY).expect("import");
         let h = net.lanes()[0].center.pose_at(5.0).heading;
@@ -948,7 +948,7 @@ mod tests {
         assert!(end.y > 3.0, "end y {} (should follow v to ~+5)", end.y);
     }
 
-    // poly3 with v(u)=0.05*u^2 over length 10 -- curves laterally toward +y
+    // poly3 with v(u)=0.05*u^2 over length 10, curving laterally toward +y
     // (like the arcLength paramPoly3 case; exact endpoint depends on the
     // arc-length reparametrization, so just assert a clear deviation).
     const POLY3: &str = r#"<?xml version="1.0"?>
@@ -1069,8 +1069,8 @@ mod tests {
         assert!(load_str("not xml at all <<<").is_err());
     }
 
-    // A flat straight (no lateralProfile) must leave the bank profile empty --
-    // the "flat lane" sentinel -- so imported flat roads are unchanged.
+    // A flat straight (no lateralProfile) must leave the bank profile empty,
+    // the "flat lane" sentinel, so imported flat roads are unchanged.
     #[test]
     fn no_lateral_profile_leaves_bank_empty() {
         let net = load_str(STRAIGHT).expect("import");
@@ -1167,7 +1167,7 @@ mod tests {
     fn ramped_superelevation_grows_along_s() {
         let net = load_str(SUPERELEV_RAMP).expect("import");
         let lane = &net.lanes()[0];
-        // φ(5)=0.05, φ(15)=0.15 -- monotonic increase, matching the cubic.
+        // φ(5)=0.05, φ(15)=0.15, a monotonic increase matching the cubic.
         assert!(
             (lane.bank_at(5.0) - 0.05).abs() < 5e-3,
             "{}",
@@ -1228,7 +1228,7 @@ mod tests {
     }
 
     // Negative superelevation rolls the other way: the right (−t) edge lifts and
-    // the left (+t) edge drops -- the mirror of the positive case, pinning sign.
+    // the left (+t) edge drops, the mirror of the positive case, pinning sign.
     const SUPERELEV_NEG: &str = r#"<?xml version="1.0"?>
 <OpenDRIVE>
   <road name="sen" length="20.0" id="1" junction="-1">
@@ -1360,9 +1360,9 @@ mod tests {
     }
 
     // End-to-end: importing a banked `.xodr` and calling `sample_near` on the
-    // imported network yields a sane RoadSample -- correct bank, a unit up-normal
-    // that points up and carries lateral cant only (up.heading == 0) -- on both
-    // the straight and the arc portion of the banked road.
+    // imported network yields a sane RoadSample on both the straight and the
+    // arc portion of the banked road: correct bank, and a unit up-normal that
+    // points up and carries lateral cant only (up.heading == 0).
     #[test]
     fn sample_near_on_an_imported_banked_road_is_sane() {
         let net = load_str(SUPERELEV_ARC).expect("import");
@@ -1406,8 +1406,8 @@ mod tests {
     }
 
     // Superelevation composed with an elevation grade: the road climbs at 4% AND
-    // banks at 0.1 rad. A lane's height must be grade(s) + t*sin(phi) -- the two
-    // add, neither clobbers the other.
+    // banks at 0.1 rad. A lane's height must be grade(s) + t*sin(phi). The two
+    // add, and neither clobbers the other.
     const SUPERELEV_PLUS_GRADE: &str = r#"<?xml version="1.0"?>
 <OpenDRIVE>
   <road name="sg" length="40.0" id="1" junction="-1">
@@ -1446,7 +1446,7 @@ mod tests {
         for &s in &[10.0_f32, 20.0, 30.0] {
             let grade = 0.04 * s; // elevation cubic: a=0, b=0.04
                                   // Left (+t) rides above the grade line, right (-t) below it, by the
-                                  // same cant -- the grade is the midline of the two.
+                                  // same cant, so the grade is the midline of the two.
             let ly = left.center.point_at(s).z;
             let ry = right.center.point_at(s).z;
             assert!(
@@ -1467,7 +1467,7 @@ mod tests {
     // Superelevation + laneOffset: the +2.0 laneOffset shifts the whole
     // cross-section, and the pivot must apply to the *shifted* t. Right lane -1
     // (own offset -1.75) with laneOffset +2.0 lands at t = +0.25, so its height
-    // is the small POSITIVE 0.25*sin(phi) -- not -1.75*sin(phi) (own offset only)
+    // is the small POSITIVE 0.25*sin(phi), not -1.75*sin(phi) (own offset only)
     // nor +2.0*sin(phi) (laneOffset only).
     const SUPERELEV_PLUS_OFFSET: &str = r#"<?xml version="1.0"?>
 <OpenDRIVE>
@@ -1531,7 +1531,7 @@ mod tests {
     }
 
     // A very large roll near pi/2: sin ~= 1 (height ~= t), cos ~= 0 (horizontal
-    // reach collapses). Must stay finite and read back the angle -- no blow-up.
+    // reach collapses). Must stay finite and read back the angle, with no blow-up.
     const SUPERELEV_STEEP: &str = r#"<?xml version="1.0"?>
 <OpenDRIVE>
   <road name="st" length="20.0" id="1" junction="-1">

@@ -40,7 +40,7 @@ fn every_lane_span_addresses_its_own_slice_of_the_mesh() {
         assert_eq!(indices, (points - 1) * 6, "lane {:?} index count", lane.id);
 
         // The slices are addressable, and every triangle in this lane's index
-        // range points inside this lane's vertex range -- so a renderer can
+        // range points inside this lane's vertex range, so a renderer can
         // draw or pick one lane without dragging in its neighbours.
         let _ = &mesh.vertices[span.vertices.start as usize..span.vertices.end as usize];
         let _ = &mesh.normals[span.vertices.start as usize..span.vertices.end as usize];
@@ -70,7 +70,7 @@ fn a_hand_built_mesh_carries_no_spans() {
 #[test]
 fn a_network_survives_a_round_trip_and_is_still_queryable() {
     // A viewer typically lives in another process. What it receives has to
-    // behave like an imported map, not just look like one -- the arc lengths,
+    // behave like an imported map, not merely look like one. The arc lengths,
     // tangents and lane index are all derived state that has to come back.
     use libopendrive::RoadNetwork;
 
