@@ -73,6 +73,7 @@
 //!   [`RoadNetwork::surface_mesh`] ribs can self-intersect (the tessellator
 //!   does not yet guard against it).
 
+mod coords;
 mod geometry;
 mod grid;
 mod mesh;
@@ -83,10 +84,7 @@ mod route;
 #[cfg(test)]
 mod fixtures;
 
-/// The `glam` version this crate's `Vec3`s come from. It is a public
-/// dependency: match it, or your `Vec3` is a different type than ours.
-pub use glam;
-
+pub use coords::{Point, Vector};
 pub use geometry::TooFewPoints;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
 pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};
