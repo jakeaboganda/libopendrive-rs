@@ -3,7 +3,7 @@ use std::f32::consts::FRAC_PI_2;
 use crate::coords::Point;
 
 use crate::geometry::{left_normal, Polyline};
-use crate::network::{Direction, Lane, LaneId, LaneKind, RoadNetwork};
+use crate::network::{Direction, Lane, LaneId, LaneType, RoadNetwork};
 
 const LANE_WIDTH: f32 = 3.5;
 const STRAIGHT: f32 = 40.0;
@@ -22,7 +22,7 @@ pub(crate) fn demo_road() -> RoadNetwork {
     RoadNetwork::new(vec![
         Lane {
             id: LaneId(0),
-            kind: LaneKind::Driving,
+            kind: LaneType::Driving,
             direction: Direction::Forward,
             center: forward,
             width: LANE_WIDTH,
@@ -33,7 +33,7 @@ pub(crate) fn demo_road() -> RoadNetwork {
         },
         Lane {
             id: LaneId(1),
-            kind: LaneKind::Driving,
+            kind: LaneType::Driving,
             direction: Direction::Backward,
             center: backward,
             width: LANE_WIDTH,

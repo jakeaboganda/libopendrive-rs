@@ -6,7 +6,7 @@
 //! than the lane half-width lets the inner offset push past the curve's center.
 
 use libopendrive::{
-    load_file, Direction, Lane, LaneId, LaneKind, Point, Polyline, RoadNetwork, Vector,
+    load_file, Direction, Lane, LaneId, LaneType, Point, Polyline, RoadNetwork, Vector,
 };
 
 const TOWN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/town07.xodr");
@@ -61,7 +61,7 @@ fn a_corner_tighter_than_the_half_width_does_not_fold() {
         .collect();
     let net = RoadNetwork::new(vec![Lane {
         id: LaneId(0),
-        kind: LaneKind::Driving,
+        kind: LaneType::Driving,
         direction: Direction::Forward,
         center: Polyline::new(pts),
         width,

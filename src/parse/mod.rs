@@ -9,7 +9,7 @@
 //! [libOpenDRIVE](https://github.com/pageldev/libOpenDRIVE).
 
 use crate::coords::Point;
-use crate::{Direction, Lane, LaneId, LaneKind, Polyline, RoadNetwork};
+use crate::{Direction, Lane, LaneId, LaneType, Polyline, RoadNetwork};
 
 mod links;
 use links::{LaneMeta, RoadInfo, Topology};
@@ -294,14 +294,24 @@ fn active(records: &[Cubic], s: f64) -> Option<&Cubic> {
     records.iter().rev().find(|r| r.start <= s + 1e-9)
 }
 
+/// One lane parsed from a `<laneSection>`. `kind` is the [`LaneType`] it emits
+/// as, or `None` for a type the importer keeps only so its width offsets the
+/// lanes outboard of it.
 struct LaneDef {
     id: i32,
-    /// Whether this lane is emitted. Non-driving lanes are kept only so their
-    /// width shifts the lanes outboard of them.
-    driving: bool,
+    kind: Option<LaneType>,
     widths: Vec<Cubic>,
     pred_link: Option<i32>,
     succ_link: Option<i32>,
+}
+
+/// The [`LaneType`] an OpenDRIVE `<lane>` `type` maps to, or `None` for a type
+/// the importer does not emit. A new emitted lane type is one arm here.
+fn lane_type(od_type: Option<&str>) -> Option<LaneType> {
+    match od_type {
+        Some("driving") => Some(LaneType::Driving),
+        _ => None,
+    }
 }
 
 // --- Parsing ------------------------------------------------------------------
@@ -509,17 +519,17 @@ fn emit_section(
             if widths.is_empty() {
                 continue; // no width: nothing to sample, and no offset to add
             }
-            // Keep every lane, driving or not. A shoulder or a `none` lane still
-            // pushes the lanes outboard of it away from the reference line, so
-            // its width has to enter the running offset even though only driving
-            // lanes are emitted. Dropping non-driving lanes here placed an
+            // Keep every lane, whatever its type. A shoulder or a `none` lane
+            // still pushes the lanes outboard of it away from the reference
+            // line, so its width has to enter the running offset even though
+            // only some types are emitted. Omitting these lanes placed an
             // outboard driving lane too close to the reference line, and on a
             // curve gave it the wrong radius and length.
-            let driving = lane.attribute("type") == Some("driving");
+            let kind = lane_type(lane.attribute("type"));
             let (pred_link, succ_link) = links::lane_link(lane);
             let def = LaneDef {
                 id,
-                driving,
+                kind,
                 widths,
                 pred_link,
                 succ_link,
@@ -566,9 +576,9 @@ fn emit_section(
         // Consecutive ones are lateral neighbors (lane-change edges).
         let mut emitted: Vec<(LaneId, usize)> = Vec::new();
         for (i, lane) in side.iter().enumerate() {
-            if !lane.driving {
-                continue; // counted in the inner offset above, not a lane itself
-            }
+            let Some(kind) = lane.kind else {
+                continue; // offset-only type: counted above, not emitted
+            };
             let points = sample_lane(
                 geoms,
                 elevations,
@@ -599,7 +609,7 @@ fn emit_section(
             emitted.push((id, out.len()));
             out.push(Lane {
                 id,
-                kind: LaneKind::Driving,
+                kind,
                 direction,
                 center,
                 width: width_at(lane, 0.0) as f32,

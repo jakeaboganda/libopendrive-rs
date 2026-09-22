@@ -149,7 +149,7 @@ pub use coords::{Point, Vector};
 pub use geometry::TooFewPoints;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
 pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};
-pub use network::{Direction, Lane, LaneId, LaneKind, RoadNetwork};
+pub use network::{Direction, Lane, LaneId, LaneType, RoadNetwork};
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ImportError,
     LaneProvenance,

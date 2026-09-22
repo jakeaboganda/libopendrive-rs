@@ -182,12 +182,12 @@ impl PartialOrd for State {
 mod tests {
     use super::*;
     use crate::geometry::Polyline;
-    use crate::network::LaneKind;
+    use crate::network::LaneType;
 
     fn lane(id: usize, pts: &[[f32; 3]], dir: Direction, succ: &[usize], nbrs: &[usize]) -> Lane {
         Lane {
             id: LaneId(id),
-            kind: LaneKind::Driving,
+            kind: LaneType::Driving,
             direction: dir,
             center: Polyline::new(pts.iter().map(|p| Point::from_array(*p)).collect()),
             width: 3.5,

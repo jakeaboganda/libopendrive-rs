@@ -342,13 +342,13 @@ impl RoadNetwork {
 mod tests {
     use crate::coords::{Point, Vector};
     use crate::fixtures::demo_road;
-    use crate::{Direction, Lane, LaneId, LaneKind, Mesh, Polyline, RoadNetwork};
+    use crate::{Direction, Lane, LaneId, LaneType, Mesh, Polyline, RoadNetwork};
 
     #[test]
     fn one_straight_lane_tessellates_to_two_quads() {
         let net = RoadNetwork::new(vec![Lane {
             id: LaneId(0),
-            kind: LaneKind::Driving,
+            kind: LaneType::Driving,
             direction: Direction::Forward,
             center: Polyline::new(vec![
                 Point::new(0.0, 0.0, 0.0),
@@ -426,7 +426,7 @@ mod tests {
             bank: vec![0.2; 3],
             ..Lane {
                 id: LaneId(0),
-                kind: LaneKind::Driving,
+                kind: LaneType::Driving,
                 direction: Direction::Forward,
                 center: Polyline::new(vec![
                     Point::new(0.0, 0.0, 0.0),
@@ -461,7 +461,7 @@ mod tests {
     fn banked_net(points: Vec<Point>, bank: Vec<f32>, width: f32) -> RoadNetwork {
         RoadNetwork::new(vec![Lane {
             id: LaneId(0),
-            kind: LaneKind::Driving,
+            kind: LaneType::Driving,
             direction: Direction::Forward,
             center: Polyline::new(points),
             width,
@@ -575,7 +575,7 @@ mod tests {
         // One flat 4 m-wide lane heading +X, from x=0 to x=10 at z=0.
         let net = RoadNetwork::new(vec![Lane {
             id: LaneId(0),
-            kind: LaneKind::Driving,
+            kind: LaneType::Driving,
             direction: Direction::Forward,
             center: Polyline::new(vec![Point::ORIGIN, Point::new(10.0, 0.0, 0.0)]),
             width: 4.0,
@@ -630,7 +630,7 @@ mod tests {
         // normal tilts. height_at reports the faceted surface, not a plane.
         let net = RoadNetwork::new(vec![Lane {
             id: LaneId(0),
-            kind: LaneKind::Driving,
+            kind: LaneType::Driving,
             direction: Direction::Forward,
             center: Polyline::new(vec![Point::ORIGIN, Point::new(10.0, 0.0, 0.0)]),
             width: 6.0,

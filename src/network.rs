@@ -16,7 +16,7 @@ pub struct LaneId(pub usize);
 /// etc. slot in here as the importer grows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum LaneKind {
+pub enum LaneType {
     /// A lane vehicles drive on.
     Driving,
 }
@@ -39,7 +39,7 @@ pub struct Lane {
     /// This lane's identity. Not a position in any list.
     pub id: LaneId,
     /// What the lane is for.
-    pub kind: LaneKind,
+    pub kind: LaneType,
     /// Which way traffic runs along `center`.
     pub direction: Direction,
     /// Lane centerline.
@@ -124,7 +124,7 @@ impl LaneIndex {
     fn build(lanes: &[Lane]) -> Self {
         let (mut bounds, mut positions) = (Vec::new(), Vec::new());
         for (i, lane) in lanes.iter().enumerate() {
-            if lane.kind != LaneKind::Driving {
+            if lane.kind != LaneType::Driving {
                 continue;
             }
             // A centerline always has at least two points, so this is Some.
@@ -196,9 +196,9 @@ impl RoadNetwork {
         }
     }
 
-    /// Every lane of kind [`LaneKind::Driving`].
+    /// Every lane of kind [`LaneType::Driving`].
     pub fn driving_lanes(&self) -> impl Iterator<Item = &Lane> {
-        self.lanes.iter().filter(|l| l.kind == LaneKind::Driving)
+        self.lanes.iter().filter(|l| l.kind == LaneType::Driving)
     }
 
     /// The lowest point of any lane centerline (Z-up, metres), so how far down
@@ -273,7 +273,7 @@ mod tests {
     fn lane(id: usize, points: &[[f32; 3]]) -> Lane {
         Lane {
             id: LaneId(id),
-            kind: LaneKind::Driving,
+            kind: LaneType::Driving,
             direction: Direction::Forward,
             center: Polyline::new(points.iter().map(|p| Point::from_array(*p)).collect()),
             width: 3.5,

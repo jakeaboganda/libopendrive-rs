@@ -10,7 +10,7 @@ use std::f32::consts::PI;
 use crate::coords::{Point, Vector};
 
 use crate::geometry::Polyline;
-use crate::network::{Direction, Lane, LaneId, LaneKind, RoadNetwork};
+use crate::network::{Direction, Lane, LaneId, LaneType, RoadNetwork};
 
 const STRAIGHT: f32 = 70.0; // length of each straight (m)
 const RADIUS: f32 = 26.0; // curve radius at the centerline (m)
@@ -83,7 +83,7 @@ pub(crate) fn banked_oval() -> RoadNetwork {
 
     RoadNetwork::new(vec![Lane {
         id: LaneId(0),
-        kind: LaneKind::Driving,
+        kind: LaneType::Driving,
         direction: Direction::Forward,
         center: Polyline::new(points),
         width: WIDTH,
