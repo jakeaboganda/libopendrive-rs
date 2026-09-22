@@ -29,15 +29,56 @@ pub enum ImportError {
     Malformed(String),
 }
 
+/// The OpenDRIVE identity of one baked lane: which road, lane section, and
+/// original `<lane id>` it was tessellated from.
+///
+/// A baked [`Lane`] is format-agnostic and carries only an opaque [`LaneId`];
+/// this is the OpenDRIVE-specific provenance, kept in a separate table so
+/// [`Lane`] stays format-neutral. Obtain it from [`load_str_with_provenance`]
+/// or [`load_file_with_provenance`], and look a lane up by its [`LaneId`]
+/// rather than by position.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct LaneProvenance {
+    /// The baked lane this record describes.
+    pub lane: LaneId,
+    /// The `<road id>` attribute the lane came from.
+    pub road_id: String,
+    /// The zero-based lane-section index within that road (sections ordered by
+    /// `s`).
+    pub section: usize,
+    /// The original OpenDRIVE `<lane id>` (signed; negative right of the
+    /// reference line, positive left).
+    pub od_id: i32,
+}
+
 /// Load an OpenDRIVE file from disk and bake it into a `RoadNetwork`.
 pub fn load_file(path: impl AsRef<std::path::Path>) -> Result<RoadNetwork, ImportError> {
-    let xml = std::fs::read_to_string(path.as_ref())
-        .map_err(|e| ImportError::Malformed(format!("reading {:?}: {e}", path.as_ref())))?;
-    load_str(&xml)
+    load_file_with_provenance(path).map(|(net, _)| net)
 }
 
 /// Bake an OpenDRIVE document (as a string) into a `RoadNetwork`.
 pub fn load_str(xml: &str) -> Result<RoadNetwork, ImportError> {
+    load_str_with_provenance(xml).map(|(net, _)| net)
+}
+
+/// Like [`load_file`], but also returns the OpenDRIVE [`LaneProvenance`] of
+/// every baked lane, for a viewer or editor that must name the road, section,
+/// and original lane id a baked lane came from.
+pub fn load_file_with_provenance(
+    path: impl AsRef<std::path::Path>,
+) -> Result<(RoadNetwork, Vec<LaneProvenance>), ImportError> {
+    let xml = std::fs::read_to_string(path.as_ref())
+        .map_err(|e| ImportError::Malformed(format!("reading {:?}: {e}", path.as_ref())))?;
+    load_str_with_provenance(&xml)
+}
+
+/// Like [`load_str`], but also returns the OpenDRIVE [`LaneProvenance`] of
+/// every baked lane. The provenance is in baked-lane order, one entry per
+/// lane, each carrying the [`LaneId`] it describes.
+pub fn load_str_with_provenance(
+    xml: &str,
+) -> Result<(RoadNetwork, Vec<LaneProvenance>), ImportError> {
     let cleaned = sanitize(xml);
     let doc = roxmltree::Document::parse(cleaned.as_ref())?;
     let root = doc.root_element();
@@ -52,7 +93,19 @@ pub fn load_str(xml: &str) -> Result<RoadNetwork, ImportError> {
     // Resolve connectivity once all lanes exist and are registered.
     topo.junctions = links::junctions(root);
     links::resolve(&mut lanes, &topo);
-    Ok(RoadNetwork::new(lanes))
+    // The parser already recorded each lane's OpenDRIVE origin while baking;
+    // surface it rather than reconstructing lane-id order downstream.
+    let provenance = topo
+        .metas
+        .iter()
+        .map(|m| LaneProvenance {
+            lane: m.id,
+            road_id: m.road.clone(),
+            section: m.section,
+            od_id: m.od_id,
+        })
+        .collect();
+    Ok((RoadNetwork::new(lanes), provenance))
 }
 
 /// Make a real-world document parseable: strip a UTF-8 BOM and remove the
@@ -885,6 +938,23 @@ mod tests {
         // Sections span [0,25] and [25,40] -> ~25 and ~15 m.
         assert!((lens[0] - 15.0).abs() < 1.0, "short section {}", lens[0]);
         assert!((lens[1] - 25.0).abs() < 1.0, "long section {}", lens[1]);
+    }
+
+    #[test]
+    fn provenance_names_each_baked_lane_by_road_section_and_od_id() {
+        let (net, prov) =
+            load_str_with_provenance(TWO_SECTIONS).expect("import with provenance");
+        assert_eq!(prov.len(), net.lanes().len(), "one record per baked lane");
+        // Every record points at a real lane, and names the source road/lane.
+        for p in &prov {
+            assert!(net.lane(p.lane).is_some(), "{:?} names no lane", p.lane);
+            assert_eq!(p.road_id, "1");
+            assert_eq!(p.od_id, -1);
+        }
+        // The two sections are distinguished, 0 and 1.
+        let mut sections: Vec<usize> = prov.iter().map(|p| p.section).collect();
+        sections.sort_unstable();
+        assert_eq!(sections, vec![0, 1], "one lane per section, indexed 0,1");
     }
 
     // A pure clothoid: curvStart 0, curvEnd 0.1 over 10 m. End heading is the

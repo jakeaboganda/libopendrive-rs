@@ -48,5 +48,11 @@ harness = false
 name = "query"
 harness = false
 
+# Exports a baked map to the JSON the three.js viewer in viewer/ reads.
+# Needs `serde` to serialize the mesh; run with `--features serde`.
+[[example]]
+name = "viewer_export"
+required-features = ["serde"]
+
 [package.metadata.docs.rs]
 all-features = true

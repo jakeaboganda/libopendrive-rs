@@ -1,3 +1,4 @@
 /target
 /graft/
 Cargo.lock
+/viewer/web/scene.json

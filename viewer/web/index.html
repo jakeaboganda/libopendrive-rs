@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>libopendrive viewer</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font: 13px/1.4 system-ui, sans-serif; background: #12151a; color: #d8dee9; }
+  #app { display: grid; grid-template-columns: 300px 1fr; height: 100%; }
+  #sidebar { border-right: 1px solid #2a2f3a; display: flex; flex-direction: column; min-height: 0; }
+  #sidebar header { padding: 10px 12px; border-bottom: 1px solid #2a2f3a; }
+  #sidebar h1 { font-size: 14px; margin: 0 0 8px; font-weight: 600; }
+  #search { width: 100%; padding: 6px 8px; background: #1b1f27; border: 1px solid #2a2f3a; border-radius: 5px; color: inherit; }
+  #count { color: #7c8595; font-size: 11px; margin-top: 6px; }
+  #list { overflow: auto; flex: 1; padding: 4px 0; }
+  .road { padding: 4px 12px 2px; color: #8fa1b3; font-weight: 600; letter-spacing: .02em; }
+  .lane { padding: 3px 12px 3px 22px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+  .lane:hover { background: #1b1f27; }
+  .lane.active { background: #2d4a63; }
+  .lane .tag { color: #7c8595; font-variant-numeric: tabular-nums; }
+  #view { position: relative; min-width: 0; }
+  canvas { display: block; }
+  #tip { position: absolute; pointer-events: none; padding: 6px 8px; background: #0b0d11ee; border: 1px solid #3a4150;
+          border-radius: 5px; font-variant-numeric: tabular-nums; white-space: pre; display: none; z-index: 5; }
+  #tip b { color: #8ec07c; }
+  #hint { position: absolute; left: 12px; bottom: 10px; color: #6b7280; font-size: 11px; }
+  #err { position: absolute; inset: 0; display: none; place-content: center; text-align: center; padding: 40px; color: #e88; }
+  #err code { color: #d8dee9; background: #1b1f27; padding: 2px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <header>
+      <h1>Roads &amp; lanes</h1>
+      <input id="search" placeholder="filter: road id or lane id…" autocomplete="off" />
+      <div id="count"></div>
+    </header>
+    <div id="list"></div>
+  </aside>
+  <div id="view">
+    <div id="tip"></div>
+    <div id="hint">drag: orbit · scroll: zoom · right-drag: pan · hover a lane for coordinates</div>
+    <div id="err"></div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const SCENE_URL = new URLSearchParams(location.search).get('scene') || 'scene.json';
+
+const view = document.getElementById('view');
+const tip = document.getElementById('tip');
+const listEl = document.getElementById('list');
+const countEl = document.getElementById('count');
+const searchEl = document.getElementById('search');
+
+let scene, camera, renderer, controls, raycaster;
+let roadMesh, highlight, highlightLine;
+let lanes = [];              // enriched lane records
+let spanIndex = [];          // {start,end,lane} sorted by index-range start, for picking
+let laneById = new Map();
+let activeLane = null;
+
+init().catch(showError);
+
+async function init() {
+  let data;
+  try {
+    data = await (await fetch(SCENE_URL)).json();
+  } catch (e) {
+    throw new Error(`could not load ${SCENE_URL} — serve this folder over HTTP ` +
+      `(e.g. <code>python3 -m http.server</code>) rather than opening the file directly.`);
+  }
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x12151a);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(devicePixelRatio);
+  view.appendChild(renderer.domElement);
+
+  // OpenDRIVE is Z-up; keep the world in its own frame and point the camera's
+  // up at +Z rather than rotating every coordinate.
+  THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
+  camera = new THREE.PerspectiveCamera(55, 1, 0.5, 20000);
+  camera.up.set(0, 0, 1);
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+
+  scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x1a1d22, 1.1));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+  sun.position.set(0.4, 0.7, 1);
+  scene.add(sun);
+
+  buildMesh(data);
+  buildLanes(data);
+  buildSidebar();
+  frameOn(roadMesh);
+
+  raycaster = new THREE.Raycaster();
+  renderer.domElement.addEventListener('pointermove', onHover);
+  renderer.domElement.addEventListener('pointerleave', () => hideTip());
+  searchEl.addEventListener('input', renderSidebar);
+
+  addEventListener('resize', resize);
+  resize();
+  animate();
+}
+
+function buildMesh(data) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(data.mesh.positions, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(data.mesh.normals, 3));
+  g.setIndex(new THREE.Uint32BufferAttribute(data.mesh.indices, 1));
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+
+  roadMesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+    color: 0x5a6b82, roughness: 0.95, metalness: 0.0,
+    side: THREE.DoubleSide, flatShading: false,
+  }));
+  scene.add(roadMesh);
+
+  // A yellow overlay drawn over the base mesh for the hovered lane section,
+  // sharing the base position buffer and swapping only its index slice.
+  const hg = new THREE.BufferGeometry();
+  hg.setAttribute('position', g.getAttribute('position'));
+  highlight = new THREE.Mesh(hg, new THREE.MeshBasicMaterial({
+    color: 0xffd24a, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
+    depthTest: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  }));
+  highlight.renderOrder = 2;
+  highlight.visible = false;
+  scene.add(highlight);
+
+  highlightLine = new THREE.Line(new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ color: 0xffef9f }));
+  highlightLine.renderOrder = 3;
+  highlightLine.visible = false;
+  scene.add(highlightLine);
+
+  // Ground grid for orientation, sized to the map.
+  const bb = g.boundingBox, span = Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y);
+  const grid = new THREE.GridHelper(Math.ceil(span * 1.2), 40, 0x2a2f3a, 0x20242c);
+  grid.rotation.x = Math.PI / 2;                       // grid is XZ by default; lay it in XY
+  grid.position.set((bb.min.x + bb.max.x) / 2, (bb.min.y + bb.max.y) / 2, bb.min.z - 0.05);
+  scene.add(grid);
+}
+
+function buildLanes(data) {
+  const indices = data.mesh.indices;
+  lanes = data.lanes.map(l => {
+    // Precompute cumulative 3D arc length so cursor projection matches the
+    // crate's Polyline::project (nearest by 3D distance, s in 3D, t in XY).
+    const pts = l.centerline;
+    const cum = new Float32Array(pts.length);
+    for (let i = 1; i < pts.length; i++) cum[i] = cum[i - 1] + dist3(pts[i - 1], pts[i]);
+    return { ...l, cum, sliceIndices: indices.slice(l.indexRange[0], l.indexRange[1]) };
+  });
+  laneById = new Map(lanes.map(l => [l.laneId, l]));
+  spanIndex = lanes
+    .map(l => ({ start: l.indexRange[0], end: l.indexRange[1], lane: l }))
+    .sort((a, b) => a.start - b.start);
+}
+
+// --- Sidebar -----------------------------------------------------------------
+
+function buildSidebar() { renderSidebar(); }
+
+function renderSidebar() {
+  const q = searchEl.value.trim().toLowerCase();
+  const match = l =>
+    !q || String(l.roadId).toLowerCase().includes(q) ||
+    String(l.odLaneId).includes(q) || String(l.laneId).includes(q);
+
+  const byRoad = new Map();
+  let shown = 0;
+  for (const l of lanes) {
+    if (!match(l)) continue;
+    shown++;
+    if (!byRoad.has(l.roadId)) byRoad.set(l.roadId, []);
+    byRoad.get(l.roadId).push(l);
+  }
+  countEl.textContent = `${shown} / ${lanes.length} lanes · ${byRoad.size} roads`;
+
+  const frag = document.createDocumentFragment();
+  for (const [road, group] of byRoad) {
+    const r = document.createElement('div');
+    r.className = 'road';
+    r.textContent = `road ${road}`;
+    frag.appendChild(r);
+    group.sort((a, b) => a.section - b.section || b.odLaneId - a.odLaneId);
+    for (const l of group) {
+      const el = document.createElement('div');
+      el.className = 'lane' + (activeLane === l.laneId ? ' active' : '');
+      el.innerHTML = `<span>lane ${l.odLaneId} <span class="tag">§${l.section} ${l.direction}</span></span>` +
+        `<span class="tag">${l.length.toFixed(0)} m</span>`;
+      el.onclick = () => { selectLane(l.laneId); frameOnLane(l); };
+      frag.appendChild(el);
+    }
+  }
+  listEl.replaceChildren(frag);
+}
+
+// --- Hover / picking ---------------------------------------------------------
+
+function onHover(ev) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  const ndc = new THREE.Vector2(
+    ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+    -((ev.clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const hit = raycaster.intersectObject(roadMesh, false)[0];
+  if (!hit) { hideTip(); if (!activeLane) clearHighlight(); return; }
+
+  const lane = laneForFace(hit.faceIndex);
+  if (!lane) { hideTip(); return; }
+
+  const { s, t } = project(lane, hit.point);
+  if (activeLane == null) setHighlight(lane);
+
+  tip.style.display = 'block';
+  tip.style.left = (ev.clientX - rect.left + 14) + 'px';
+  tip.style.top = (ev.clientY - rect.top + 14) + 'px';
+  tip.innerHTML =
+    `<b>road ${lane.roadId}</b>  lane ${lane.odLaneId}\n` +
+    `s ${s.toFixed(2)} m   t ${t.toFixed(2)} m\n` +
+    `section ${lane.section}   ${lane.direction}\n` +
+    `laneId ${lane.laneId}`;
+}
+
+function hideTip() { tip.style.display = 'none'; }
+
+// A picked triangle's face index maps to indices[faceIndex*3]; find the lane
+// span whose index range contains it (binary search over sorted spans).
+function laneForFace(faceIndex) {
+  const idx = faceIndex * 3;
+  let lo = 0, hi = spanIndex.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1, s = spanIndex[mid];
+    if (idx < s.start) hi = mid - 1;
+    else if (idx >= s.end) lo = mid + 1;
+    else return s.lane;
+  }
+  return null;
+}
+
+// Signed lateral offset t and arc length s of `p` on a lane centerline,
+// replicating Polyline::project: nearest segment by 3D distance, s summed in
+// 3D, t measured in the ground plane, positive to the left of the segment.
+function project(lane, p) {
+  const pts = lane.centerline;
+  let best = { d2: Infinity, s: 0, t: 0 };
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const ab = [b[0]-a[0], b[1]-a[1], b[2]-a[2]];
+    const len2 = ab[0]*ab[0] + ab[1]*ab[1] + ab[2]*ab[2];
+    const ap = [p.x-a[0], p.y-a[1], p.z-a[2]];
+    let u = len2 > 1e-9 ? (ap[0]*ab[0]+ap[1]*ab[1]+ap[2]*ab[2]) / len2 : 0;
+    u = Math.max(0, Math.min(1, u));
+    const c = [a[0]+ab[0]*u, a[1]+ab[1]*u, a[2]+ab[2]*u];
+    const d2 = (p.x-c[0])**2 + (p.y-c[1])**2 + (p.z-c[2])**2;
+    if (d2 < best.d2) {
+      const segLen = Math.sqrt(len2);
+      // left normal of the horizontal heading: Z × (dx,dy,0) = (-dy, dx, 0).
+      const hlen = Math.hypot(ab[0], ab[1]) || 1;
+      const nx = -ab[1] / hlen, ny = ab[0] / hlen;
+      const t = (p.x - c[0]) * nx + (p.y - c[1]) * ny;
+      best = { d2, s: lane.cum[i] + segLen * u, t };
+    }
+  }
+  return best;
+}
+
+// --- Highlight ---------------------------------------------------------------
+
+function setHighlight(lane) {
+  highlight.geometry.setIndex(new THREE.Uint32BufferAttribute(lane.sliceIndices, 1));
+  highlight.geometry.setDrawRange(0, lane.sliceIndices.length);
+  highlight.visible = true;
+  const flat = new Float32Array(lane.centerline.length * 3);
+  lane.centerline.forEach((p, i) => { flat[i*3]=p[0]; flat[i*3+1]=p[1]; flat[i*3+2]=p[2]+0.05; });
+  highlightLine.geometry.setAttribute('position', new THREE.Float32BufferAttribute(flat, 3));
+  highlightLine.visible = true;
+}
+
+function clearHighlight() { highlight.visible = false; highlightLine.visible = false; }
+
+function selectLane(id) {
+  activeLane = (activeLane === id) ? null : id;
+  if (activeLane == null) clearHighlight();
+  else setHighlight(laneById.get(id));
+  renderSidebar();
+}
+
+// --- Camera framing ----------------------------------------------------------
+
+function frameOn(mesh) {
+  const s = mesh.geometry.boundingSphere;
+  const c = s.center, r = Math.max(s.radius, 5);
+  controls.target.copy(c);
+  camera.position.set(c.x, c.y - r * 1.2, c.z + r * 1.1);
+  camera.near = r / 200; camera.far = r * 20; camera.updateProjectionMatrix();
+  controls.update();
+}
+
+function frameOnLane(lane) {
+  const pts = lane.centerline;
+  const box = new THREE.Box3();
+  for (const p of pts) box.expandByPoint(new THREE.Vector3(p[0], p[1], p[2]));
+  const c = box.getCenter(new THREE.Vector3());
+  const r = Math.max(box.getSize(new THREE.Vector3()).length() * 0.6, 8);
+  controls.target.copy(c);
+  camera.position.set(c.x, c.y - r, c.z + r);
+  controls.update();
+}
+
+// --- Loop / util -------------------------------------------------------------
+
+function resize() {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+function dist3(a, b) { return Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]); }
+
+function showError(e) {
+  const el = document.getElementById('err');
+  el.style.display = 'grid';
+  el.innerHTML = `<div><p><strong>Viewer could not start.</strong></p><p>${e.message}</p></div>`;
+  console.error(e);
+}
+</script>
+</body>
+</html>
