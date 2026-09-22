@@ -31,20 +31,68 @@
 //! # Ok::<(), libopendrive::ImportError>(())
 //! ```
 //!
-//! # What gets imported
+//! # Which OpenDRIVE version
 //!
-//! - Reference geometry: `line`, `arc`, `spiral` (clothoid), `paramPoly3`,
-//!   `poly3`.
-//! - `<elevationProfile>`, and `<lateralProfile>` **superelevation** baked as
-//!   a real cant: the cross-section rolls about the reference line, so an
-//!   outer lane rides higher and its surface normal leans.
-//! - Per-lane widths, `laneOffset`, and multiple lane sections.
-//! - Road/lane `<link>`s and `<junction>`s, resolved into a drive-direction
-//!   lane graph. "Successor" means "a lane you can drive into off this
-//!   lane's exit end", not a raw mirror of the file's `+s` links.
+//! The importer does not read `<header>`. It never inspects `revMajor` or
+//! `revMinor`, and it never rejects a file for its version. Whether a file
+//! loads depends only on whether it uses the elements below.
 //!
-//! Not yet: `<lateralProfile>` `<shape>` (per-`t` crowning and camber), and
-//! lane types other than `driving`.
+//! Every one of those elements is in ASAM OpenDRIVE 1.9.0, the current
+//! revision. `poly3` is deprecated there, still specified, and still read
+//! here. The test suite imports real files declaring 1.4, 1.6 and 1.7.
+//!
+//! # Which elements
+//!
+//! | Element | Attributes read |
+//! | --- | --- |
+//! | `<road>` | `id`, `length` |
+//! | `<road><link>` | `elementType`, `elementId`, `contactPoint` |
+//! | `<planView><geometry>` | `s`, `x`, `y`, `hdg`, `length` |
+//! | `<line>` | none |
+//! | `<arc>` | `curvature` |
+//! | `<spiral>` | `curvStart`, `curvEnd` |
+//! | `<poly3>` | `a`, `b`, `c`, `d` |
+//! | `<paramPoly3>` | `aU`, `bU`, `cU`, `dU`, `aV`, `bV`, `cV`, `dV`, `pRange` |
+//! | `<elevationProfile><elevation>` | `s`, `a`, `b`, `c`, `d` |
+//! | `<lateralProfile><superelevation>` | `s`, `a`, `b`, `c`, `d` |
+//! | `<lanes><laneOffset>` | `s`, `a`, `b`, `c`, `d` |
+//! | `<laneSection>` | `s` |
+//! | `<left>`, `<right>` | none |
+//! | `<lane>` | `id`, `type` |
+//! | `<lane><width>` | `sOffset`, `a`, `b`, `c`, `d` |
+//! | `<lane><link>` | `id` |
+//! | `<junction>` | `id` |
+//! | `<connection>` | `incomingRoad`, `connectingRoad`, `contactPoint` |
+//! | `<laneLink>` | `from`, `to` |
+//!
+//! Four attribute values steer the import:
+//!
+//! - `<lane type>` must be `driving`. Every other lane type is skipped.
+//! - `<link elementType>` is `junction`, or a road for any other value.
+//! - `contactPoint` is `end`, or the start for any other value.
+//! - `<paramPoly3 pRange>` is `arcLength`, matched without case, or
+//!   normalized for any other value.
+//!
+//! `<link>`s and `<junction>`s resolve into a drive-direction lane graph.
+//! "Successor" means "a lane you can drive into off this lane's exit end",
+//! not a raw mirror of the file's `+s` links.
+//!
+//! # What the importer ignores
+//!
+//! Everything else in the file, silently. That includes `<geoReference>`,
+//! `<objects>`, `<signals>`, `<roadMark>`, `<controller>`,
+//! `<junctionGroup>`, `<station>`, and road `<type>` with its `<speed>`.
+//!
+//! Four omissions change the road you get back, rather than only dropping
+//! detail around it:
+//!
+//! - `<shape>`, the other lateralProfile child, so a crowned or cambered
+//!   cross-section imports flat across its width.
+//! - `<border>`. A lane whose extent comes from a border rather than a width
+//!   element has nothing to sample, so the importer drops it.
+//! - `<center>`, so lane 0 never becomes a [`Lane`].
+//! - Lane types other than `driving`, so sidewalks, shoulders, and parking
+//!   lanes are dropped.
 //!
 //! # Coordinate frame
 //!

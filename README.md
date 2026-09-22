@@ -23,6 +23,16 @@ let mesh = net.surface_mesh();
 mesh.validate()?;
 ```
 
+## Which OpenDRIVE version
+
+The importer does not read `<header>`. It never inspects `revMajor` or
+`revMinor`, and it never rejects a file for its version. Whether a file loads
+depends only on whether it uses the elements listed below.
+
+Every one of those elements is in ASAM OpenDRIVE 1.9.0, the current revision.
+`poly3` is deprecated there, still specified, and still read here. The test
+suite imports real files declaring 1.4, 1.6 and 1.7.
+
 ## What it imports
 
 - Reference geometry: `line`, `arc`, `spiral` (clothoid), `paramPoly3`,
@@ -34,11 +44,25 @@ mesh.validate()?;
 - Road/lane `<link>`s and `<junction>`s, resolved into a drive-direction lane
   graph.
 
-Not yet: `<lateralProfile>` `<shape>` (per-`t` crowning and camber), and lane
-types other than `driving`.
+For the exact element and attribute list, see
+[the crate docs](https://docs.rs/libopendrive).
 
 Geometry is cross-checked against the reference C++
 [libOpenDRIVE](https://github.com/pageldev/libOpenDRIVE).
+
+## What it ignores
+
+Everything else in the file, silently, including `<objects>`, `<signals>`,
+`<roadMark>`, and `<geoReference>`. Four omissions change the road you get
+back rather than only dropping detail around it:
+
+- `<shape>`, the other lateralProfile child, so a crowned or cambered
+  cross-section imports flat across its width.
+- `<border>`. A lane whose extent comes from a border rather than a width
+  element has nothing to sample, so the importer drops it.
+- `<center>`, so lane 0 never becomes a `Lane`.
+- Lane types other than `driving`, so sidewalks, shoulders, and parking lanes
+  are dropped.
 
 ## Coordinate frame
 
@@ -47,8 +71,6 @@ reference line in the X-Y plane and elevation along +Z. A point imports
 unchanged, so a coordinate you read out of the `.xodr` is the coordinate you
 get back. An OpenDRIVE left turn curves toward +Y, and positive lane offset `t`
 is to the left of the heading.
-
-A renderer that wants Y-up has to rotate on the way in.
 
 Travel direction follows right-hand traffic: negative-id lanes run with `+s`,
 positive-id lanes against it.
