@@ -25,6 +25,11 @@ pub struct LaneId(pub usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LaneType {
+    /// Surface inside the road with no function assigned to it: the paved area
+    /// a cross-section has to account for but does not name. Not a gap. It has
+    /// a width and a surface like any other lane, and a map that leaves it out
+    /// has holes in it.
+    None,
     /// An ordinary traffic lane.
     Driving,
     /// One lane carrying traffic both ways, such as a centre turn lane.
@@ -102,6 +107,7 @@ impl LaneType {
     /// format spells the type with.
     pub fn as_str(&self) -> &'static str {
         match self {
+            Self::None => "none",
             Self::Driving => "driving",
             Self::Bidirectional => "bidirectional",
             Self::Bus => "bus",

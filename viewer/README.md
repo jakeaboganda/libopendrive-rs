@@ -8,6 +8,8 @@ It has two parts: a Rust exporter (`examples/viewer_export.rs`) that bakes an
 it. The page is the only consumer of the crate's output; the crate itself does
 no rendering.
 
+![town07 ion the viewer](town07.png)
+
 ## Run it
 
 ```sh

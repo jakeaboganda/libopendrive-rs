@@ -67,7 +67,7 @@
 //!
 //! Four attribute values steer the import:
 //!
-//! - `<lane type>` chooses the [`LaneType`] a lane bakes as. The `none` and
+//! - `<lane type>` chooses the [`LaneType`] a lane bakes as. The
 //!   vendor-specific types, and any name not recognised, are skipped, though
 //!   their widths still offset the lanes outboard of them.
 //! - `<link elementType>` is `junction`, or a road for any other value.
@@ -93,8 +93,8 @@
 //! - `<border>`. A lane whose extent comes from a border rather than a width
 //!   element has nothing to sample, so the importer drops it.
 //! - `<center>`, so lane 0 never becomes a [`Lane`].
-//! - Vendor-specific and unnamed lane types, so a `none` or `special1` lane is
-//!   dropped rather than guessed at.
+//! - Vendor-specific lane types, so a `special1` lane is dropped rather than
+//!   guessed at.
 //!
 //! # Coordinate frame
 //!

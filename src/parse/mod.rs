@@ -308,17 +308,21 @@ struct LaneDef {
 /// The [`LaneType`] an OpenDRIVE `<lane>` `type` maps to, or `None` for a type
 /// the importer does not emit. A new emitted lane type is one arm here.
 ///
-/// Three groups are deliberately absent. `none` is a gap in the cross-section
-/// rather than a surface. `special1`..`special3` are vendor-defined, so any
-/// mapping would be invention. An unrecognised type is the same case as those,
-/// and falls through for the same reason. All three still reach the offset
-/// accumulation in [`emit_section`], so the lanes outboard of them stay where
-/// the file put them; they are just not surfaces of their own.
+/// Only `special1`..`special3` and names not listed here are absent. They are
+/// vendor-defined, so any mapping would be invention. They still reach the
+/// offset accumulation in [`emit_section`], so the lanes outboard of them stay
+/// where the file put them; they are just not surfaces of their own.
+///
+/// `none` is a lane, not a gap. It is paved area the cross-section declares
+/// without naming a use for, and the reference C++ implementation meshes it
+/// like any other. Town07 alone carries 27 of them, averaging 3.5 m wide, so
+/// skipping them punched holes in the surface.
 ///
 /// `mwyEntry` and `mwyExit` are the older spellings of `entry` and `exit`, and
 /// land on the same variants.
 fn lane_type(od_type: Option<&str>) -> Option<LaneType> {
     let kind = match od_type? {
+        "none" => LaneType::None,
         "driving" => LaneType::Driving,
         "bidirectional" => LaneType::Bidirectional,
         "bus" => LaneType::Bus,
@@ -555,12 +559,12 @@ fn emit_section(
             if widths.is_empty() {
                 continue; // no width: nothing to sample, and no offset to add
             }
-            // Keep every lane, whatever its type. A `none` or vendor-specific
-            // lane still pushes the lanes outboard of it away from the
-            // reference line, so its width has to enter the running offset even
-            // though it is not emitted. Omitting these lanes placed an outboard
-            // driving lane too close to the reference line, and on a curve gave
-            // it the wrong radius and length.
+            // Keep every lane, whatever its type. A vendor-specific lane still
+            // pushes the lanes outboard of it away from the reference line, so
+            // its width has to enter the running offset even though it is not
+            // emitted. Omitting these lanes placed an outboard driving lane too
+            // close to the reference line, and on a curve gave it the wrong
+            // radius and length.
             let kind = lane_type(lane.attribute("type"));
             let (pred_link, succ_link) = links::lane_link(lane);
             let def = LaneDef {
@@ -1063,10 +1067,10 @@ mod tests {
         assert!((lens[1] - 25.0).abs() < 1.0, "long section {}", lens[1]);
     }
 
-    // A cross-section using most of the lane vocabulary: a sidewalk, a kerb and
-    // a parking lane outboard of two running lanes, a `none` strip and a
-    // vendor-specific one the importer has no meaning for, and a median between
-    // the two directions.
+    // A cross-section using most of the lane vocabulary: a sidewalk, a kerb, a
+    // parking lane and an unnamed strip outboard of two running lanes, a
+    // vendor-specific type the importer has no meaning for, and a median
+    // between the two directions.
     const MANY_TYPES: &str = r#"<?xml version="1.0"?>
 <OpenDRIVE>
   <road name="m" length="20.0" id="1" junction="-1">
@@ -1077,8 +1081,8 @@ mod tests {
       <laneSection s="0.0">
         <left>
           <lane id="1" type="median"><width sOffset="0.0" a="1.0"/></lane>
-          <lane id="2" type="driving"><width sOffset="0.0" a="3.5"/></lane>
-          <lane id="3" type="special1"><width sOffset="0.0" a="1.0"/></lane>
+          <lane id="2" type="special1"><width sOffset="0.0" a="1.0"/></lane>
+          <lane id="3" type="driving"><width sOffset="0.0" a="3.5"/></lane>
         </left>
         <right>
           <lane id="-1" type="driving"><width sOffset="0.0" a="3.5"/></lane>
@@ -1151,9 +1155,10 @@ mod tests {
             "parking is not a lane change"
         );
         assert!(lane(-6).neighbors.is_empty(), "sidewalk is not either");
-        // Left side: the median is inboard of the only driving lane, so that
-        // lane has nothing to change into at all.
-        assert!(lane(2).neighbors.is_empty(), "a median is not crossable");
+        assert!(lane(-3).neighbors.is_empty(), "nor is unnamed surface");
+        // Left side: nothing drivable sits beside the only driving lane, so it
+        // has nothing to change into at all.
+        assert!(lane(3).neighbors.is_empty(), "a median is not crossable");
     }
 
     #[test]
