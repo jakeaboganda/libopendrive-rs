@@ -32,6 +32,13 @@ pub struct Mesh {
 
 /// The slice of a [`Mesh`] belonging to one lane: a half-open range into
 /// `vertices` (and, in step, `normals`) and one into `indices`.
+///
+/// Within `vertices` the layout is fixed: two vertices per rib, left edge
+/// first, ribs in centerline order. So the even-numbered vertices of the span
+/// are the lane's left boundary and the odd-numbered ones its right boundary,
+/// each a polyline in its own right. That is a promise, not an accident of the
+/// tessellator, so a renderer can draw lane edges straight off the buffer it
+/// already uploaded instead of being handed them a second time.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LaneSpan {
@@ -213,46 +220,79 @@ impl<'a> MeshSampler<'a> {
 }
 
 impl RoadNetwork {
-    /// Tessellate every driving lane into one surface mesh, a quad strip per
-    /// lane. Each rib sits +/-width/2 from the centerline along the per-vertex
+    /// Tessellate every lane into one surface mesh, a quad strip per lane.
+    /// Sidewalks, medians and shoulders are surfaces a body can stand on and a
+    /// renderer must draw, so the mesh covers the whole cross-section, not only
+    /// the part traffic uses. [`Mesh::lanes`] names the lane behind each slice,
+    /// and its [`LaneType`](crate::LaneType) says what that slice is. Each rib sits +/-width/2 from the centerline along the per-vertex
     /// cross axis and carries the centerline's elevation. On a superelevated
     /// lane the cross axis tilts about the tangent by the local `bank`, so the
     /// outer edge of a banked curve rides above the inner one. Winding is
     /// consistent, so triangles face up.
     ///
-    /// Ribs follow the vertex bisector normal, which holds the width steady
-    /// across vertices. Two shapes would flip a triangle's winding, and the
-    /// loop guards both.
+    /// Ribs follow the centerline's own per-vertex tangent, which holds the
+    /// width steady across vertices and, at a lane's two ends, is the true
+    /// curve tangent whenever the importer knew it. That last part is what
+    /// makes contiguous lane sections meet flush: both sides of a joint derive
+    /// their rib from the same tangent, so neither opens a V-shaped seam.
+    /// Two shapes would flip a triangle's winding, and the loop guards both.
     ///
-    /// A stub segment far shorter than the width, a joint sample landing a few
-    /// cm from a section end, tessellates to a near-collinear sliver whose
-    /// normal flips. So near-duplicate centerline points are welded first and
-    /// the last survivor snapped onto the true endpoint, which keeps the lane's
-    /// length and its join to the next section.
+    /// A stub segment, a joint sample landing centimetres past the one before
+    /// it, tessellates to a sliver whose normal flips, or leaves a pinched rib
+    /// next to a full-width one with no room between them. So a point that sits
+    /// far closer to its predecessor than that predecessor sat to its own is
+    /// welded away first, and the last survivor snapped onto the true endpoint,
+    /// which keeps the lane's length and its join to the next section.
     ///
     /// On a corner tighter than the half-width the inner rib would cross the
     /// next inner vertex and fold the strip into a bowtie. So the inner offset
     /// is clamped, pinching the lane at the apex, while the outer rib keeps its
     /// full half-width and radius.
     pub fn surface_mesh(&self) -> Mesh {
-        // Below this spacing in metres a point is a stub, not a real sample.
-        // Real samples are metres apart, and welding moves an endpoint by at
-        // most this far.
-        const WELD_EPS: f32 = 0.1;
+        // Floor on the stub threshold, in metres: nothing this close together
+        // is a real sample, whatever its neighbours look like.
+        const WELD_FLOOR: f32 = 0.1;
+        // A segment this fraction of the one before it is a stub rather than a
+        // sample. Relative, not absolute, because a stub is an odd one out
+        // among the samples around it: a section end landing centimetres past
+        // the last one. A fixed threshold cannot tell that from a tight curve
+        // sampled finely on purpose, and either lets a fold through or flattens
+        // the curve.
+        const STUB_FRACTION: f32 = 0.25;
         let horizontal = |v: Vector| Vector::new(v.x, v.y, 0.0);
         let mut mesh = Mesh::default();
-        for lane in self.driving_lanes() {
+        for lane in self.lanes() {
             let raw = lane.center.points();
+            let raw_tangents = lane.center.tangents();
             let mut points: Vec<Point> = Vec::with_capacity(raw.len());
             let mut bank: Vec<f32> = Vec::with_capacity(raw.len());
+            // Kept in step with `points`: welding drops vertices, and a dropped
+            // vertex must take its tangent with it.
+            let mut along: Vec<Vector> = Vec::with_capacity(raw.len());
+            // Length of the last segment kept, which sets what counts as a stub
+            // next to it.
+            let mut last_seg = 0.0_f32;
             for (i, &p) in raw.iter().enumerate() {
-                if points.last().is_none_or(|&q| (p - q).length() > WELD_EPS) {
+                let step = points.last().map(|&q| (p - q).length());
+                let keep = match step {
+                    None => true,
+                    Some(d) => d > (STUB_FRACTION * last_seg).max(WELD_FLOOR),
+                };
+                if keep {
+                    last_seg = step.unwrap_or(0.0);
                     points.push(p);
                     bank.push(lane.bank.get(i).copied().unwrap_or(0.0));
+                    along.push(raw_tangents.get(i).copied().unwrap_or(Vector::ZERO));
                 }
             }
+            // Snap the last survivor onto the true endpoint, tangent included:
+            // the seam at a section joint is decided by the endpoint's tangent,
+            // so taking the stub's would undo the fix.
             if let (Some(&end), Some(slot)) = (raw.last(), points.last_mut()) {
-                *slot = end; // snap the last survivor onto the true endpoint
+                *slot = end;
+            }
+            if let (Some(&end), Some(slot)) = (raw_tangents.last(), along.last_mut()) {
+                *slot = end;
             }
             if points.len() < 2 {
                 // A sub-epsilon lane still keeps a span: its two endpoints as one
@@ -266,15 +306,19 @@ impl RoadNetwork {
                     lane.bank.first().copied().unwrap_or(0.0),
                     lane.bank.last().copied().unwrap_or(0.0),
                 ];
+                along = vec![
+                    raw_tangents.first().copied().unwrap_or(Vector::ZERO),
+                    raw_tangents.last().copied().unwrap_or(Vector::ZERO),
+                ];
             }
             let half = lane.width * 0.5;
             let n = points.len();
             let base = mesh.vertices.len() as u32;
             let first_index = mesh.indices.len() as u32;
             for i in 0..n {
-                // Horizontal vertex-bisector tangent. On an un-welded lane this
-                // equals `Polyline`'s stored tangents, so a clean lane is
-                // byte-identical to before welding.
+                // Chords either side of this vertex. They still decide the
+                // inner-rib pinch below, which is about this welded polyline's
+                // corner, not about the curve it was sampled from.
                 let inc = if i > 0 {
                     horizontal(points[i] - points[i - 1]).normalize_or(Vector::ZERO)
                 } else {
@@ -285,7 +329,12 @@ impl RoadNetwork {
                 } else {
                     Vector::ZERO
                 };
-                let along = (inc + out).normalize_or(Vector::ZERO);
+                // The centerline's tangent at this vertex: the same bisector at
+                // an interior vertex, but the analytical curve tangent at the
+                // ends. Welding can leave a vertex whose tangent no longer
+                // matches its new neighbours, so fall back to the chords.
+                let along =
+                    horizontal(along[i]).normalize_or((inc + out).normalize_or(Vector::ZERO));
                 // Cross axis, rolled about the tangent by the local bank.
                 // Positive bank raises the left rib. A flat lane leaves it the
                 // horizontal left normal, so the mesh is unchanged.

@@ -67,7 +67,9 @@
 //!
 //! Four attribute values steer the import:
 //!
-//! - `<lane type>` must be `driving`. Every other lane type is skipped.
+//! - `<lane type>` chooses the [`LaneType`] a lane bakes as. The `none` and
+//!   vendor-specific types, and any name not recognised, are skipped, though
+//!   their widths still offset the lanes outboard of them.
 //! - `<link elementType>` is `junction`, or a road for any other value.
 //! - `contactPoint` is `end`, or the start for any other value.
 //! - `<paramPoly3 pRange>` is `arcLength`, matched without case, or
@@ -91,8 +93,8 @@
 //! - `<border>`. A lane whose extent comes from a border rather than a width
 //!   element has nothing to sample, so the importer drops it.
 //! - `<center>`, so lane 0 never becomes a [`Lane`].
-//! - Lane types other than `driving`, so sidewalks, shoulders, and parking
-//!   lanes are dropped.
+//! - Vendor-specific and unnamed lane types, so a `none` or `special1` lane is
+//!   dropped rather than guessed at.
 //!
 //! # Coordinate frame
 //!
@@ -128,6 +130,11 @@
 //!
 //! - build lane geometry with [`Polyline::try_new`] and surface an error on
 //!   degenerate input, rather than the panicking [`Polyline::new`];
+//! - where it splits one curve into contiguous lanes, build them with
+//!   [`Polyline::try_new_with_tangents`] and pass the curve's analytical
+//!   tangent at each end. A polyline that has to guess its end tangent guesses
+//!   from its last chord, and the two lanes meeting at a joint then guess
+//!   differently and leave a visible seam;
 //! - keep [`LaneId`]s opaque, and never assume one indexes the lane list.
 //!
 //! On curves tighter than the half-width, [`RoadNetwork::surface_mesh`] pinches

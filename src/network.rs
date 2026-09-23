@@ -12,13 +12,127 @@ use crate::grid::{Aabb, Grid};
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LaneId(pub usize);
 
-/// What a lane is for. Only driving lanes exist today; shoulders, sidewalks,
-/// etc. slot in here as the importer grows.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What a lane is for.
+///
+/// The set mirrors the lane functions a road cross-section distinguishes,
+/// because that is the vocabulary the maps are written in, and collapsing it
+/// would throw away the only thing that tells a sidewalk from a bus lane.
+///
+/// Two questions get asked of a lane type often enough to answer here rather
+/// than at every call site: whether through traffic belongs on it
+/// ([`LaneType::is_drivable`]) and what to call it ([`LaneType::as_str`]).
+/// Everything else is the consumer's policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LaneType {
-    /// A lane vehicles drive on.
+    /// An ordinary traffic lane.
     Driving,
+    /// One lane carrying traffic both ways, such as a centre turn lane.
+    Bidirectional,
+    /// Reserved for buses.
+    Bus,
+    /// Reserved for taxis.
+    Taxi,
+    /// Reserved for high-occupancy vehicles.
+    Hov,
+    /// An acceleration lane joining a road.
+    Entry,
+    /// A deceleration lane leaving a road.
+    Exit,
+    /// A ramp onto a motorway.
+    OnRamp,
+    /// A ramp off a motorway.
+    OffRamp,
+    /// A ramp linking two motorways.
+    ConnectingRamp,
+    /// A short bypass lane at an intersection, usually for turning traffic.
+    SlipLane,
+    /// A lane vehicles park in.
+    Parking,
+    /// A hard shoulder for emergency stops.
+    Stop,
+    /// A lane traffic may not use, such as a painted gore area.
+    Restricted,
+    /// A cycle lane.
+    Biking,
+    /// A footway.
+    Sidewalk,
+    /// Hard shoulder, outboard of the running lanes.
+    Shoulder,
+    /// The paved strip between a running lane and whatever is beside it.
+    Border,
+    /// The kerb between the carriageway and the footway.
+    Curb,
+    /// The strip separating opposing carriageways.
+    Median,
+    /// A lane closed for works.
+    RoadWorks,
+    /// Tram track sharing the road surface.
+    Tram,
+    /// Railway track.
+    Rail,
+}
+
+impl LaneType {
+    /// Whether ordinary through traffic belongs on this lane.
+    ///
+    /// This is the routing predicate. It decides which lanes a vehicle may
+    /// change into, so it is deliberately narrower than "has a paved surface":
+    /// a parking lane and a hard shoulder are drivable in the everyday sense
+    /// and are excluded, because a route that ran through them would be wrong.
+    pub fn is_drivable(&self) -> bool {
+        matches!(
+            self,
+            Self::Driving
+                | Self::Bidirectional
+                | Self::Bus
+                | Self::Taxi
+                | Self::Hov
+                | Self::Entry
+                | Self::Exit
+                | Self::OnRamp
+                | Self::OffRamp
+                | Self::ConnectingRamp
+                | Self::SlipLane
+        )
+    }
+
+    /// A stable lowercase name, for a legend, a log line, or a viewer readout.
+    /// Format-neutral, so it is not necessarily the token any particular map
+    /// format spells the type with.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Driving => "driving",
+            Self::Bidirectional => "bidirectional",
+            Self::Bus => "bus",
+            Self::Taxi => "taxi",
+            Self::Hov => "hov",
+            Self::Entry => "entry",
+            Self::Exit => "exit",
+            Self::OnRamp => "on-ramp",
+            Self::OffRamp => "off-ramp",
+            Self::ConnectingRamp => "connecting-ramp",
+            Self::SlipLane => "slip-lane",
+            Self::Parking => "parking",
+            Self::Stop => "stop",
+            Self::Restricted => "restricted",
+            Self::Biking => "biking",
+            Self::Sidewalk => "sidewalk",
+            Self::Shoulder => "shoulder",
+            Self::Border => "border",
+            Self::Curb => "curb",
+            Self::Median => "median",
+            Self::RoadWorks => "road-works",
+            Self::Tram => "tram",
+            Self::Rail => "rail",
+        }
+    }
+}
+
+impl std::fmt::Display for LaneType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Travel direction of a lane relative to its geometry's start→end.
@@ -31,8 +145,9 @@ pub enum Direction {
     Backward,
 }
 
-/// One lane: a drivable strip described by its centerline and width. A plan
-/// is laid down `center`; a vehicle drives it.
+/// One lane: a strip of road surface described by its centerline and width.
+/// Not necessarily drivable; a sidewalk and a median are lanes too, and
+/// [`Lane::kind`] is what separates them.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Lane {
@@ -86,8 +201,9 @@ pub struct Lane {
 )]
 pub struct RoadNetwork {
     lanes: Vec<Lane>,
-    /// Driving lanes bucketed by their XY footprint, for [`Self::nearest_lane`].
-    /// Derived from `lanes`, so it takes no part in equality.
+    /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
+    /// [`Self::nearest_lane`]. Derived from `lanes`, so it takes no part in
+    /// equality.
     index: LaneIndex,
 }
 
@@ -113,6 +229,11 @@ impl From<RoadNetwork> for Vec<Lane> {
 
 /// The driving lanes' XY footprints, and a grid over them. Entries index
 /// `lanes` directly, so a hit resolves without a second lookup.
+///
+/// Only [`LaneType::Driving`] is indexed, not everything
+/// [`LaneType::is_drivable`] admits. Snapping a body to the road must land it
+/// on an ordinary traffic lane, so a bus lane or a slip lane beside it never
+/// wins on distance alone.
 #[derive(Debug, Clone, Default)]
 struct LaneIndex {
     bounds: Vec<Aabb>,
@@ -169,8 +290,8 @@ impl Lane {
 }
 
 impl RoadNetwork {
-    /// Bake a lane list into a network, indexing the driving lanes by their
-    /// ground footprint. Linear in the total number of centerline points.
+    /// Bake a lane list into a network, indexing the [`LaneType::Driving`]
+    /// lanes by their ground footprint. Linear in the total number of centerline points.
     pub fn new(lanes: Vec<Lane>) -> Self {
         let index = LaneIndex::build(&lanes);
         Self { lanes, index }
@@ -196,7 +317,10 @@ impl RoadNetwork {
         }
     }
 
-    /// Every lane of kind [`LaneType::Driving`].
+    /// Every lane of kind [`LaneType::Driving`]. Narrower than
+    /// [`LaneType::is_drivable`], and narrower still than [`Self::lanes`],
+    /// which also yields sidewalks, medians, and the rest of the
+    /// cross-section.
     pub fn driving_lanes(&self) -> impl Iterator<Item = &Lane> {
         self.lanes.iter().filter(|l| l.kind == LaneType::Driving)
     }

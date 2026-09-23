@@ -21,12 +21,12 @@ fn every_lane_span_addresses_its_own_slice_of_the_mesh() {
 
     assert_eq!(
         mesh.lanes.len(),
-        net.driving_lanes().count(),
+        net.lanes().len(),
         "one span per tessellated lane"
     );
 
     let mut covered = 0usize;
-    for (span, lane) in mesh.lanes.iter().zip(net.driving_lanes()) {
+    for (span, lane) in mesh.lanes.iter().zip(net.lanes()) {
         assert_eq!(span.lane, lane.id, "spans are in emission order");
         assert!(net.lane(span.lane).is_some(), "span names a real lane");
 
@@ -63,6 +63,49 @@ fn every_lane_span_addresses_its_own_slice_of_the_mesh() {
         covered += indices;
     }
     assert_eq!(covered, mesh.indices.len(), "the spans tile the whole mesh");
+}
+
+#[test]
+fn a_span_is_left_and_right_boundary_vertices_in_alternation() {
+    // A renderer draws lane edges by taking every other vertex of a span. That
+    // only works because `LaneSpan` promises the pairing, so check the promise:
+    // in each pair the two vertices straddle the centerline, one to its left
+    // and one to its right, no further apart than the lane is wide.
+    let net = load_file(TOWN).expect("town07 loads");
+    let mesh = net.surface_mesh();
+
+    let mut checked = 0usize;
+    for span in &mesh.lanes {
+        let lane = net.lane(span.lane).expect("the span names a real lane");
+        if lane.width <= 1e-3 {
+            // A lane that starts from nothing (a widening taper) has both ribs
+            // on the centerline, so there is no left and right to tell apart.
+            continue;
+        }
+        checked += 1;
+        let slice = &mesh.vertices[span.vertices.start as usize..span.vertices.end as usize];
+        for pair in slice.chunks_exact(2) {
+            let (left, right) = (pair[0], pair[1]);
+            let width = (left - right).length();
+            assert!(
+                width > 0.0 && width <= lane.width + 1e-3,
+                "lane {:?} rib is {width} m across, lane is {} m wide",
+                lane.id,
+                lane.width
+            );
+            assert!(
+                lane.center.project(left).offset > 0.0,
+                "lane {:?} has an even vertex right of its centerline",
+                lane.id
+            );
+            assert!(
+                lane.center.project(right).offset < 0.0,
+                "lane {:?} has an odd vertex left of its centerline",
+                lane.id
+            );
+        }
+    }
+    assert!(checked > 100, "only {checked} lanes had ribs to check");
 }
 
 #[test]
@@ -113,14 +156,24 @@ fn a_mesh_survives_a_round_trip() {
 #[cfg(feature = "serde")]
 #[test]
 fn a_polyline_of_fewer_than_two_points_is_refused_on_the_way_in() {
-    // Polyline serializes as bare points, so deserializing is the one place
-    // an untrusted peer could hand us a degenerate one.
+    // Polyline serializes as points plus its two boundary tangents, so
+    // deserializing is the one place an untrusted peer could hand us a
+    // degenerate one.
     use libopendrive::Polyline;
-    assert!(serde_json::from_str::<Polyline>("[[0,0,0]]").is_err());
-    assert!(serde_json::from_str::<Polyline>("[]").is_err());
+    let one = r#"{"points":[[0,0,0]],"tangents":[[1,0,0],[1,0,0]]}"#;
+    let none = r#"{"points":[],"tangents":[[1,0,0],[1,0,0]]}"#;
+    assert!(serde_json::from_str::<Polyline>(one).is_err());
+    assert!(serde_json::from_str::<Polyline>(none).is_err());
 
-    let line: Polyline = serde_json::from_str("[[0,0,0],[10,0,0]]").expect("two points");
+    let two = r#"{"points":[[0,0,0],[10,0,0]],"tangents":[[1,0,0],[1,0,0]]}"#;
+    let line: Polyline = serde_json::from_str(two).expect("two points");
     assert!((line.length() - 10.0).abs() < 1e-5);
     // Derived state really was rebuilt, not defaulted.
     assert!(line.pose_at(5.0).heading.x > 0.9);
+
+    // A boundary tangent that is nonsense degrades to the end chord rather than
+    // sinking an otherwise valid polyline.
+    let junk = r#"{"points":[[0,0,0],[10,0,0]],"tangents":[[0,0,0],[0,0,0]]}"#;
+    let degenerate: Polyline = serde_json::from_str(junk).expect("junk tangents still load");
+    assert!(degenerate.pose_at(0.0).heading.x > 0.9);
 }

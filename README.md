@@ -41,6 +41,9 @@ suite imports real files declaring 1.4, 1.6 and 1.7.
   cant. The cross-section rolls about the reference line, so an outer lane
   rides higher and its surface normal leans.
 - Per-lane widths, `laneOffset`, and multiple lane sections.
+- The lane cross-section as a whole, not only the carriageway: `LaneType`
+  names 23 functions, from sidewalks and kerbs to ramps and tram track.
+  `LaneType::is_drivable` separates the ones traffic uses.
 - Road/lane `<link>`s and `<junction>`s, resolved into a drive-direction lane
   graph.
 
@@ -61,8 +64,9 @@ back rather than only dropping detail around it:
 - `<border>`. A lane whose extent comes from a border rather than a width
   element has nothing to sample, so the importer drops it.
 - `<center>`, so lane 0 never becomes a `Lane`.
-- Lane types other than `driving`, so sidewalks, shoulders, and parking lanes
-  are dropped.
+- Vendor-specific and unnamed lane types, so a `none` or `special1` lane is
+  dropped rather than guessed at. Its width still offsets the lanes outboard
+  of it.
 
 ## Coordinate frame
 
@@ -122,7 +126,7 @@ nothing here constrains which math or engine crate you use, or its version.
 
 Lane and surface lookups are answered off a ground-plane index, so their cost
 tracks local road density rather than map size. On CARLA's Town07 (234 roads,
-673 driving lanes):
+920 lanes, 673 of them driving):
 
 | | per call |
 | --- | --- |

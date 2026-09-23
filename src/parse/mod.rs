@@ -8,7 +8,7 @@
 //! Geometry is cross-checked against the reference C++
 //! [libOpenDRIVE](https://github.com/pageldev/libOpenDRIVE).
 
-use crate::coords::Point;
+use crate::coords::{Point, Vector};
 use crate::{Direction, Lane, LaneId, LaneType, Polyline, RoadNetwork};
 
 mod links;
@@ -24,7 +24,7 @@ pub enum ImportError {
     #[error("invalid OpenDRIVE XML: {0}")]
     Xml(#[from] roxmltree::Error),
     /// The XML parsed, but it is not a usable map. Either it was unreadable
-    /// from disk, or it carries no driving lanes at all.
+    /// from disk, or it carries no lanes at all.
     #[error("malformed OpenDRIVE: {0}")]
     Malformed(String),
 }
@@ -88,7 +88,7 @@ pub fn load_str_with_provenance(
         parse_road(road, &mut lanes, &mut topo);
     }
     if lanes.is_empty() {
-        return Err(ImportError::Malformed("no driving lanes found".into()));
+        return Err(ImportError::Malformed("no lanes found".into()));
     }
     // Resolve connectivity once all lanes exist and are registered.
     topo.junctions = links::junctions(root);
@@ -307,11 +307,44 @@ struct LaneDef {
 
 /// The [`LaneType`] an OpenDRIVE `<lane>` `type` maps to, or `None` for a type
 /// the importer does not emit. A new emitted lane type is one arm here.
+///
+/// Three groups are deliberately absent. `none` is a gap in the cross-section
+/// rather than a surface. `special1`..`special3` are vendor-defined, so any
+/// mapping would be invention. An unrecognised type is the same case as those,
+/// and falls through for the same reason. All three still reach the offset
+/// accumulation in [`emit_section`], so the lanes outboard of them stay where
+/// the file put them; they are just not surfaces of their own.
+///
+/// `mwyEntry` and `mwyExit` are the older spellings of `entry` and `exit`, and
+/// land on the same variants.
 fn lane_type(od_type: Option<&str>) -> Option<LaneType> {
-    match od_type {
-        Some("driving") => Some(LaneType::Driving),
-        _ => None,
-    }
+    let kind = match od_type? {
+        "driving" => LaneType::Driving,
+        "bidirectional" => LaneType::Bidirectional,
+        "bus" => LaneType::Bus,
+        "taxi" => LaneType::Taxi,
+        "HOV" => LaneType::Hov,
+        "entry" | "mwyEntry" => LaneType::Entry,
+        "exit" | "mwyExit" => LaneType::Exit,
+        "onRamp" => LaneType::OnRamp,
+        "offRamp" => LaneType::OffRamp,
+        "connectingRamp" => LaneType::ConnectingRamp,
+        "slipLane" => LaneType::SlipLane,
+        "parking" => LaneType::Parking,
+        "stop" => LaneType::Stop,
+        "restricted" => LaneType::Restricted,
+        "biking" => LaneType::Biking,
+        "sidewalk" => LaneType::Sidewalk,
+        "shoulder" => LaneType::Shoulder,
+        "border" => LaneType::Border,
+        "curb" => LaneType::Curb,
+        "median" => LaneType::Median,
+        "roadWorks" => LaneType::RoadWorks,
+        "tram" => LaneType::Tram,
+        "rail" => LaneType::Rail,
+        _ => return None,
+    };
+    Some(kind)
 }
 
 // --- Parsing ------------------------------------------------------------------
@@ -490,8 +523,11 @@ fn parse_road(road: roxmltree::Node, out: &mut Vec<Lane>, topo: &mut Topology) {
     }
 }
 
-/// Append each driving lane of one section as a `Lane` spanning `[s_start,
-/// s_end]`. Malformed individual lanes are skipped, not fatal (real files).
+/// Append each lane of one section as a `Lane` spanning `[s_start, s_end]`.
+/// Malformed individual lanes are skipped, not fatal (real files).
+///
+/// Every lane with a width is sampled for the running lateral offset, whatever
+/// its type; only the ones [`lane_type`] recognises become a `Lane`.
 #[allow(clippy::too_many_arguments)]
 fn emit_section(
     section: roxmltree::Node,
@@ -519,12 +555,12 @@ fn emit_section(
             if widths.is_empty() {
                 continue; // no width: nothing to sample, and no offset to add
             }
-            // Keep every lane, whatever its type. A shoulder or a `none` lane
-            // still pushes the lanes outboard of it away from the reference
-            // line, so its width has to enter the running offset even though
-            // only some types are emitted. Omitting these lanes placed an
-            // outboard driving lane too close to the reference line, and on a
-            // curve gave it the wrong radius and length.
+            // Keep every lane, whatever its type. A `none` or vendor-specific
+            // lane still pushes the lanes outboard of it away from the
+            // reference line, so its width has to enter the running offset even
+            // though it is not emitted. Omitting these lanes placed an outboard
+            // driving lane too close to the reference line, and on a curve gave
+            // it the wrong radius and length.
             let kind = lane_type(lane.attribute("type"));
             let (pred_link, succ_link) = links::lane_link(lane);
             let def = LaneDef {
@@ -572,14 +608,15 @@ fn emit_section(
         } else {
             Direction::Forward
         };
-        // Lanes emitted on this side, center-outward, as (id, index in `out`).
-        // Consecutive ones are lateral neighbors (lane-change edges).
-        let mut emitted: Vec<(LaneId, usize)> = Vec::new();
+        // Lanes emitted on this side, center-outward, as (id, index in `out`,
+        // kind). Consecutive ones are lateral neighbors (lane-change edges),
+        // subject to the drivability test below.
+        let mut emitted: Vec<(LaneId, usize, LaneType)> = Vec::new();
         for (i, lane) in side.iter().enumerate() {
             let Some(kind) = lane.kind else {
                 continue; // offset-only type: counted above, not emitted
             };
-            let points = sample_lane(
+            let (points, headings) = sample_lane(
                 geoms,
                 elevations,
                 superelevations,
@@ -590,7 +627,14 @@ fn emit_section(
                 sign,
                 &sample_s,
             );
-            let Some(center) = Polyline::try_new(points) else {
+            // Anchor the ends on the true curve tangents so this section's ribs
+            // line up with its neighbours'.
+            let (Some(&start_tangent), Some(&end_tangent)) = (headings.first(), headings.last())
+            else {
+                continue;
+            };
+            let Some(center) = Polyline::try_new_with_tangents(points, start_tangent, end_tangent)
+            else {
                 continue;
             };
             let id = LaneId(topo.next_id);
@@ -606,7 +650,7 @@ fn emit_section(
                 succ_link: lane.succ_link,
                 pred_link: lane.pred_link,
             });
-            emitted.push((id, out.len()));
+            emitted.push((id, out.len(), kind));
             out.push(Lane {
                 id,
                 kind,
@@ -622,21 +666,35 @@ fn emit_section(
                 neighbors: Vec::new(),
             });
         }
-        // Consecutive same-side lanes are each other's lane-change neighbors.
+        // Consecutive same-side lanes are each other's lane-change neighbors,
+        // but only where both ends carry through traffic. Without that test a
+        // driving lane would list the sidewalk beside it as a lane change, and
+        // the router would happily take it. A non-drivable lane between two
+        // driving lanes separates them for the same reason: it stands in the
+        // sequence, so they are not consecutive and no edge spans it.
         for k in 0..emitted.len() {
-            let mut nbrs = Vec::new();
-            if k > 0 {
-                nbrs.push(emitted[k - 1].0);
+            if !emitted[k].2.is_drivable() {
+                continue;
             }
-            if k + 1 < emitted.len() {
-                nbrs.push(emitted[k + 1].0);
-            }
+            let nbrs = [k.checked_sub(1), Some(k + 1)]
+                .into_iter()
+                .flatten()
+                .filter_map(|n| emitted.get(n))
+                .filter(|(_, _, kind)| kind.is_drivable())
+                .map(|(id, _, _)| *id)
+                .collect();
             out[emitted[k].1].neighbors = nbrs;
         }
     }
 }
 
-/// Sample one lane's centerline to points in our coordinate frame.
+/// Sample one lane's centerline to points in our coordinate frame, with the
+/// reference line's analytical heading at each sample.
+///
+/// The headings are the exact `hdg` of the underlying geometry record, not the
+/// chords between the points, so two sections sampled either side of the same
+/// station report the same heading there. That shared value is what lets their
+/// meshed ribs meet flush; see [`Polyline::try_new_with_tangents`].
 #[allow(clippy::too_many_arguments)]
 fn sample_lane(
     geoms: &[GeomRec],
@@ -648,7 +706,7 @@ fn sample_lane(
     inner: &[LaneDef],
     sign: f64,
     sample_s: &[f64],
-) -> Vec<Point> {
+) -> (Vec<Point>, Vec<Vector>) {
     sample_s
         .iter()
         .map(|&s| {
@@ -673,13 +731,21 @@ fn sample_lane(
             // The baked frame is OpenDRIVE's own, so the reference-line point
             // needs no mapping. Offset along the left-hand normal, which in the
             // reference line's plane is (-sin hdg, cos hdg).
-            Point::new(
+            let point = Point::new(
                 (x - t_h * hdg.sin()) as f32,
                 (y + t_h * hdg.cos()) as f32,
                 (elev + t * sin_phi) as f32,
-            )
+            );
+            // A lane offset laterally by a constant `t` is parallel to the
+            // reference line, so it shares its heading. Where `t` varies with
+            // `s` the lane's own tangent swings off it slightly; the reference
+            // heading is used anyway, because being the *same* on both sides of
+            // a section joint is what closes the seam, and a lane's `dt/ds`
+            // generally steps across that joint.
+            let heading = Vector::new(hdg.cos() as f32, hdg.sin() as f32, 0.0);
+            (point, heading)
         })
-        .collect()
+        .unzip()
 }
 
 fn width_at(lane: &LaneDef, s_lane: f64) -> f64 {
@@ -931,8 +997,8 @@ mod tests {
         assert!((y - 0.25).abs() < 0.05, "y {y}");
     }
 
-    // A driving lane outboard of a shoulder. The shoulder is not a driving lane
-    // and is not emitted, but its width still pushes the driving lane out.
+    // A driving lane outboard of a shoulder. The shoulder is a lane of its own,
+    // and its width also pushes the driving lane out.
     const SHOULDER_INBOARD: &str = r#"<?xml version="1.0"?>
 <OpenDRIVE>
   <road name="s" length="20.0" id="1" junction="-1">
@@ -952,13 +1018,19 @@ mod tests {
 
     #[test]
     fn a_non_driving_inner_lane_still_offsets_the_driving_lane() {
-        // Only the driving lane -2 is emitted, but it sits outboard of the 2.0 m
-        // shoulder: its center is at t = -(2.0 + 3.0/2) = -3.5, so y = -3.5.
-        // Skipping the shoulder's width would leave it at -1.5.
+        // Lane -2 sits outboard of the 2.0 m shoulder: its center is at
+        // t = -(2.0 + 3.0/2) = -3.5, so y = -3.5. Skipping the shoulder's width
+        // would leave it at -1.5.
         let net = load_str(SHOULDER_INBOARD).expect("import");
-        assert_eq!(net.driving_lanes().count(), 1, "only the driving lane emits");
-        let y = net.lanes()[0].center.pose_at(0.0).position.y;
+        assert_eq!(net.lanes().len(), 2, "the shoulder is a lane too");
+        let driving = net.driving_lanes().next().expect("the driving lane");
+        let y = driving.center.pose_at(0.0).position.y;
         assert!((y + 3.5).abs() < 0.05, "y {y}, expected -3.5");
+        assert!(
+            driving.neighbors.is_empty(),
+            "a shoulder is not a lane you change into: {:?}",
+            driving.neighbors
+        );
     }
 
     // A straight road split into two lane sections at s=25. Each section's
@@ -991,10 +1063,102 @@ mod tests {
         assert!((lens[1] - 25.0).abs() < 1.0, "long section {}", lens[1]);
     }
 
+    // A cross-section using most of the lane vocabulary: a sidewalk, a kerb and
+    // a parking lane outboard of two running lanes, a `none` strip and a
+    // vendor-specific one the importer has no meaning for, and a median between
+    // the two directions.
+    const MANY_TYPES: &str = r#"<?xml version="1.0"?>
+<OpenDRIVE>
+  <road name="m" length="20.0" id="1" junction="-1">
+    <planView>
+      <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="20.0"><line/></geometry>
+    </planView>
+    <lanes>
+      <laneSection s="0.0">
+        <left>
+          <lane id="1" type="median"><width sOffset="0.0" a="1.0"/></lane>
+          <lane id="2" type="driving"><width sOffset="0.0" a="3.5"/></lane>
+          <lane id="3" type="special1"><width sOffset="0.0" a="1.0"/></lane>
+        </left>
+        <right>
+          <lane id="-1" type="driving"><width sOffset="0.0" a="3.5"/></lane>
+          <lane id="-2" type="onRamp"><width sOffset="0.0" a="3.0"/></lane>
+          <lane id="-3" type="none"><width sOffset="0.0" a="0.5"/></lane>
+          <lane id="-4" type="parking"><width sOffset="0.0" a="2.5"/></lane>
+          <lane id="-5" type="curb"><width sOffset="0.0" a="0.3"/></lane>
+          <lane id="-6" type="sidewalk"><width sOffset="0.0" a="2.0"/></lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>"#;
+
+    #[test]
+    fn every_named_lane_type_bakes_as_itself() {
+        let (net, prov) = load_str_with_provenance(MANY_TYPES).expect("import");
+        let kind = |od_id: i32| {
+            prov.iter()
+                .find(|p| p.od_id == od_id)
+                .and_then(|p| net.lane(p.lane))
+                .map(|l| l.kind)
+        };
+        assert_eq!(kind(1), Some(LaneType::Median));
+        assert_eq!(kind(2), Some(LaneType::Driving));
+        assert_eq!(kind(-1), Some(LaneType::Driving));
+        assert_eq!(kind(-2), Some(LaneType::OnRamp));
+        assert_eq!(kind(-4), Some(LaneType::Parking));
+        assert_eq!(kind(-5), Some(LaneType::Curb));
+        assert_eq!(kind(-6), Some(LaneType::Sidewalk));
+        // `none` and the vendor-specific type have no surface of their own.
+        assert_eq!(kind(3), None, "special1 is not baked");
+        assert_eq!(kind(-3), None, "none is not baked");
+        assert_eq!(net.lanes().len(), 7);
+        assert_eq!(net.driving_lanes().count(), 2);
+    }
+
+    #[test]
+    fn a_skipped_lane_type_still_offsets_what_is_outboard_of_it() {
+        // Right side, center outward: driving 3.5, onRamp 3.0, none 0.5,
+        // parking 2.5. The parking lane's center is at
+        // t = -(3.5 + 3.0 + 0.5 + 2.5/2) = -8.25. Dropping the `none` strip's
+        // width with the lane itself would leave it at -7.75.
+        let (net, prov) = load_str_with_provenance(MANY_TYPES).expect("import");
+        let parking = prov
+            .iter()
+            .find(|p| p.od_id == -4)
+            .and_then(|p| net.lane(p.lane))
+            .expect("the parking lane");
+        let y = parking.center.pose_at(0.0).position.y;
+        assert!((y + 8.25).abs() < 0.05, "y {y}, expected -8.25");
+    }
+
+    #[test]
+    fn lane_change_edges_stop_at_the_first_lane_traffic_cannot_use() {
+        let (net, prov) = load_str_with_provenance(MANY_TYPES).expect("import");
+        let lane = |od_id: i32| {
+            prov.iter()
+                .find(|p| p.od_id == od_id)
+                .and_then(|p| net.lane(p.lane))
+                .expect("a baked lane")
+        };
+        // Right side: driving -1 and the onRamp -2 beside it are a lane change
+        // apart; the parking lane past them is not, and neither is the sidewalk.
+        let (driving, ramp) = (lane(-1), lane(-2));
+        assert_eq!(driving.neighbors, vec![ramp.id]);
+        assert_eq!(ramp.neighbors, vec![driving.id]);
+        assert!(
+            lane(-4).neighbors.is_empty(),
+            "parking is not a lane change"
+        );
+        assert!(lane(-6).neighbors.is_empty(), "sidewalk is not either");
+        // Left side: the median is inboard of the only driving lane, so that
+        // lane has nothing to change into at all.
+        assert!(lane(2).neighbors.is_empty(), "a median is not crossable");
+    }
+
     #[test]
     fn provenance_names_each_baked_lane_by_road_section_and_od_id() {
-        let (net, prov) =
-            load_str_with_provenance(TWO_SECTIONS).expect("import with provenance");
+        let (net, prov) = load_str_with_provenance(TWO_SECTIONS).expect("import with provenance");
         assert_eq!(prov.len(), net.lanes().len(), "one record per baked lane");
         // Every record points at a real lane, and names the source road/lane.
         for p in &prov {

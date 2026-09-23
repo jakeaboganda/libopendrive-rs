@@ -24,16 +24,33 @@ Load a different scene without renaming it: `?scene=e6mini.json`.
 ## What you get
 
 - **Hover** highlights the lane section under the cursor and shows a readout of
-  `road id`, OpenDRIVE `lane id`, `s`, `section`, and `t`, plus the crate's
-  internal `LaneId`.
-- **Sidebar** lists every baked lane grouped by road. Click one to highlight
-  and frame it.
-- **Search** filters the list by road id or lane id.
+  `road id`, OpenDRIVE `lane id`, lane type, the surface point `x, y, z`, `s`
+  and `t`, the lane heading, and the crate's internal `LaneId`. With
+  **normals** on it also reports the surface normal there.
+- **Overlays**, each its own toggle: lane **centerlines** in green, lane
+  **boundaries** in cream, and **normals** as a hair at every mesh vertex.
+  `[n]` toggles normals, `[w]` cycles the wireframe.
+- **Lane-type colour** on the surface itself, with a legend of the types this
+  map contains. A type the crate knows but this page has no colour for shows
+  up magenta, so it is obvious rather than silently drawn as a driving lane.
+- **Sidebar** lists every baked lane grouped by road, with its type. Click one
+  to highlight and frame it.
+- **Search** filters the list by road id, lane id, or lane type.
 
 ## Coordinates
 
 The frame is OpenDRIVE's own: right-handed, **Z-up**, metres. The camera's up
 axis is +Z, so a coordinate on screen is the coordinate in the file.
+
+The heading is the lane's stored geometry direction at the hovered station, not
+its travel direction; on a `backward` lane the two are opposite. It is the
+exported per-vertex tangents interpolated the way `Polyline::pose_at`
+interpolates them, so it agrees with the crate at a vertex and at the ends,
+where the tangent is the curve's own rather than the last chord's.
+
+The normal is the baked up-normal interpolated across the hit triangle, which
+is what `Mesh::height_at` reports. It is smooth across facet edges rather than
+stepping at each one.
 
 `s` and `t` are measured against the **lane centerline**, matching
 `Polyline::project`: `s` is arc length along the lane, `t` is signed lateral
@@ -45,7 +62,17 @@ middle.
 ## How a hover resolves to a lane
 
 `surface_mesh()` merges every lane into one buffer and records a `LaneSpan` per
-lane: the slice of indices that lane owns. A raycast returns a triangle; the
+lane: the slice of indices that lane owns. Every lane, not only the drivable
+ones, so a sidewalk or a median is pickable too.
+ A raycast returns a triangle; the
 viewer binary-searches the spans for the one whose index range contains it, and
 that names the lane. `load_*_with_provenance` supplies the road id, section, and
 original OpenDRIVE lane id for each `LaneId`.
+
+## Where the lane boundaries come from
+
+Not from the exporter. A `LaneSpan`'s vertex range alternates left rib and
+right rib, one pair per cross-section, so the even vertices of the range are
+the lane's left boundary and the odd ones its right. The page walks the buffer
+it already uploaded. Exporting the same polylines a second time would double
+the lane table for nothing.

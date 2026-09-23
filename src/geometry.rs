@@ -68,23 +68,28 @@ pub struct Projection {
 /// form every curve reduces to: an importer samples clothoids/arcs into points;
 /// consumers only ever see the points. At least two points.
 ///
-/// Serializes as its points alone. The cumulative lengths and tangents are
-/// derived, so sending them would be both wasteful and a way to receive a
-/// polyline whose cached state disagrees with its geometry.
+/// Serializes as its points plus its two boundary tangents, and nothing else.
+/// The cumulative lengths and the interior tangents are derived, so sending
+/// them would be both wasteful and a way to receive a polyline whose cached
+/// state disagrees with its geometry. The boundary tangents are not derivable
+/// (that is the whole point of [`Polyline::try_new_with_tangents`]), so they
+/// have to travel, or a round trip would silently reopen the section seams they
+/// exist to close.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(
     feature = "serde",
     derive(serde::Serialize, serde::Deserialize),
-    serde(into = "Vec<Point>", try_from = "Vec<Point>")
+    serde(into = "PolylineData", try_from = "PolylineData")
 )]
 pub struct Polyline {
     points: Vec<Point>,
     /// Cumulative arc length at each point; `cumulative[0] == 0`.
     cumulative: Vec<f32>,
     /// Per-vertex unit horizontal tangent: the angle bisector at interior
-    /// vertices, the lone segment direction at the ends. Interpolating these
-    /// gives a heading that's continuous across vertices (no per-segment step),
-    /// and their normals give a consistent lateral offset for lanes/meshes.
+    /// vertices; at the ends either the importer's analytical curve tangent or,
+    /// failing that, the lone segment direction. Interpolating these gives a
+    /// heading that's continuous across vertices (no per-segment step), and
+    /// their normals give a consistent lateral offset for lanes/meshes.
     tangents: Vec<Vector>,
 }
 
@@ -93,6 +98,31 @@ impl Polyline {
     /// baking **external** map data (which may be malformed) must use this and
     /// surface the error, rather than crash. See [`Polyline::new`].
     pub fn try_new(points: Vec<Point>) -> Option<Self> {
+        Self::build(points, None)
+    }
+
+    /// Build a polyline whose first and last tangents are given rather than
+    /// approximated from the end segments.
+    ///
+    /// A chord only approximates the curve it was sampled from, and at an
+    /// endpoint there is no second chord to average with, so the error does not
+    /// cancel. Two contiguous polylines sampled from the same curve therefore
+    /// disagree about the tangent at the vertex they share, and anything that
+    /// offsets laterally (lane edges, mesh ribs) opens a V-shaped seam there.
+    /// An importer that knows the curve analytically passes the true tangents
+    /// here; both sides then derive the same normal and the seam closes.
+    ///
+    /// Tangents are used horizontally and normalized; a zero, degenerate, or
+    /// non-finite one falls back to the end segment's direction.
+    pub fn try_new_with_tangents(
+        points: Vec<Point>,
+        start_tangent: Vector,
+        end_tangent: Vector,
+    ) -> Option<Self> {
+        Self::build(points, Some((start_tangent, end_tangent)))
+    }
+
+    fn build(points: Vec<Point>, ends: Option<(Vector, Vector)>) -> Option<Self> {
         if points.len() < 2 {
             return None;
         }
@@ -103,7 +133,7 @@ impl Polyline {
             acc += (pair[1] - pair[0]).length();
             cumulative.push(acc);
         }
-        let tangents = vertex_tangents(&points);
+        let tangents = vertex_tangents(&points, ends);
         Some(Self {
             points,
             cumulative,
@@ -123,10 +153,12 @@ impl Polyline {
         &self.points
     }
 
-    /// Per-vertex horizontal unit tangents. Test-only now that the tessellator
-    /// recomputes them from its welded points.
-    #[cfg(test)]
-    pub(crate) fn tangents(&self) -> &[Vector] {
+    /// Per-vertex horizontal unit tangents, parallel to `points`: the bisector
+    /// at an interior vertex, and the curve's analytical tangent at either end
+    /// where the importer supplied one. These are what [`Polyline::pose_at`]
+    /// interpolates, so reading them is how a consumer reproduces its heading
+    /// at a vertex rather than re-deriving one from the chords and disagreeing.
+    pub fn tangents(&self) -> &[Vector] {
         &self.tangents
     }
 
@@ -238,14 +270,49 @@ impl TryFrom<Vec<Point>> for Polyline {
     }
 }
 
+/// The wire form of a [`Polyline`]: everything about it that cannot be
+/// recomputed from the rest. `tangents` is `(first, last)`.
+#[cfg(feature = "serde")]
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PolylineData {
+    points: Vec<Point>,
+    tangents: (Vector, Vector),
+}
+
+#[cfg(feature = "serde")]
+impl From<Polyline> for PolylineData {
+    fn from(line: Polyline) -> Self {
+        // A polyline always has at least two points, so both tangents exist.
+        let tangents = (line.tangents[0], line.tangents[line.tangents.len() - 1]);
+        Self {
+            points: line.points,
+            tangents,
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl TryFrom<PolylineData> for Polyline {
+    type Error = TooFewPoints;
+
+    fn try_from(data: PolylineData) -> Result<Self, Self::Error> {
+        let (start, end) = data.tangents;
+        // A malformed tangent from the wire degrades to the end chord rather
+        // than rejecting the polyline: the geometry is still usable.
+        Self::try_new_with_tangents(data.points, start, end).ok_or(TooFewPoints)
+    }
+}
+
 /// Drop a vector onto the XY ground plane.
 fn horizontal(v: Vector) -> Vector {
     Vector::new(v.x, v.y, 0.0)
 }
 
 /// Per-vertex unit horizontal tangents: the bisector of the adjacent segment
-/// directions at interior vertices, the single segment direction at the ends.
-fn vertex_tangents(points: &[Point]) -> Vec<Vector> {
+/// directions at interior vertices. At the two ends, `ends` supplies the true
+/// curve tangents when the caller knows them; otherwise, and whenever a supplied
+/// tangent is degenerate, the single adjacent segment direction stands in.
+fn vertex_tangents(points: &[Point], ends: Option<(Vector, Vector)>) -> Vec<Vector> {
     let n = points.len();
     (0..n)
         .map(|i| {
@@ -259,7 +326,12 @@ fn vertex_tangents(points: &[Point]) -> Vec<Vector> {
             } else {
                 Vector::ZERO
             };
-            (incoming + outgoing).normalize_or_zero()
+            let chord = (incoming + outgoing).normalize_or_zero();
+            match ends {
+                Some((start, _)) if i == 0 => horizontal(start).normalize_or(chord),
+                Some((_, end)) if i == n - 1 => horizontal(end).normalize_or(chord),
+                _ => chord,
+            }
         })
         .collect()
 }
@@ -276,6 +348,37 @@ mod tests {
 
     fn line(points: &[[f32; 3]]) -> Polyline {
         Polyline::new(points.iter().map(|p| Point::from_array(*p)).collect())
+    }
+
+    #[test]
+    fn supplied_tangents_replace_the_end_chords() {
+        // An L, sampled as if from a curve that arrives along +X at 45 degrees
+        // and leaves along +Y at 45 degrees.
+        let pts = vec![
+            Point::ORIGIN,
+            Point::new(10.0, 0.0, 0.0),
+            Point::new(10.0, 10.0, 0.0),
+        ];
+        let diag = Vector::new(1.0, 1.0, 0.0).normalize_or_zero();
+        let l = Polyline::try_new_with_tangents(pts.clone(), diag, diag).unwrap();
+        assert!(l.tangents()[0].abs_diff_eq(diag, 1e-6));
+        assert!(l.tangents()[2].abs_diff_eq(diag, 1e-6));
+        // The interior vertex keeps its chord bisector, which for this L is the
+        // same diagonal - so only the ends moved.
+        assert!(l.tangents()[1].abs_diff_eq(diag, 1e-6));
+        // Without them the ends fall back to the lone adjacent chord.
+        let plain = Polyline::new(pts);
+        assert!(plain.tangents()[0].abs_diff_eq(Vector::new(1.0, 0.0, 0.0), 1e-6));
+        assert!(plain.tangents()[2].abs_diff_eq(Vector::new(0.0, 1.0, 0.0), 1e-6));
+    }
+
+    #[test]
+    fn a_degenerate_supplied_tangent_falls_back_to_the_chord() {
+        let pts = vec![Point::ORIGIN, Point::new(10.0, 0.0, 0.0)];
+        let l = Polyline::try_new_with_tangents(pts, Vector::ZERO, Vector::new(f32::NAN, 0.0, 0.0))
+            .unwrap();
+        assert!(l.tangents()[0].abs_diff_eq(Vector::new(1.0, 0.0, 0.0), 1e-6));
+        assert!(l.tangents()[1].abs_diff_eq(Vector::new(1.0, 0.0, 0.0), 1e-6));
     }
 
     #[test]

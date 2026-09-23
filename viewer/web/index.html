@@ -26,8 +26,11 @@
           border-radius: 5px; font-variant-numeric: tabular-nums; white-space: pre; display: none; z-index: 5; }
   #tip b { color: #8ec07c; }
   #hint { position: absolute; left: 12px; bottom: 10px; color: #6b7280; font-size: 11px; }
-  #tools { position: absolute; left: 12px; top: 12px; z-index: 6; display: flex; gap: 6px;
+  #tools { position: absolute; left: 12px; top: 12px; z-index: 6; display: flex; gap: 10px; flex-wrap: wrap; max-width: 60%;
            background: #0b0d11cc; border: 1px solid #2a2f3a; border-radius: 6px; padding: 6px 8px; align-items: center; }
+  #legend { padding: 8px 12px; border-top: 1px solid #2a2f3a; display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: #8fa1b3; }
+  #legend span { display: flex; align-items: center; gap: 4px; }
+  .swatch { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
   #tools label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
   #tools select { background: #1b1f27; color: inherit; border: 1px solid #2a2f3a; border-radius: 4px; padding: 2px 4px; }
   #flagcount { color: #e88; font-variant-numeric: tabular-nums; }
@@ -40,10 +43,11 @@
   <aside id="sidebar">
     <header>
       <h1>Roads &amp; lanes</h1>
-      <input id="search" placeholder="filter: road id or lane id…" autocomplete="off" />
+      <input id="search" placeholder="filter: road id, lane id, or lane type…" autocomplete="off" />
       <div id="count"></div>
     </header>
     <div id="list"></div>
+    <div id="legend"></div>
   </aside>
   <div id="view">
     <div id="tip"></div>
@@ -55,9 +59,12 @@
           <option value="both">solid + wireframe</option>
         </select>
       </label>
+      <label><input type="checkbox" id="centerlines"> centerlines</label>
+      <label><input type="checkbox" id="boundaries"> boundaries</label>
+      <label><input type="checkbox" id="normals"> normals</label>
       <label><input type="checkbox" id="flag"> flag bad tris <span id="flagcount"></span></label>
     </div>
-    <div id="hint">drag: orbit · scroll: zoom · right-drag: pan · [w] cycles wireframe · hover a lane for coordinates</div>
+    <div id="hint">drag: orbit · scroll: zoom · right-drag: pan · [w] cycles wireframe · [n] toggles normals · hover a lane for coordinates</div>
     <div id="err"></div>
   </div>
 </div>
@@ -81,8 +88,29 @@ const listEl = document.getElementById('list');
 const countEl = document.getElementById('count');
 const searchEl = document.getElementById('search');
 
+// Surface colour per lane type, keyed by the crate's `LaneType::as_str`.
+// Carriageway types stay in cool greys so the road still reads as a road;
+// everything a vehicle has no business on is warm or light enough to pick out
+// at a glance. A type with no entry here falls back to FALLBACK_COLOR, which
+// is how a lane type added to the crate but not to this table shows up as
+// unclassified rather than as a driving lane.
+const LANE_COLORS = {
+  'driving': 0x5a6b82, 'bidirectional': 0x7a5a82, 'bus': 0x2f6f4f, 'taxi': 0x8a7a2f,
+  'hov': 0x3f6f8a, 'entry': 0x4f7a5a, 'exit': 0x7a5a4f, 'on-ramp': 0x46748c,
+  'off-ramp': 0x8c7446, 'connecting-ramp': 0x5f7f8f, 'slip-lane': 0x6a5a7a,
+  'parking': 0x3f5a99, 'stop': 0x8a3f3f, 'restricted': 0x7a4a4a, 'biking': 0x2f7a6f,
+  'sidewalk': 0x9aa3ad, 'shoulder': 0x6f6a5f, 'border': 0x5f5f5f, 'curb': 0xa8a29a,
+  'median': 0x4f6b4f, 'road-works': 0x9a6a2f, 'tram': 0x6a6a8a, 'rail': 0x7a7a7a,
+};
+const FALLBACK_COLOR = 0xc026d3;
+
+// Length in metres of a drawn normal hair. Road scale, so it reads against a
+// lane without burying it.
+const NORMAL_LENGTH = 0.6;
+
 let scene, camera, renderer, controls, raycaster;
 let roadMesh, wireMesh, badMesh, highlight, highlightLine;
+let centerlineMesh, boundaryMesh, normalMesh;
 let lanes = [];              // enriched lane records
 let spanIndex = [];          // {start,end,lane} sorted by index-range start, for picking
 let laneById = new Map();
@@ -122,23 +150,32 @@ async function init() {
 
   buildMesh(data);
   buildLanes(data);
+  buildOverlays(data);
   buildSidebar();
+  buildLegend();
   frameOn(roadMesh);
 
   applyMode();
-  document.getElementById('mode').addEventListener('change', applyMode);
-  document.getElementById('flag').addEventListener('change', applyMode);
+  for (const id of ['mode', 'flag', 'centerlines', 'boundaries', 'normals']) {
+    document.getElementById(id).addEventListener('change', applyMode);
+  }
 
   raycaster = new THREE.Raycaster();
   renderer.domElement.addEventListener('pointermove', onHover);
   renderer.domElement.addEventListener('pointerleave', () => hideTip());
   searchEl.addEventListener('input', renderSidebar);
   addEventListener('keydown', e => {
-    if (e.key !== 'w' || document.activeElement === searchEl) return;
-    const sel = document.getElementById('mode');
-    const order = ['solid', 'wire', 'both'];
-    sel.value = order[(order.indexOf(sel.value) + 1) % order.length];
-    applyMode();
+    if (document.activeElement === searchEl) return;
+    if (e.key === 'w') {
+      const sel = document.getElementById('mode');
+      const order = ['solid', 'wire', 'both'];
+      sel.value = order[(order.indexOf(sel.value) + 1) % order.length];
+      applyMode();
+    } else if (e.key === 'n') {
+      const box = document.getElementById('normals');
+      box.checked = !box.checked;
+      applyMode();
+    }
   });
 
   addEventListener('resize', resize);
@@ -150,12 +187,13 @@ function buildMesh(data) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(data.mesh.positions, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(data.mesh.normals, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(laneTypeColors(data), 3));
   g.setIndex(new THREE.Uint32BufferAttribute(data.mesh.indices, 1));
   g.computeBoundingBox();
   g.computeBoundingSphere();
 
   roadMesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
-    color: 0x5a6b82, roughness: 0.95, metalness: 0.0,
+    vertexColors: true, roughness: 0.95, metalness: 0.0,
     side: THREE.DoubleSide, flatShading: false,
   }));
   scene.add(roadMesh);
@@ -200,6 +238,72 @@ function buildMesh(data) {
   scene.add(grid);
 }
 
+// A colour per mesh vertex, taken from the lane type of the span that owns it.
+// One buffer beats one material per type: the mesh stays a single draw call,
+// and a sidewalk is still visibly not a carriageway.
+function laneTypeColors(data) {
+  const count = data.mesh.positions.length / 3;
+  const out = new Float32Array(count * 3);
+  const c = new THREE.Color();
+  for (const lane of data.lanes) {
+    // setHex reads sRGB and stores the renderer's working space, so the buffer
+    // matches what a material colour of the same hex would have produced.
+    c.setHex(LANE_COLORS[lane.laneType] ?? FALLBACK_COLOR);
+    for (let v = lane.vertexRange[0]; v < lane.vertexRange[1]; v++) {
+      out[v * 3] = c.r; out[v * 3 + 1] = c.g; out[v * 3 + 2] = c.b;
+    }
+  }
+  return out;
+}
+
+// The three line overlays, each one geometry for the whole map so a toggle is
+// a single `visible` flip rather than a rebuild.
+//
+// Centerlines come from the exported lane table. Boundaries do not need to be
+// exported at all: a lane's mesh vertices alternate left rib and right rib, so
+// the even ones are its left edge and the odd ones its right. Normals are a
+// hair per mesh vertex, drawn along the baked up-normal.
+function buildOverlays(data) {
+  const p = data.mesh.positions, nrm = data.mesh.normals;
+  const centers = [], edges = [], hairs = [];
+
+  for (const lane of data.lanes) {
+    const pts = lane.centerline;
+    for (let i = 0; i + 1 < pts.length; i++) {
+      // Lifted clear of the surface it lies on, or it z-fights with it.
+      centers.push(pts[i][0], pts[i][1], pts[i][2] + 0.05,
+                   pts[i + 1][0], pts[i + 1][1], pts[i + 1][2] + 0.05);
+    }
+    for (let side = 0; side < 2; side++) {
+      for (let v = lane.vertexRange[0] + side; v + 2 < lane.vertexRange[1]; v += 2) {
+        const a = v * 3, b = (v + 2) * 3;
+        edges.push(p[a], p[a + 1], p[a + 2] + 0.03, p[b], p[b + 1], p[b + 2] + 0.03);
+      }
+    }
+  }
+  for (let v = 0; v * 3 < p.length; v++) {
+    const i = v * 3;
+    hairs.push(p[i], p[i + 1], p[i + 2],
+               p[i] + nrm[i] * NORMAL_LENGTH,
+               p[i + 1] + nrm[i + 1] * NORMAL_LENGTH,
+               p[i + 2] + nrm[i + 2] * NORMAL_LENGTH);
+  }
+
+  centerlineMesh = lineOverlay(centers, 0x8ec07c);
+  boundaryMesh = lineOverlay(edges, 0xe6d5a8);
+  normalMesh = lineOverlay(hairs, 0xff7ad9);
+}
+
+function lineOverlay(positions, color) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  const line = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color }));
+  line.visible = false;
+  line.renderOrder = 1;
+  scene.add(line);
+  return line;
+}
+
 // Collect the triangles a road surface should never contain: inverted (normal
 // faces down) or degenerate (near-zero area). Returned as a standalone mesh
 // drawn over everything, so a lingering fold is impossible to miss.
@@ -227,15 +331,19 @@ function buildBadMesh(mesh) {
   return m;
 }
 
-// Apply the current view controls to the road / wireframe / diagnostic meshes.
+// Apply the current view controls to the road, wireframe, overlay and
+// diagnostic meshes.
 function applyMode() {
+  const on = id => document.getElementById(id).checked;
   const mode = document.getElementById('mode').value;
   roadMesh.visible = mode !== 'wire';
   wireMesh.visible = mode !== 'solid';
-  const flag = document.getElementById('flag').checked;
-  badMesh.visible = flag;
+  centerlineMesh.visible = on('centerlines');
+  boundaryMesh.visible = on('boundaries');
+  normalMesh.visible = on('normals');
+  badMesh.visible = on('flag');
   const n = badMesh.userData.count;
-  document.getElementById('flagcount').textContent = flag ? `(${n})` : '';
+  document.getElementById('flagcount').textContent = on('flag') ? `(${n})` : '';
 }
 
 function buildLanes(data) {
@@ -258,11 +366,26 @@ function buildLanes(data) {
 
 function buildSidebar() { renderSidebar(); }
 
+// Swatches for the lane types this map actually contains, so the legend names
+// what is on screen rather than every type the crate knows about.
+function buildLegend() {
+  const present = [...new Set(lanes.map(l => l.laneType))].sort();
+  const frag = document.createDocumentFragment();
+  for (const type of present) {
+    const hex = (LANE_COLORS[type] ?? FALLBACK_COLOR).toString(16).padStart(6, '0');
+    const el = document.createElement('span');
+    el.innerHTML = `<i class="swatch" style="background:#${hex}"></i>${type}`;
+    frag.appendChild(el);
+  }
+  document.getElementById('legend').replaceChildren(frag);
+}
+
 function renderSidebar() {
   const q = searchEl.value.trim().toLowerCase();
   const match = l =>
     !q || String(l.roadId).toLowerCase().includes(q) ||
-    String(l.odLaneId).includes(q) || String(l.laneId).includes(q);
+    String(l.odLaneId).includes(q) || String(l.laneId).includes(q) ||
+    l.laneType.includes(q);
 
   const byRoad = new Map();
   let shown = 0;
@@ -284,7 +407,7 @@ function renderSidebar() {
     for (const l of group) {
       const el = document.createElement('div');
       el.className = 'lane' + (activeLane === l.laneId ? ' active' : '');
-      el.innerHTML = `<span>lane ${l.odLaneId} <span class="tag">§${l.section} ${l.direction}</span></span>` +
+      el.innerHTML = `<span>lane ${l.odLaneId} <span class="tag">§${l.section} ${l.laneType}</span></span>` +
         `<span class="tag">${l.length.toFixed(0)} m</span>`;
       el.onclick = () => { selectLane(l.laneId); frameOnLane(l); };
       frag.appendChild(el);
@@ -307,17 +430,49 @@ function onHover(ev) {
   const lane = laneForFace(hit.faceIndex);
   if (!lane) { hideTip(); return; }
 
-  const { s, t } = project(lane, hit.point);
+  const { s, t, heading } = project(lane, hit.point);
   if (activeLane == null) setHighlight(lane);
+
+  const p = hit.point;
+  const rows = [
+    `<b>road ${lane.roadId}</b>  lane ${lane.odLaneId}  <b>${lane.laneType}</b>`,
+    `x ${p.x.toFixed(2)}   y ${p.y.toFixed(2)}   z ${p.z.toFixed(2)}`,
+    `s ${s.toFixed(2)} m   t ${t.toFixed(2)} m`,
+    `heading ${vec3(heading)}`,
+  ];
+  if (document.getElementById('normals').checked) {
+    rows.push(`normal ${vec3(surfaceNormal(hit))}`);
+  }
+  rows.push(`section ${lane.section}   ${lane.direction}`, `laneId ${lane.laneId}`);
 
   tip.style.display = 'block';
   tip.style.left = (ev.clientX - rect.left + 14) + 'px';
   tip.style.top = (ev.clientY - rect.top + 14) + 'px';
-  tip.innerHTML =
-    `<b>road ${lane.roadId}</b>  lane ${lane.odLaneId}\n` +
-    `s ${s.toFixed(2)} m   t ${t.toFixed(2)} m\n` +
-    `section ${lane.section}   ${lane.direction}\n` +
-    `laneId ${lane.laneId}`;
+  tip.innerHTML = rows.join('\n');
+}
+
+function vec3(v) {
+  return `(${v[0].toFixed(3)}, ${v[1].toFixed(3)}, ${v[2].toFixed(3)})`;
+}
+
+// The baked surface normal at a hit, interpolated across the triangle from the
+// three per-vertex normals rather than taken flat off the face. That is what
+// `Mesh::height_at` reports, and it varies continuously instead of stepping at
+// every facet edge.
+function surfaceNormal(hit) {
+  const g = roadMesh.geometry, pos = g.getAttribute('position'), nrm = g.getAttribute('normal');
+  const f = hit.face;
+  const a = new THREE.Vector3().fromBufferAttribute(pos, f.a);
+  const b = new THREE.Vector3().fromBufferAttribute(pos, f.b);
+  const c = new THREE.Vector3().fromBufferAttribute(pos, f.c);
+  const bary = new THREE.Vector3();
+  if (!THREE.Triangle.getBarycoord(hit.point, a, b, c, bary)) return [f.normal.x, f.normal.y, f.normal.z];
+  const n = new THREE.Vector3();
+  for (const [w, i] of [[bary.x, f.a], [bary.y, f.b], [bary.z, f.c]]) {
+    n.addScaledVector(new THREE.Vector3().fromBufferAttribute(nrm, i), w);
+  }
+  n.normalize();
+  return [n.x, n.y, n.z];
 }
 
 function hideTip() { tip.style.display = 'none'; }
@@ -336,12 +491,15 @@ function laneForFace(faceIndex) {
   return null;
 }
 
-// Signed lateral offset t and arc length s of `p` on a lane centerline,
-// replicating Polyline::project: nearest segment by 3D distance, s summed in
-// 3D, t measured in the ground plane, positive to the left of the segment.
+// Signed lateral offset t, arc length s, and heading of `p` on a lane
+// centerline, replicating Polyline::project: nearest segment by 3D distance, s
+// summed in 3D, t measured in the ground plane, positive to the left of the
+// segment. The heading is the exported per-vertex tangents interpolated the way
+// Polyline::pose_at interpolates them, so it matches the crate at the ends,
+// where the tangent is the curve's own rather than the last chord's.
 function project(lane, p) {
   const pts = lane.centerline;
-  let best = { d2: Infinity, s: 0, t: 0 };
+  let best = { d2: Infinity, s: 0, t: 0, heading: [0, 0, 0] };
   for (let i = 0; i < pts.length - 1; i++) {
     const a = pts[i], b = pts[i + 1];
     const ab = [b[0]-a[0], b[1]-a[1], b[2]-a[2]];
@@ -357,10 +515,20 @@ function project(lane, p) {
       const hlen = Math.hypot(ab[0], ab[1]) || 1;
       const nx = -ab[1] / hlen, ny = ab[0] / hlen;
       const t = (p.x - c[0]) * nx + (p.y - c[1]) * ny;
-      best = { d2, s: lane.cum[i] + segLen * u, t };
+      best = { d2, s: lane.cum[i] + segLen * u, t, heading: heading(lane, i, u) };
     }
   }
   return best;
+}
+
+// Unit heading a fraction `u` along segment `i`, lerped between the segment's
+// two vertex tangents.
+function heading(lane, i, u) {
+  const a = lane.headings[i], b = lane.headings[i + 1];
+  if (!a || !b) return [0, 0, 0];
+  const h = [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
+  const len = Math.hypot(h[0], h[1], h[2]) || 1;
+  return [h[0] / len, h[1] / len, h[2] / len];
 }
 
 // --- Highlight ---------------------------------------------------------------

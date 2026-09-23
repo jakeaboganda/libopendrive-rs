@@ -1,5 +1,50 @@
 # Changelog
 
+## Unreleased
+
+### Lane types
+
+`LaneType` now names 23 lane functions rather than only `Driving`: sidewalks,
+shoulders, kerbs, medians, parking, cycle lanes, bus and taxi lanes, the ramp
+family, tram and rail. The importer bakes all of them. `none` and the
+vendor-specific types are still skipped, and their widths still offset the
+lanes outboard of them.
+
+Two consequences worth knowing about before upgrading:
+
+- `surface_mesh` tessellates every lane, not only the drivable ones, so a
+  collider built from it now has the footway and the median in it. The mesh is
+  bigger: Town07 goes from 673 lanes to 920.
+- `driving_lanes`, `nearest_lane`, `sample_near` and `route` are unchanged, and
+  still see `LaneType::Driving` alone. `LaneType::is_drivable` is the wider
+  predicate, and it decides which lanes are lane-change neighbours, so a route
+  can no longer be planned across a sidewalk.
+
+### Fixed
+
+- A lane section ending centimetres past its last sample left a pinched rib
+  beside a full-width one with no room between them, and the quad folded. What
+  counts as a stub is now relative to the samples around it rather than a fixed
+  10 cm, which catches the case without flattening a finely sampled curve.
+
+### Viewer
+
+- Hovering reads out the surface point's `x`, `y`, `z`, the lane heading there,
+  and the lane type. The surface normal joins them behind a toggle, which also
+  draws a normal hair at every mesh vertex.
+- Lane centerlines and lane boundaries each draw as their own overlay, the
+  centerlines in a colour of their own. Boundaries come from the mesh itself:
+  a lane's vertices alternate left rib and right rib, which `LaneSpan` now
+  states as a promise.
+- The surface is coloured by lane type, with a legend of the types the loaded
+  map contains, and the lane filter matches on type.
+
+### API
+
+- `LaneType::is_drivable` and `LaneType::as_str`, plus `Display`.
+- `Polyline::tangents` is public, so a consumer can reproduce `pose_at`'s
+  heading at a vertex instead of re-deriving one from the chords.
+
 ## 0.1.0 - 2026-09-22
 
 First release. Extracted from a simulator that had grown it in-tree, and

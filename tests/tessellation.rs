@@ -86,3 +86,49 @@ fn a_corner_tighter_than_the_half_width_does_not_fold() {
         "inner rib was never pinched (min width {min_rib}); clamp did nothing",
     );
 }
+
+/// Build a one-lane network from bare centerline points.
+fn lane_of(width: f32, pts: &[[f32; 3]]) -> RoadNetwork {
+    RoadNetwork::new(vec![Lane {
+        id: LaneId(0),
+        kind: LaneType::Driving,
+        direction: Direction::Forward,
+        center: Polyline::new(pts.iter().map(|p| Point::from_array(*p)).collect()),
+        width,
+        bank: Vec::new(),
+        successors: Vec::new(),
+        predecessors: Vec::new(),
+        neighbors: Vec::new(),
+    }])
+}
+
+/// Ribs in the mesh, one pair of vertices each.
+fn ribs(mesh: &libopendrive::Mesh) -> usize {
+    mesh.vertices.len() / 2
+}
+
+#[test]
+fn a_stub_last_segment_is_welded_away_and_the_end_kept() {
+    // 10 cm past a 4 m sample is a section end landing on top of the sample
+    // before it, not a sample of its own. It goes, and the vertex that absorbs
+    // it lands exactly on the lane's endpoint so the next section still meets
+    // this one.
+    let net = lane_of(3.0, &[[0.0, 0.0, 0.0], [4.0, 0.0, 0.0], [4.1, 0.0, 0.0]]);
+    let mesh = net.surface_mesh();
+    assert_eq!(ribs(&mesh), 2, "the stub should have been welded away");
+    let last = mesh.vertices[mesh.vertices.len() - 2];
+    assert!(
+        (last.x - 4.1).abs() < 1e-5,
+        "the surviving rib sits at {}, not on the endpoint",
+        last.x
+    );
+}
+
+#[test]
+fn evenly_spaced_short_segments_are_all_kept() {
+    // The same 10 cm step among other 10 cm steps is the sampling, not a stub.
+    // Welding it would flatten exactly the tight curves that need the detail.
+    let pts: Vec<[f32; 3]> = (0..=5).map(|k| [k as f32 * 0.3, 0.0, 0.0]).collect();
+    let mesh = lane_of(3.0, &pts).surface_mesh();
+    assert_eq!(ribs(&mesh), pts.len(), "no sample should have been welded");
+}

@@ -7,15 +7,23 @@
 //!
 //! The output is one object: a merged surface mesh (flat position/normal/index
 //! buffers, ready for a three.js `BufferGeometry`) and a per-lane table. Each
-//! lane entry names the OpenDRIVE road, section, and lane id it came from, the
-//! mesh slice it owns (so a picked triangle resolves to a lane), and its
-//! centerline points (so the viewer can project the cursor to `(s, t)`).
+//! lane entry names the OpenDRIVE road, section, and lane id it came from, what
+//! the lane is for, the mesh slice it owns (so a picked triangle resolves to a
+//! lane), and its centerline with the heading at each point (so the viewer can
+//! project the cursor to `(s, t)` and read out the same heading the crate
+//! would).
+//!
+//! Lane boundaries are not exported. They are already in the mesh: a lane's
+//! vertex range alternates left and right rib, which is what the viewer draws
+//! them from. See [`LaneSpan`].
 
 use std::env;
 use std::fs;
 use std::process::ExitCode;
 
-use libopendrive::{load_file_with_provenance, Direction, LaneProvenance, LaneSpan, Mesh, RoadNetwork};
+use libopendrive::{
+    load_file_with_provenance, Direction, LaneProvenance, LaneSpan, Mesh, RoadNetwork,
+};
 use serde_json::{json, Map, Value};
 
 fn main() -> ExitCode {
@@ -92,12 +100,20 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
     let centerline: Vec<[f32; 3]> = lane
         .map(|l| l.center.points().iter().map(|p| p.to_array()).collect())
         .unwrap_or_default();
+    // Parallel to `centerline`. The viewer interpolates these the way
+    // `Polyline::pose_at` does, rather than re-deriving a heading from the
+    // chords and disagreeing with the crate at every vertex.
+    let headings: Vec<[f32; 3]> = lane
+        .map(|l| l.center.tangents().iter().map(|t| t.to_array()).collect())
+        .unwrap_or_default();
 
     let mut entry = Map::new();
     entry.insert("laneId".into(), json!(span.lane.0));
     entry.insert("roadId".into(), json!(prov.map(|p| p.road_id.as_str())));
     entry.insert("section".into(), json!(prov.map(|p| p.section)));
     entry.insert("odLaneId".into(), json!(prov.map(|p| p.od_id)));
+    entry.insert("laneType".into(), json!(lane.map(|l| l.kind.as_str())));
+    entry.insert("drivable".into(), json!(lane.map(|l| l.kind.is_drivable())));
     entry.insert(
         "direction".into(),
         json!(lane.map(|l| match l.direction {
@@ -116,5 +132,6 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
         json!([span.indices.start, span.indices.end]),
     );
     entry.insert("centerline".into(), json!(centerline));
+    entry.insert("headings".into(), json!(headings));
     Value::Object(entry)
 }
