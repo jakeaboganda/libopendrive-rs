@@ -77,22 +77,22 @@ fn a_span_is_left_and_right_boundary_vertices_in_alternation() {
     let mut checked = 0usize;
     for span in &mesh.lanes {
         let lane = net.lane(span.lane).expect("the span names a real lane");
-        if lane.width <= 1e-3 {
-            // A lane that starts from nothing (a widening taper) has both ribs
-            // on the centerline, so there is no left and right to tell apart.
-            continue;
-        }
-        checked += 1;
         let slice = &mesh.vertices[span.vertices.start as usize..span.vertices.end as usize];
         for pair in slice.chunks_exact(2) {
             let (left, right) = (pair[0], pair[1]);
             let width = (left - right).length();
             assert!(
-                width > 0.0 && width <= lane.width + 1e-3,
-                "lane {:?} rib is {width} m across, lane is {} m wide",
+                width <= lane.width + 1e-3,
+                "lane {:?} rib is {width} m across, wider than the {} m lane",
                 lane.id,
                 lane.width
             );
+            if width < 1e-3 {
+                // Where a lane tapers to a point its two ribs coincide, and
+                // there is no left and right to tell apart.
+                continue;
+            }
+            checked += 1;
             assert!(
                 lane.center.project(left).offset > 0.0,
                 "lane {:?} has an even vertex right of its centerline",
@@ -105,7 +105,7 @@ fn a_span_is_left_and_right_boundary_vertices_in_alternation() {
             );
         }
     }
-    assert!(checked > 100, "only {checked} lanes had ribs to check");
+    assert!(checked > 1000, "only {checked} ribs had a width to check");
 }
 
 #[test]

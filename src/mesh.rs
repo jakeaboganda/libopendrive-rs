@@ -264,54 +264,53 @@ impl RoadNetwork {
         for lane in self.lanes() {
             let raw = lane.center.points();
             let raw_tangents = lane.center.tangents();
-            let mut points: Vec<Point> = Vec::with_capacity(raw.len());
-            let mut bank: Vec<f32> = Vec::with_capacity(raw.len());
-            // Kept in step with `points`: welding drops vertices, and a dropped
-            // vertex must take its tangent with it.
-            let mut along: Vec<Vector> = Vec::with_capacity(raw.len());
+            // Welding selects centerline vertices rather than rewriting them,
+            // so every per-vertex attribute comes from one index and none can
+            // fall out of step with the others. Mixing two indices does not
+            // crash. It puts a rib a fraction of a millimetre out and opens a
+            // seam at a section joint.
+            let half_at = |i: usize| lane.widths.get(i).copied().unwrap_or(lane.width) * 0.5;
+            let mut keep: Vec<usize> = Vec::with_capacity(raw.len());
             // Length of the last segment kept, which sets what counts as a stub
             // next to it.
             let mut last_seg = 0.0_f32;
-            for (i, &p) in raw.iter().enumerate() {
-                let step = points.last().map(|&q| (p - q).length());
-                let keep = match step {
+            for i in 0..raw.len() {
+                let step = keep.last().map(|&k| (raw[i] - raw[k]).length());
+                let keep_it = match step {
                     None => true,
                     Some(d) => d > (STUB_FRACTION * last_seg).max(WELD_FLOOR),
                 };
-                if keep {
+                if keep_it {
                     last_seg = step.unwrap_or(0.0);
-                    points.push(p);
-                    bank.push(lane.bank.get(i).copied().unwrap_or(0.0));
-                    along.push(raw_tangents.get(i).copied().unwrap_or(Vector::ZERO));
+                    keep.push(i);
                 }
             }
-            // Snap the last survivor onto the true endpoint, tangent included:
-            // the seam at a section joint is decided by the endpoint's tangent,
-            // so taking the stub's would undo the fix.
-            if let (Some(&end), Some(slot)) = (raw.last(), points.last_mut()) {
-                *slot = end;
-            }
-            if let (Some(&end), Some(slot)) = (raw_tangents.last(), along.last_mut()) {
-                *slot = end;
-            }
-            if points.len() < 2 {
-                // A sub-epsilon lane still keeps a span: its two endpoints as one
-                // thin quad, which cannot fold.
-                let end = raw[raw.len() - 1];
-                if (end - raw[0]).length() < 1e-6 {
-                    continue; // a zero-length lane has no surface to tessellate
+            // The last survivor stands in for the lane's true endpoint, so it
+            // has to be that endpoint. A joint is flush only when both sides
+            // agree on position, tangent, bank and width, so a stub's value
+            // for any one of them reopens the seam.
+            match keep.len() {
+                0 => continue,
+                1 => {
+                    // A lane welded down to a point still keeps a span, its two
+                    // endpoints as one thin quad, which cannot fold.
+                    if (raw[raw.len() - 1] - raw[0]).length() < 1e-6 {
+                        continue; // a zero-length lane has no surface
+                    }
+                    keep = vec![0, raw.len() - 1];
                 }
-                points = vec![raw[0], end];
-                bank = vec![
-                    lane.bank.first().copied().unwrap_or(0.0),
-                    lane.bank.last().copied().unwrap_or(0.0),
-                ];
-                along = vec![
-                    raw_tangents.first().copied().unwrap_or(Vector::ZERO),
-                    raw_tangents.last().copied().unwrap_or(Vector::ZERO),
-                ];
+                _ => *keep.last_mut().expect("non-empty") = raw.len() - 1,
             }
-            let half = lane.width * 0.5;
+            let points: Vec<Point> = keep.iter().map(|&i| raw[i]).collect();
+            let bank: Vec<f32> = keep
+                .iter()
+                .map(|&i| lane.bank.get(i).copied().unwrap_or(0.0))
+                .collect();
+            let half: Vec<f32> = keep.iter().map(|&i| half_at(i)).collect();
+            let along: Vec<Vector> = keep
+                .iter()
+                .map(|&i| raw_tangents.get(i).copied().unwrap_or(Vector::ZERO))
+                .collect();
             let n = points.len();
             let base = mesh.vertices.len() as u32;
             let first_index = mesh.indices.len() as u32;
@@ -347,7 +346,7 @@ impl RoadNetwork {
                 // `m * sin(turn/2)`. Cap that at ~half the shorter segment so the
                 // two ends stay within it and the ribs never reverse. Endpoints
                 // have no corner, so both keep the full half-width.
-                let (mut left_mag, mut right_mag) = (half, half);
+                let (mut left_mag, mut right_mag) = (half[i], half[i]);
                 if i > 0 && i + 1 < n {
                     let seg = (points[i] - points[i - 1])
                         .length()
@@ -356,7 +355,7 @@ impl RoadNetwork {
                     let cos_turn = inc.dot(out).clamp(-1.0, 1.0);
                     let eat = ((1.0 - cos_turn) * 0.5).max(0.0).sqrt();
                     if eat > 1e-4 && seg > 1e-6 {
-                        let inner = half.min(0.49 * seg / eat);
+                        let inner = half[i].min(0.49 * seg / eat);
                         // Pinch the rib the curve turns toward (the inner one).
                         if (out - inc).dot(left_normal(along)) > 0.0 {
                             left_mag = inner;
@@ -405,6 +404,7 @@ mod tests {
                 Point::new(10.0, 0.0, 0.0),
             ]),
             width: 4.0,
+            widths: Vec::new(),
             bank: Vec::new(),
             successors: Vec::new(),
             predecessors: Vec::new(),
@@ -483,6 +483,7 @@ mod tests {
                     Point::new(10.0, 0.0, 0.0),
                 ]),
                 width: 4.0,
+                widths: Vec::new(),
                 bank: Vec::new(),
                 successors: Vec::new(),
                 predecessors: Vec::new(),
@@ -514,6 +515,7 @@ mod tests {
             direction: Direction::Forward,
             center: Polyline::new(points),
             width,
+            widths: Vec::new(),
             bank,
             successors: Vec::new(),
             predecessors: Vec::new(),
@@ -628,6 +630,7 @@ mod tests {
             direction: Direction::Forward,
             center: Polyline::new(vec![Point::ORIGIN, Point::new(10.0, 0.0, 0.0)]),
             width: 4.0,
+            widths: Vec::new(),
             bank: Vec::new(),
             successors: Vec::new(),
             predecessors: Vec::new(),
@@ -683,6 +686,7 @@ mod tests {
             direction: Direction::Forward,
             center: Polyline::new(vec![Point::ORIGIN, Point::new(10.0, 0.0, 0.0)]),
             width: 6.0,
+            widths: Vec::new(),
             bank: vec![0.2, 0.2],
             successors: Vec::new(),
             predecessors: Vec::new(),

@@ -41,9 +41,13 @@ suite imports real files declaring 1.4, 1.6 and 1.7.
   cant. The cross-section rolls about the reference line, so an outer lane
   rides higher and its surface normal leans.
 - Per-lane widths, `laneOffset`, and multiple lane sections.
-- The lane cross-section as a whole, not only the carriageway: `LaneType`
-  names 23 functions, from sidewalks and kerbs to ramps and tram track.
-  `LaneType::is_drivable` separates the ones traffic uses.
+- The whole lane cross-section, the carriageway included. `LaneType` names
+  every function the format defines, among them sidewalks, kerbs, ramps and
+  tram track, and an unrecognised name bakes as `LaneType::Unknown` rather
+  than leaving a hole. `LaneType::is_drivable` separates the ones traffic
+  uses.
+- Lane widths that vary along a lane, so a gore area that opens out of a
+  point is drawn as the wedge it is.
 - Road/lane `<link>`s and `<junction>`s, resolved into a drive-direction lane
   graph.
 
@@ -56,7 +60,7 @@ Geometry is cross-checked against the reference C++
 ## What it ignores
 
 Everything else in the file, silently, including `<objects>`, `<signals>`,
-`<roadMark>`, and `<geoReference>`. Four omissions change the road you get
+`<roadMark>`, and `<geoReference>`. Three omissions change the road you get
 back rather than only dropping detail around it:
 
 - `<shape>`, the other lateralProfile child, so a crowned or cambered
@@ -64,9 +68,6 @@ back rather than only dropping detail around it:
 - `<border>`. A lane whose extent comes from a border rather than a width
   element has nothing to sample, so the importer drops it.
 - `<center>`, so lane 0 never becomes a `Lane`.
-- Vendor-specific and unnamed lane types, so a `none` or `special1` lane is
-  dropped rather than guessed at. Its width still offsets the lanes outboard
-  of it.
 
 ## Coordinate frame
 

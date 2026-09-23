@@ -87,6 +87,7 @@ pub(crate) fn banked_oval() -> RoadNetwork {
         direction: Direction::Forward,
         center: Polyline::new(points),
         width: WIDTH,
+        widths: Vec::new(),
         // The cant, per centerline vertex. surface_mesh tilts the ribs by it
         // and sample_near reads it, so no bespoke banked bundle is needed.
         bank,

@@ -67,9 +67,9 @@
 //!
 //! Four attribute values steer the import:
 //!
-//! - `<lane type>` chooses the [`LaneType`] a lane bakes as. The
-//!   vendor-specific types, and any name not recognised, are skipped, though
-//!   their widths still offset the lanes outboard of them.
+//! - `<lane type>` chooses the [`LaneType`] a lane bakes as. A name this
+//!   crate does not recognise bakes as [`LaneType::Unknown`], so no lane is
+//!   ever dropped for its type.
 //! - `<link elementType>` is `junction`, or a road for any other value.
 //! - `contactPoint` is `end`, or the start for any other value.
 //! - `<paramPoly3 pRange>` is `arcLength`, matched without case, or
@@ -85,7 +85,7 @@
 //! `<objects>`, `<signals>`, `<roadMark>`, `<controller>`,
 //! `<junctionGroup>`, `<station>`, and road `<type>` with its `<speed>`.
 //!
-//! Four omissions change the road you get back, rather than only dropping
+//! Three omissions change the road you get back, rather than only dropping
 //! detail around it:
 //!
 //! - `<shape>`, the other lateralProfile child, so a crowned or cambered
@@ -93,8 +93,6 @@
 //! - `<border>`. A lane whose extent comes from a border rather than a width
 //!   element has nothing to sample, so the importer drops it.
 //! - `<center>`, so lane 0 never becomes a [`Lane`].
-//! - Vendor-specific lane types, so a `special1` lane is dropped rather than
-//!   guessed at.
 //!
 //! # Coordinate frame
 //!

@@ -294,34 +294,31 @@ fn active(records: &[Cubic], s: f64) -> Option<&Cubic> {
     records.iter().rev().find(|r| r.start <= s + 1e-9)
 }
 
-/// One lane parsed from a `<laneSection>`. `kind` is the [`LaneType`] it emits
-/// as, or `None` for a type the importer keeps only so its width offsets the
-/// lanes outboard of it.
+/// One lane parsed from a `<laneSection>`, before it is sampled into a [`Lane`].
 struct LaneDef {
     id: i32,
-    kind: Option<LaneType>,
+    kind: LaneType,
     widths: Vec<Cubic>,
     pred_link: Option<i32>,
     succ_link: Option<i32>,
 }
 
-/// The [`LaneType`] an OpenDRIVE `<lane>` `type` maps to, or `None` for a type
-/// the importer does not emit. A new emitted lane type is one arm here.
+/// The [`LaneType`] an OpenDRIVE `<lane>` `type` maps to. A new lane type is
+/// one arm here.
 ///
-/// Only `special1`..`special3` and names not listed here are absent. They are
-/// vendor-defined, so any mapping would be invention. They still reach the
-/// offset accumulation in [`emit_section`], so the lanes outboard of them stay
-/// where the file put them; they are just not surfaces of their own.
-///
-/// `none` is a lane, not a gap. It is paved area the cross-section declares
-/// without naming a use for, and the reference C++ implementation meshes it
-/// like any other. Town07 alone carries 27 of them, averaging 3.5 m wide, so
-/// skipping them punched holes in the surface.
+/// Every name maps to something. An absent or unrecognised type becomes
+/// [`LaneType::Unknown`], so every `<lane>` carrying a width becomes a [`Lane`].
+/// The importer used to drop the types it had no variant for, which left holes
+/// in the surface where `none` and vendor-specific lanes belonged. Town07 alone
+/// lost 27 lanes that way, averaging 3.5 m wide.
 ///
 /// `mwyEntry` and `mwyExit` are the older spellings of `entry` and `exit`, and
 /// land on the same variants.
-fn lane_type(od_type: Option<&str>) -> Option<LaneType> {
-    let kind = match od_type? {
+fn lane_type(od_type: Option<&str>) -> LaneType {
+    let Some(od_type) = od_type else {
+        return LaneType::Unknown;
+    };
+    match od_type {
         "none" => LaneType::None,
         "driving" => LaneType::Driving,
         "bidirectional" => LaneType::Bidirectional,
@@ -346,9 +343,11 @@ fn lane_type(od_type: Option<&str>) -> Option<LaneType> {
         "roadWorks" => LaneType::RoadWorks,
         "tram" => LaneType::Tram,
         "rail" => LaneType::Rail,
-        _ => return None,
-    };
-    Some(kind)
+        "special1" => LaneType::Special1,
+        "special2" => LaneType::Special2,
+        "special3" => LaneType::Special3,
+        _ => LaneType::Unknown,
+    }
 }
 
 // --- Parsing ------------------------------------------------------------------
@@ -559,12 +558,6 @@ fn emit_section(
             if widths.is_empty() {
                 continue; // no width: nothing to sample, and no offset to add
             }
-            // Keep every lane, whatever its type. A vendor-specific lane still
-            // pushes the lanes outboard of it away from the reference line, so
-            // its width has to enter the running offset even though it is not
-            // emitted. Omitting these lanes placed an outboard driving lane too
-            // close to the reference line, and on a curve gave it the wrong
-            // radius and length.
             let kind = lane_type(lane.attribute("type"));
             let (pred_link, succ_link) = links::lane_link(lane);
             let def = LaneDef {
@@ -617,9 +610,7 @@ fn emit_section(
         // subject to the drivability test below.
         let mut emitted: Vec<(LaneId, usize, LaneType)> = Vec::new();
         for (i, lane) in side.iter().enumerate() {
-            let Some(kind) = lane.kind else {
-                continue; // offset-only type: counted above, not emitted
-            };
+            let kind = lane.kind;
             let (points, headings) = sample_lane(
                 geoms,
                 elevations,
@@ -655,12 +646,14 @@ fn emit_section(
                 pred_link: lane.pred_link,
             });
             emitted.push((id, out.len(), kind));
+            let (width, widths) = width_profile(lane, s_start, &sample_s);
             out.push(Lane {
                 id,
                 kind,
                 direction,
                 center,
-                width: width_at(lane, 0.0) as f32,
+                width,
+                widths,
                 // Road-level roll, shared across the section's lanes; parallel to
                 // the sampled centerline. Empty when the road is flat.
                 bank: bank.clone(),
@@ -756,6 +749,26 @@ fn width_at(lane: &LaneDef, s_lane: f64) -> f64 {
     active(&lane.widths, s_lane)
         .map(|w| w.eval(s_lane).max(0.0))
         .unwrap_or(0.0)
+}
+
+/// A lane's nominal width and its per-sample profile, sampled parallel to
+/// `sample_s`.
+///
+/// The profile collapses to empty when the lane holds one width all the way
+/// along, which covers most lanes, so an ordinary lane bakes to exactly what
+/// it baked to before per-station widths existed.
+///
+/// The nominal width is the widest the lane gets, not the width where it
+/// starts. A lane that opens out of a point starts at 0 m, and reporting that
+/// as its width gave a gore area no surface at all.
+fn width_profile(lane: &LaneDef, s_start: f64, sample_s: &[f64]) -> (f32, Vec<f32>) {
+    let widths: Vec<f32> = sample_s
+        .iter()
+        .map(|&s| width_at(lane, s - s_start) as f32)
+        .collect();
+    let nominal = widths.iter().copied().fold(0.0_f32, f32::max);
+    let constant = widths.iter().all(|w| (w - nominal).abs() < 1e-6);
+    (nominal, if constant { Vec::new() } else { widths })
 }
 
 fn geom_at(geoms: &[GeomRec], s: f64) -> &GeomRec {
@@ -1068,9 +1081,9 @@ mod tests {
     }
 
     // A cross-section using most of the lane vocabulary: a sidewalk, a kerb, a
-    // parking lane and an unnamed strip outboard of two running lanes, a
-    // vendor-specific type the importer has no meaning for, and a median
-    // between the two directions.
+    // parking lane and an unnamed strip outboard of two running lanes, a median
+    // between the two directions, a vendor-specific type, and a type that is
+    // not in the format at all.
     const MANY_TYPES: &str = r#"<?xml version="1.0"?>
 <OpenDRIVE>
   <road name="m" length="20.0" id="1" junction="-1">
@@ -1083,6 +1096,7 @@ mod tests {
           <lane id="1" type="median"><width sOffset="0.0" a="1.0"/></lane>
           <lane id="2" type="special1"><width sOffset="0.0" a="1.0"/></lane>
           <lane id="3" type="driving"><width sOffset="0.0" a="3.5"/></lane>
+          <lane id="4" type="banana"><width sOffset="0.0" a="1.5"/></lane>
         </left>
         <right>
           <lane id="-1" type="driving"><width sOffset="0.0" a="3.5"/></lane>
@@ -1107,33 +1121,138 @@ mod tests {
                 .map(|l| l.kind)
         };
         assert_eq!(kind(1), Some(LaneType::Median));
-        assert_eq!(kind(2), Some(LaneType::Driving));
+        assert_eq!(kind(3), Some(LaneType::Driving));
         assert_eq!(kind(-1), Some(LaneType::Driving));
         assert_eq!(kind(-2), Some(LaneType::OnRamp));
+        assert_eq!(kind(-3), Some(LaneType::None), "`none` is paved surface");
         assert_eq!(kind(-4), Some(LaneType::Parking));
         assert_eq!(kind(-5), Some(LaneType::Curb));
         assert_eq!(kind(-6), Some(LaneType::Sidewalk));
-        // `none` and the vendor-specific type have no surface of their own.
-        assert_eq!(kind(3), None, "special1 is not baked");
-        assert_eq!(kind(-3), None, "none is not baked");
-        assert_eq!(net.lanes().len(), 7);
+        assert_eq!(kind(2), Some(LaneType::Special1));
+        assert_eq!(kind(4), Some(LaneType::Unknown), "banana is not a type");
+        // Every lane in the section, with nothing dropped for its type.
+        assert_eq!(net.lanes().len(), 10);
         assert_eq!(net.driving_lanes().count(), 2);
     }
 
+    // A gore area, as CARLA writes one: a lane that starts as a point and opens
+    // out cubically, then holds a constant width. Town07's road 64 lane -5 and
+    // road 17 lane -2 are both this shape.
+    const TAPERED: &str = r#"<?xml version="1.0"?>
+<OpenDRIVE>
+  <road name="t" length="20.0" id="1" junction="-1">
+    <planView>
+      <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="20.0"><line/></geometry>
+    </planView>
+    <lanes>
+      <laneSection s="0.0">
+        <right>
+          <lane id="-1" type="driving"><width sOffset="0.0" a="3.5"/></lane>
+          <lane id="-2" type="none">
+            <width sOffset="0.0" a="0.0" b="0.0" c="0.04" d="0.0"/>
+            <width sOffset="10.0" a="4.0" b="0.0" c="0.0" d="0.0"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>"#;
+
     #[test]
-    fn a_skipped_lane_type_still_offsets_what_is_outboard_of_it() {
-        // Right side, center outward: driving 3.5, onRamp 3.0, none 0.5,
-        // parking 2.5. The parking lane's center is at
-        // t = -(3.5 + 3.0 + 0.5 + 2.5/2) = -8.25. Dropping the `none` strip's
-        // width with the lane itself would leave it at -7.75.
-        let (net, prov) = load_str_with_provenance(MANY_TYPES).expect("import");
-        let parking = prov
+    fn a_lane_that_opens_out_of_nothing_keeps_its_width_along_its_length() {
+        // The width runs 0 -> 4 m. Reporting the width at s=0 as the lane's
+        // width made the whole strip 0 m wide.
+        let (net, prov) = load_str_with_provenance(TAPERED).expect("import");
+        let lane = prov
             .iter()
-            .find(|p| p.od_id == -4)
+            .find(|p| p.od_id == -2)
             .and_then(|p| net.lane(p.lane))
-            .expect("the parking lane");
-        let y = parking.center.pose_at(0.0).position.y;
-        assert!((y + 8.25).abs() < 0.05, "y {y}, expected -8.25");
+            .expect("the tapered lane");
+
+        assert!((lane.width - 4.0).abs() < 0.01, "nominal {}", lane.width);
+        assert!(
+            lane.width_at(0.0) < 0.01,
+            "it starts as a point: {}",
+            lane.width_at(0.0)
+        );
+        assert!(
+            (lane.width_at(lane.center.length()) - 4.0).abs() < 0.01,
+            "and ends at full width: {}",
+            lane.width_at(lane.center.length())
+        );
+        // The profile grows the whole way, following the cubic rather than
+        // stepping between the two width records.
+        let mut last = -1.0;
+        for k in 0..=20 {
+            let w = lane.width_at(lane.center.length() * k as f32 / 20.0);
+            assert!(w >= last - 1e-4, "width dipped at step {k}: {last} -> {w}");
+            last = w;
+        }
+    }
+
+    #[test]
+    fn a_tapered_lane_tessellates_to_a_wedge_not_a_sliver() {
+        // What the viewer showed. The lane was in the lane list, it had a span
+        // in the mesh, and it covered no area.
+        let (net, prov) = load_str_with_provenance(TAPERED).expect("import");
+        let id = prov
+            .iter()
+            .find(|p| p.od_id == -2)
+            .expect("provenance")
+            .lane;
+        let mesh = net.surface_mesh();
+        let span = mesh
+            .lanes
+            .iter()
+            .find(|s| s.lane == id)
+            .expect("the lane owns a mesh slice");
+
+        let ribs: Vec<f32> = mesh.vertices
+            [span.vertices.start as usize..span.vertices.end as usize]
+            .chunks_exact(2)
+            .map(|p| (p[0] - p[1]).length())
+            .collect();
+        assert!(ribs.first().copied().unwrap_or(1.0) < 0.01, "starts sharp");
+        assert!(
+            ribs.last().copied().unwrap_or(0.0) > 3.9,
+            "opens to full width: {:?}",
+            ribs.last()
+        );
+    }
+
+    #[test]
+    fn an_unrecognised_lane_type_is_a_lane_rather_than_a_hole() {
+        // An unrecognised type still describes a real strip of surface. It
+        // bakes with its geometry intact, under a name that says the type was
+        // not understood.
+        let (net, prov) = load_str_with_provenance(MANY_TYPES).expect("import");
+        let lane = prov
+            .iter()
+            .find(|p| p.od_id == 4)
+            .and_then(|p| net.lane(p.lane))
+            .expect("the unrecognised lane is baked");
+        assert_eq!(lane.kind, LaneType::Unknown);
+        assert!(
+            !lane.kind.is_drivable(),
+            "and nothing may be routed onto it"
+        );
+        assert!((lane.width - 1.5).abs() < 1e-6, "width {}", lane.width);
+        assert!(lane.center.length() > 19.0, "it has the road's length");
+    }
+
+    #[test]
+    fn inner_lane_widths_accumulate_across_the_cross_section() {
+        // Left side, center outward: median 1.0, special1 1.0, driving 3.5. The
+        // driving lane's center is at t = +(1.0 + 1.0 + 3.5/2) = +3.75. Missing
+        // either inner width would leave it at +2.75 or nearer.
+        let (net, prov) = load_str_with_provenance(MANY_TYPES).expect("import");
+        let driving = prov
+            .iter()
+            .find(|p| p.od_id == 3)
+            .and_then(|p| net.lane(p.lane))
+            .expect("the left driving lane");
+        let y = driving.center.pose_at(0.0).position.y;
+        assert!((y - 3.75).abs() < 0.05, "y {y}, expected 3.75");
     }
 
     #[test]

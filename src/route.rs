@@ -191,6 +191,7 @@ mod tests {
             direction: dir,
             center: Polyline::new(pts.iter().map(|p| Point::from_array(*p)).collect()),
             width: 3.5,
+            widths: Vec::new(),
             bank: Vec::new(),
             successors: succ.iter().map(|&s| LaneId(s)).collect(),
             predecessors: Vec::new(),

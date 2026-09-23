@@ -76,6 +76,20 @@ pub enum LaneType {
     Tram,
     /// Railway track.
     Rail,
+    /// Vendor-defined surface. The format reserves three of these without
+    /// saying what they are for.
+    Special1,
+    /// Vendor-defined surface. See [`LaneType::Special1`].
+    Special2,
+    /// Vendor-defined surface. See [`LaneType::Special1`].
+    Special3,
+    /// A surface whose declared type this crate does not recognise.
+    ///
+    /// A lane has geometry whether or not its type means anything here, so it
+    /// bakes as one of these rather than being dropped. Dropping it left holes
+    /// in the road surface instead, which is harder to notice than a lane of
+    /// the wrong colour.
+    Unknown,
 }
 
 impl LaneType {
@@ -131,6 +145,10 @@ impl LaneType {
             Self::RoadWorks => "road-works",
             Self::Tram => "tram",
             Self::Rail => "rail",
+            Self::Special1 => "special1",
+            Self::Special2 => "special2",
+            Self::Special3 => "special3",
+            Self::Unknown => "unknown",
         }
     }
 }
@@ -165,8 +183,21 @@ pub struct Lane {
     pub direction: Direction,
     /// Lane centerline.
     pub center: Polyline,
-    /// Constant lane width (per-vertex widths can come later).
+    /// Nominal lane width (metres), meaning the widest this lane gets.
+    ///
+    /// The whole width of a lane that holds one, and the full-section width of
+    /// a lane that tapers. This names the lane, a 3.5 m lane. It is not the
+    /// width at a given station; [`Lane::width_at`] answers that, and the
+    /// tessellator uses it.
     pub width: f32,
+    /// Per-centerline-vertex width (metres), parallel to `center.points()`.
+    ///
+    /// Empty means a lane of constant `width`, which covers most of them. Any
+    /// non-empty profile must have exactly `center.points().len()` entries.
+    /// A gore area at an off-ramp is what this exists for. It is 0 m wide
+    /// where it begins and 5 m wide further along, and a single width put it
+    /// at neither.
+    pub widths: Vec<f32>,
     /// Per-centerline-vertex superelevation angle (radians, signed), parallel to
     /// `center.points()`. Positive raises the **+offset** edge, the left-hand
     /// normal of the centerline's *stored* tangent (its geometry direction), which
@@ -284,6 +315,22 @@ impl Lane {
         );
         let (i, t) = self.center.locate(s);
         self.bank[i] + (self.bank[i + 1] - self.bank[i]) * t
+    }
+
+    /// Lane width (metres) at arc length `s`, interpolated between vertices;
+    /// the constant [`Lane::width`] on a lane with no profile. See
+    /// [`Lane::widths`].
+    pub fn width_at(&self, s: f32) -> f32 {
+        if self.widths.is_empty() {
+            return self.width;
+        }
+        debug_assert_eq!(
+            self.widths.len(),
+            self.center.points().len(),
+            "a non-empty width profile must be parallel to the centerline"
+        );
+        let (i, t) = self.center.locate(s);
+        self.widths[i] + (self.widths[i + 1] - self.widths[i]) * t
     }
 
     /// The road surface at arc length `s` along this lane: the banked centerline
@@ -407,6 +454,7 @@ mod tests {
             direction: Direction::Forward,
             center: Polyline::new(points.iter().map(|p| Point::from_array(*p)).collect()),
             width: 3.5,
+            widths: Vec::new(),
             bank: Vec::new(),
             successors: Vec::new(),
             predecessors: Vec::new(),

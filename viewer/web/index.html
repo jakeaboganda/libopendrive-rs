@@ -91,9 +91,12 @@ const searchEl = document.getElementById('search');
 // Surface colour per lane type, keyed by the crate's `LaneType::as_str`.
 // Carriageway types stay in cool greys so the road still reads as a road;
 // everything a vehicle has no business on is warm or light enough to pick out
-// at a glance. A type with no entry here falls back to FALLBACK_COLOR, which
-// is how a lane type added to the crate but not to this table shows up as
-// unclassified rather than as a driving lane.
+// at a glance. The vendor-defined `special*` types get colours of their own,
+// since a map that uses them means something by them.
+//
+// `unknown` is left out on purpose. It is the crate's name for a lane type it
+// does not recognise, so it falls through to FALLBACK_COLOR, as does any type
+// added to the crate and not to this table. Both want the same loud treatment.
 const LANE_COLORS = {
   'none': 0x4a4d55, 'driving': 0x5a6b82, 'bidirectional': 0x7a5a82, 'bus': 0x2f6f4f, 'taxi': 0x8a7a2f,
   'hov': 0x3f6f8a, 'entry': 0x4f7a5a, 'exit': 0x7a5a4f, 'on-ramp': 0x46748c,
@@ -101,6 +104,7 @@ const LANE_COLORS = {
   'parking': 0x3f5a99, 'stop': 0x8a3f3f, 'restricted': 0x7a4a4a, 'biking': 0x2f7a6f,
   'sidewalk': 0x9aa3ad, 'shoulder': 0x6f6a5f, 'border': 0x5f5f5f, 'curb': 0xa8a29a,
   'median': 0x4f6b4f, 'road-works': 0x9a6a2f, 'tram': 0x6a6a8a, 'rail': 0x7a7a7a,
+  'special1': 0x8a4a7a, 'special2': 0x4a8a7a, 'special3': 0x7a8a4a,
 };
 const FALLBACK_COLOR = 0xc026d3;
 
@@ -123,7 +127,7 @@ async function init() {
   try {
     data = await (await fetch(SCENE_URL)).json();
   } catch (e) {
-    throw new Error(`could not load ${SCENE_URL} — serve this folder over HTTP ` +
+    throw new Error(`could not load ${SCENE_URL}. Serve this folder over HTTP ` +
       `(e.g. <code>python3 -m http.server</code>) rather than opening the file directly.`);
   }
 
