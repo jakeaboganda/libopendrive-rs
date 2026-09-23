@@ -25,13 +25,15 @@ mesh.validate()?;
 
 ## Which OpenDRIVE version
 
-The importer does not read `<header>`. It never inspects `revMajor` or
-`revMinor`, and it never rejects a file for its version. Whether a file loads
-depends only on whether it uses the elements listed below.
+The importer never reads `<header>`, so it never inspects `revMajor` or
+`revMinor` and never rejects a file for its declared version. Whether a file
+loads depends only on whether it uses the elements listed below, not on the
+revision it declares.
 
 Every one of those elements is in ASAM OpenDRIVE 1.9.0, the current revision.
-`poly3` is deprecated there, still specified, and still read here. The test
-suite imports real files declaring 1.4, 1.6 and 1.7.
+`poly3` is deprecated there in favor of `paramPoly3`, but the importer reads
+it the same as any current element and prints no warning for using it. The
+test suite imports real files declaring 1.4, 1.6 and 1.7.
 
 ## What it imports
 
@@ -84,22 +86,28 @@ positive-id lanes against it.
 
 A road the importer cannot interpret is skipped, not fatal. Losing a city map
 to one junk road is the worse failure. `load_str` still errors if the document
-yielded no lanes at all. Non-finite attribute values are rejected at parse:
-Rust's float parser accepts `NaN` and turns `1e400` into infinity, and one such
-value poisons every point derived from it.
+yields no lanes at all. The parser rejects non-finite attribute values as it
+reads them: Rust's float parser accepts `NaN` and turns `1e400` into infinity,
+and one such value poisons every point derived from it.
 
 ## Visualization
 
-Rendering is not in scope here, but the output is shaped for it.
+Rendering is not part of the crate, but [`viewer/`](viewer/README.md) has a
+three.js page that renders a baked map: hover a lane for its coordinates and
+type, browse roads and lanes in a sidebar, and toggle centerline, boundary,
+and normal overlays.
+
 `surface_mesh()` returns plain position, normal, and index buffers with no
 engine types in them, and a `LaneSpan` per lane saying which slice of those
-buffers it owns. That is enough to pick the lane under a cursor, or give one
-lane its own material without re-tessellating.
+buffers it owns. Buffers plus spans are enough to pick the lane under a
+cursor, or give one lane its own material without re-tessellating. The viewer
+uses the same spans to resolve a raycast hit to a lane.
 
-The optional `serde` feature serializes the network and its mesh, for a viewer
-in another process or a cached import. A `RoadNetwork` sends its lanes alone
-and rebuilds its index on arrival, so what arrives behaves like a freshly
-imported map.
+The optional `serde` feature serializes the network and its mesh. The example
+at `examples/viewer_export.rs` uses it to bake a map straight to the JSON the
+viewer reads; the same feature works for caching an import. A `RoadNetwork`
+sends its lanes alone and rebuilds its index on arrival, so what arrives
+behaves like a freshly imported map.
 
 ```toml
 libopendrive = { version = "0.1", features = ["serde"] }
@@ -110,8 +118,9 @@ libopendrive = { version = "0.1", features = ["serde"] }
 A position is a `Point` and a direction is a `Vector`. They are separate types
 with the arithmetic that relates them, so `point - point` is a `Vector`,
 `point + vector` is a `Point`, and adding two positions does not compile. One
-three-float type used for everything makes `nearest_lane(sample.up)` legal,
-which it is not.
+three-float type used for everything would let `nearest_lane(sample.up)`
+compile, though passing a direction where a position belongs is not a valid
+call.
 
 Both are `#[repr(C)]` structs of three public `f32` fields, so handing one to
 another math library is one call:
@@ -127,7 +136,7 @@ nothing here constrains which math or engine crate you use, or its version.
 
 Lane and surface lookups are answered off a ground-plane index, so their cost
 tracks local road density rather than map size. On CARLA's Town07 (234 roads,
-920 lanes, 673 of them driving):
+947 lanes, 673 of them driving):
 
 | | per call |
 | --- | --- |
@@ -138,8 +147,8 @@ tracks local road density rather than map size. On CARLA's Town07 (234 roads,
 Import is ~9 ms for that map, three quarters of it XML parsing.
 
 `cargo bench` reproduces these. `tests/budgets.rs` guards them in CI by racing
-each indexed lookup against the scan it replaced, which needs no fixed
-per-machine threshold.
+each indexed lookup against the scan it replaced. Racing needs no fixed
+per-machine threshold, unlike timing a call directly.
 
 ## Testing
 
