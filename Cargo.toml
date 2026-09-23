@@ -1,6 +1,6 @@
 [package]
 name = "libopendrive"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.82"
 description = "Pure-Rust OpenDRIVE (.xodr) importer: bakes a road network into polylines, a lane graph, and a surface mesh."

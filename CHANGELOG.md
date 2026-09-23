@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 - 2026-09-23
 
 ### Lane types
 
@@ -11,8 +11,6 @@ family, tram and rail, the unnamed `none` surface, and the three vendor-defined
 `special` types. A name the crate does not recognise bakes as
 `LaneType::Unknown`, so no lane is dropped for its type and the importer
 cannot leave a hole in a map without naming it.
-
-Two consequences worth knowing about before upgrading:
 
 - `surface_mesh` tessellates every lane, not only the drivable ones, so a
   collider built from it now has the footway and the median in it. The mesh is
