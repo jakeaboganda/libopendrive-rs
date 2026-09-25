@@ -738,6 +738,12 @@ function showObjectTip(ev, rect, hit) {
     rows.push(`parking ${escapeHtml(access || 'no access given')}` +
       (restrictions ? `, ${escapeHtml(restrictions)}` : ''));
   }
+  for (const m of o.materials ?? []) {
+    const parts = [escapeHtml(m.surface || 'no surface given')];
+    if (m.friction != null) parts.push(`friction ${m.friction.toFixed(2)}`);
+    if (m.roughness != null) parts.push(`roughness ${m.roughness.toFixed(3)} m`);
+    rows.push(`material ${parts.join(', ')}`);
+  }
   if (border) {
     rows.push(`<b>border</b> ${escapeHtml(border.type || 'no type')}, ${border.width.toFixed(2)} m wide`);
   } else if (o.borders?.length) {

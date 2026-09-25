@@ -8,8 +8,8 @@
 //! `<objectReference>`s. That puts every expected placement in closed form.
 
 use libopendrive::{
-    load_file, load_file_with_provenance, Corner, Extent, Marking, Object, ObjectId, ObjectType,
-    Orientation, ParkingSpace, Point, Section, Shape, Vector,
+    load_file, load_file_with_provenance, Corner, Extent, Marking, Material, Object, ObjectId,
+    ObjectType, Orientation, ParkingSpace, Point, Section, Shape, Vector,
 };
 
 const OBJECTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/objects.xodr");
@@ -668,6 +668,35 @@ fn a_parking_space_says_who_may_park_there() {
         .iter()
         .filter(|o| o.kind != ObjectType::ParkingSpace)
         .all(|o| o.parking_space.is_none()));
+}
+
+#[test]
+fn an_object_keeps_what_its_surface_is_made_of() {
+    let objects = objects();
+    let of = |kind| {
+        objects
+            .iter()
+            .find(|o| o.kind == kind)
+            .map(|o| o.materials.clone())
+            .expect("object")
+    };
+    assert_eq!(
+        of(ObjectType::TrafficIsland),
+        [Material {
+            surface: "concrete".into(),
+            friction: Some(0.7),
+            roughness: Some(0.02)
+        }]
+    );
+    assert_eq!(
+        of(ObjectType::Crosswalk),
+        [Material {
+            surface: "asphalt".into(),
+            friction: Some(0.6),
+            roughness: None
+        }]
+    );
+    assert_eq!(of(ObjectType::Tree), []);
 }
 
 #[test]

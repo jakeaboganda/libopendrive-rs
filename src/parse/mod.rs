@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use crate::coords::{Point, Vector};
 use crate::object::orient;
 use crate::{
-    Border, Corner, Direction, Extent, Lane, LaneId, LaneType, Marking, Object, ObjectId,
+    Border, Corner, Direction, Extent, Lane, LaneId, LaneType, Marking, Material, Object, ObjectId,
     ObjectType, ParkingSpace, Polyline, RoadNetwork, Section, Shape,
 };
 
@@ -1290,6 +1290,15 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
             restrictions: text("restrictions"),
         }
     });
+    let materials: Vec<Material> = node
+        .children()
+        .filter(|n| n.has_tag_name("material"))
+        .map(|m| Material {
+            surface: m.attribute("surface").unwrap_or_default().to_string(),
+            friction: attr_f64(m, "friction").map(|v| v as f32),
+            roughness: attr_f64(m, "roughness").map(|v| v as f32),
+        })
+        .collect();
     for part in parts {
         let id = ObjectId(out.baked.len());
         out.baked.push(Object {
@@ -1302,6 +1311,7 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
             markings: part.markings,
             borders: part.borders,
             parking_space: parking_space.clone(),
+            materials: materials.clone(),
             shape: part.shape,
         });
         out.provenance.push(ObjectProvenance {

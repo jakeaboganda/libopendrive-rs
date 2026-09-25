@@ -55,7 +55,8 @@ outline with `useCompleteOutline` or along the edges its `<cornerReference>`s
 name otherwise.
 
 `Object::parking_space` is set from a `<parkingSpace>`: its `access`, such
-as `handicapped`, and its free-text `restrictions`.
+as `handicapped`, and its free-text `restrictions`. `Object::materials` has
+one `Material` per `<material>`: its `surface`, `friction` and `roughness`.
 
 These placements follow libOpenDRIVE. Not imported yet: `<tunnel>`,
 `<bridge>`, and an outline's `outer` flag, so a hole bakes as a solid.

@@ -99,6 +99,7 @@ edge = xodr.Marking(xodr.RoadMarkColor.yellow, lineLength=0, side="right", space
 for id in [1, 2, 3]:
     edge.add_cornerReference(id)
 crosswalk.add_marking(edge)
+crosswalk.add_material(surface="asphalt", friction=0.6)
 road.add_object(crosswalk)
 
 # A traffic island in the middle of the road, outlined in road coordinates,
@@ -108,6 +109,7 @@ kerb = xodr.Outline(closed=True, id=0)
 for id, (s, t) in enumerate([(64, -1), (70, -1), (70, 1), (64, 1)]):
     kerb.add_corner(xodr.CornerRoad(s, t, 0, 0.15, id=id))
 island.add_outline(kerb)
+island.add_material(surface="concrete", friction=0.7, roughness=0.02)
 road.add_object(island)
 
 # Two flat parking bays beside the road, one kept for disabled drivers and

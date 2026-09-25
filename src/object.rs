@@ -241,6 +241,19 @@ pub struct ParkingSpace {
     pub restrictions: String,
 }
 
+/// What an object's surface is made of.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Material {
+    /// The surface, such as `asphalt` or `concrete`. Free text, and empty if
+    /// the map gives none.
+    pub surface: String,
+    /// The friction coefficient, if the map gives one.
+    pub friction: Option<f32>,
+    /// The surface roughness, in metres, if the map gives one.
+    pub roughness: Option<f32>,
+}
+
 /// One object in the world.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -270,6 +283,9 @@ pub struct Object {
     /// Who may park there, if the map describes the object as a parking
     /// space.
     pub parking_space: Option<ParkingSpace>,
+    /// What its surface is made of, in the order the map gives them. Usually
+    /// one, or none.
+    pub materials: Vec<Material>,
     /// Where it is and what it fills.
     pub shape: Shape,
 }
