@@ -576,10 +576,7 @@ function onHover(ev) {
   const hit = raycaster.intersectObjects(pickable, false)[0];
   objectOutline.visible = false;
   if (!hit) { hideTip(); if (!activeLane) clearHighlight(); return; }
-  if (hit.object !== roadMesh) {
-    if (!activeLane) clearHighlight();
-    return showObjectTip(ev, rect, hit);
-  }
+  if (hit.object !== roadMesh) return showObjectTip(ev, rect, hit);
 
   const lane = laneForFace(hit.faceIndex);
   if (!lane) { hideTip(); return; }
@@ -611,6 +608,8 @@ function showObjectTip(ev, rect, hit) {
   objectOutline.geometry = edges;
   objectOutline.matrix.copy(matrix);
   objectOutline.visible = true;
+  const applies = (o.lanes ?? []).map(id => laneById.get(id)).filter(Boolean);
+  if (activeLane == null) highlightLanes(applies);
 
   const sub = o.subtype && o.subtype.toLowerCase() !== 'none' ? ` (${escapeHtml(o.subtype)})` : '';
   const rows = [`<b>${o.objectType}</b>${sub}${o.name ? '  ' + escapeHtml(o.name) : ''}` +
@@ -624,6 +623,7 @@ function showObjectTip(ev, rect, hit) {
       rows.push(`<b>reference</b> to road ${escapeHtml(o.referencedFrom)}  object ${escapeHtml(o.odId)}`);
     }
   }
+  rows.push(laneList(applies));
   if (o.kind === 'solid') rows.push(...solidRows(o));
   else {
     const p = hit.point;
@@ -747,6 +747,30 @@ function setHighlight(lane) {
   lane.centerline.forEach((p, i) => { flat[i*3]=p[0]; flat[i*3+1]=p[1]; flat[i*3+2]=p[2]+0.05; });
   highlightLine.geometry.setAttribute('position', new THREE.Float32BufferAttribute(flat, 3));
   highlightLine.visible = true;
+}
+
+// Every lane in `list` highlighted at once, with no centerline: the lanes an
+// object applies to.
+function highlightLanes(list) {
+  if (!list.length) return clearHighlight();
+  const indices = new Uint32Array(list.reduce((n, l) => n + l.sliceIndices.length, 0));
+  let at = 0;
+  for (const l of list) { indices.set(l.sliceIndices, at); at += l.sliceIndices.length; }
+  highlight.geometry.setIndex(new THREE.Uint32BufferAttribute(indices, 1));
+  highlight.geometry.setDrawRange(0, indices.length);
+  highlight.visible = true;
+  highlightLine.visible = false;
+}
+
+// The lanes an object applies to, by OpenDRIVE lane id, grouped by section.
+function laneList(list) {
+  if (!list.length) return 'lanes none';
+  const bySection = new Map();
+  for (const l of list) {
+    if (!bySection.has(l.section)) bySection.set(l.section, []);
+    bySection.get(l.section).push(l.odLaneId);
+  }
+  return 'lanes ' + [...bySection].map(([s, ids]) => `§${s}: ${ids.join(' ')}`).join('   ');
 }
 
 function clearHighlight() { highlight.visible = false; highlightLine.visible = false; }

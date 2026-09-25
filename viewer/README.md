@@ -40,7 +40,8 @@ viewer draws, and on its second road, objects placed by reference.
   when it does not. Outlines and sweeps, such as buildings and guard rails,
   are drawn from the crate's `object_mesh()`. Hover an object for its type,
   subtype and name, its road, OpenDRIVE id, `s` and `t`, orientation, and
-  valid length. An object an `<objectReference>` placed draws the same as the
+  valid length. The lanes it applies to light up, and the readout lists
+  them by lane section and OpenDRIVE lane id. An object an `<objectReference>` placed draws the same as the
   one it points to, and its readout names the road and id of the original. A
   solid adds its position, heading, pitch, roll, and size.
   An outline or a sweep adds the point under the cursor and its corner or
