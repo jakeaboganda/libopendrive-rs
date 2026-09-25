@@ -8,6 +8,8 @@
 //! Geometry is cross-checked against the reference C++
 //! [libOpenDRIVE](https://github.com/pageldev/libOpenDRIVE).
 
+use std::collections::HashMap;
+
 use crate::coords::{Point, Vector};
 use crate::object::orient;
 use crate::{
@@ -77,7 +79,8 @@ pub struct ObjectProvenance {
     pub road_id: String,
     /// The `<object id>` it came from. Every object a `<repeat>` or several
     /// outlines bake from one `<object>` shares it. Empty if the file gives
-    /// none.
+    /// none. For an object an `<objectReference>` placed, this is the id the
+    /// reference names.
     pub od_id: String,
     /// Where on the road the object is anchored, in metres along the
     /// reference line: a solid's own station, the start of the part of a
@@ -92,6 +95,11 @@ pub struct ObjectProvenance {
     /// the file says. Meant for objects such as a speed bump that act over a
     /// stretch of road.
     pub valid_length: Option<f64>,
+    /// `Some` if an `<objectReference>` on `road_id` placed the object: the
+    /// road its `<object>` is on. `s`, `t`, `orientation` and `valid_length`
+    /// are then the reference's, and the shape is the `<object>`'s, moved to
+    /// the reference's station.
+    pub referenced_from: Option<String>,
 }
 
 /// Which direction of its road an object applies to, from its
@@ -150,8 +158,9 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     let mut lanes = Vec::new();
     let mut objects = Objects::default();
     let mut topo = Topology::default();
+    let index = object_index(root);
     for road in root.children().filter(|n| n.has_tag_name("road")) {
-        parse_road(road, &mut lanes, &mut objects, &mut topo);
+        parse_road(road, &index, &mut lanes, &mut objects, &mut topo);
     }
     if lanes.is_empty() {
         return Err(ImportError::Malformed("no lanes found".into()));
@@ -437,7 +446,8 @@ fn attr_f64(node: roxmltree::Node, name: &str) -> Option<f64> {
         .filter(|v| v.is_finite())
 }
 
-/// Bakes one `<road>`'s lanes into `out`, and places its objects in `objects`.
+/// Bakes one `<road>`'s lanes into `out`, and places its objects in `objects`,
+/// looking up what its `<objectReference>`s name in `index`.
 ///
 /// A road the importer cannot interpret is *skipped*, not fatal. That covers
 /// no length, no `<planView>`, no supported geometry, and no `<lanes>`. Real
@@ -447,6 +457,7 @@ fn attr_f64(node: roxmltree::Node, name: &str) -> Option<f64> {
 /// lanes at all, so a thoroughly broken file is never silently accepted.
 fn parse_road(
     road: roxmltree::Node,
+    index: &ObjectIndex,
     out: &mut Vec<Lane>,
     objects: &mut Objects,
     topo: &mut Topology,
@@ -545,7 +556,7 @@ fn parse_road(
         .unwrap_or_default();
     if let Some(objects_node) = child(road, "objects") {
         let surface = |s, t| surface_at(&geoms, &elevations, &superelevations, s, t);
-        place_objects(objects_node, &road_id, length, surface, objects);
+        place_objects(objects_node, index, &road_id, length, surface, objects);
     }
 
     let Some(lanes_node) = child(road, "lanes") else {
@@ -964,9 +975,127 @@ impl Frame {
     }
 }
 
-/// Bake every `<object>` under one road's `<objects>` into `out`. `surface`
-/// maps a road station `(s, t)` to the road surface there and the reference
-/// line's heading.
+/// Every `<object>` in the document by its id, with the road it is on, for
+/// an `<objectReference>` to find. Ids are meant to be unique across the
+/// file. Where two objects share one, the first wins.
+type ObjectIndex<'a> = HashMap<&'a str, (&'a str, roxmltree::Node<'a, 'a>)>;
+
+fn object_index<'a>(root: roxmltree::Node<'a, 'a>) -> ObjectIndex<'a> {
+    let mut index = ObjectIndex::new();
+    for road in root.children().filter(|n| n.has_tag_name("road")) {
+        let road_id = road.attribute("id").unwrap_or_default();
+        let Some(objects) = child(road, "objects") else {
+            continue;
+        };
+        for object in objects.children().filter(|n| n.has_tag_name("object")) {
+            if let Some(id) = object.attribute("id") {
+                index.entry(id).or_insert((road_id, object));
+            }
+        }
+    }
+    index
+}
+
+/// Where one `<object>` is baked, and what its provenance says about it. An
+/// `<object>` is placed at its own station. An `<objectReference>` places the
+/// `<object>` it names at the reference's station instead, with the
+/// reference's `zOffset`, `orientation` and `validLength`.
+struct Placement<'a> {
+    s: f64,
+    t: f64,
+    z_offset: f64,
+    orientation: Orientation,
+    valid_length: Option<f64>,
+    /// How far the placement moves the object along and across the road,
+    /// from the station its `<object>` gives to this one. What the
+    /// `<object>` gives in road coordinates, its `<repeat>`s and its
+    /// `<cornerRoad>`s, moves with it. `(0, 0)` for an `<object>` placed
+    /// where it says.
+    shift: (f64, f64),
+    /// For a reference, the road the `<object>` is on.
+    referenced_from: Option<&'a str>,
+}
+
+impl<'a> Placement<'a> {
+    /// An `<object>` where it says it is, or `None` if it is missing `s` or
+    /// `t`.
+    fn own(object: roxmltree::Node) -> Option<Self> {
+        Some(Self {
+            s: attr_f64(object, "s")?,
+            t: attr_f64(object, "t")?,
+            z_offset: attr_f64(object, "zOffset").unwrap_or(0.0),
+            orientation: orientation(object),
+            valid_length: attr_f64(object, "validLength"),
+            shift: (0.0, 0.0),
+            referenced_from: None,
+        })
+    }
+
+    /// `object`, on `road`, where `reference` puts it, or `None` if the
+    /// reference is missing `s` or `t`.
+    fn reference(
+        reference: roxmltree::Node,
+        object: roxmltree::Node,
+        road: &'a str,
+    ) -> Option<Self> {
+        let (s, t) = (attr_f64(reference, "s")?, attr_f64(reference, "t")?);
+        let from = |name| attr_f64(object, name).unwrap_or(0.0);
+        Some(Self {
+            s,
+            t,
+            z_offset: attr_f64(reference, "zOffset").unwrap_or(0.0),
+            orientation: orientation(reference),
+            valid_length: attr_f64(reference, "validLength"),
+            shift: (s - from("s"), t - from("t")),
+            referenced_from: Some(road),
+        })
+    }
+}
+
+/// Which direction of the road an `<object>` or `<objectReference>` applies
+/// to.
+fn orientation(node: roxmltree::Node) -> Orientation {
+    match node.attribute("orientation") {
+        Some("+") => Orientation::Positive,
+        Some("-") => Orientation::Negative,
+        _ => Orientation::Both,
+    }
+}
+
+/// Bake every `<object>` and `<objectReference>` under one road's
+/// `<objects>` into `out`. `index` finds the `<object>` a reference names.
+/// `surface` maps a road station `(s, t)` to the road surface there and the
+/// reference line's heading.
+///
+/// A reference to an id no `<object>` has is skipped, as is one missing `s`
+/// or `t`.
+fn place_objects(
+    objects_node: roxmltree::Node,
+    index: &ObjectIndex,
+    road_id: &str,
+    road_length: f64,
+    surface: impl Fn(f64, f64) -> (Point, f64),
+    out: &mut Objects,
+) {
+    for node in objects_node.children() {
+        let placed = if node.has_tag_name("object") {
+            Placement::own(node).map(|at| (node, at))
+        } else if node.has_tag_name("objectReference") {
+            node.attribute("id")
+                .and_then(|id| index.get(id))
+                .and_then(|&(road, object)| {
+                    Placement::reference(node, object, road).map(|at| (object, at))
+                })
+        } else {
+            None
+        };
+        if let Some((object, at)) = placed {
+            place_object(object, &at, road_id, road_length, &surface, out);
+        }
+    }
+}
+
+/// Bake one `<object>` into `out`, placed on road `road_id` as `at` says.
 ///
 /// Each object sits on the road surface, so it rides the elevation and
 /// superelevation profiles like a lane does. One `<object>` can bake to
@@ -978,112 +1107,103 @@ impl Frame {
 /// - one [`Shape::Outline`] per `<outline>`. Outlines are not repeated, and
 ///   an object with outlines gets no solid of its own.
 ///
-/// An object missing `s` or `t` is skipped. So is any part of one that falls
-/// off the ends of the road: a solid, a whole outline with a corner there, or
-/// the length of a sweep past the end.
-fn place_objects(
-    objects_node: roxmltree::Node,
+/// Any part of it that falls off the ends of the road is skipped: a solid, a
+/// whole outline with a corner there, or the length of a sweep past the end.
+fn place_object(
+    node: roxmltree::Node,
+    at: &Placement,
     road_id: &str,
     road_length: f64,
-    surface: impl Fn(f64, f64) -> (Point, f64),
+    surface: &impl Fn(f64, f64) -> (Point, f64),
     out: &mut Objects,
 ) {
     let on_road = |s: f64| (0.0..=road_length).contains(&s);
-    for node in objects_node.children().filter(|n| n.has_tag_name("object")) {
-        let (Some(s), Some(t)) = (attr_f64(node, "s"), attr_f64(node, "t")) else {
-            continue;
-        };
-        let base = Station {
+    let base = Station {
+        s: at.s,
+        t: at.t,
+        z_offset: at.z_offset,
+        length: attr_f64(node, "length"),
+        width: attr_f64(node, "width"),
+        height: attr_f64(node, "height"),
+        radius: attr_f64(node, "radius"),
+    };
+    let hdg = attr_f64(node, "hdg").unwrap_or(0.0);
+    let pitch = attr_f64(node, "pitch").unwrap_or(0.0);
+    let roll = attr_f64(node, "roll").unwrap_or(0.0);
+    let frame = |st: &Station| {
+        let (mut origin, road_hdg) = surface(st.s, st.t);
+        origin.z += st.z_offset as f32;
+        Frame {
+            origin,
+            yaw: road_hdg + hdg,
+            pitch,
+            roll,
+        }
+    };
+    let solid = |st: &Station| {
+        let f = frame(st);
+        Shape::Solid {
+            position: f.origin,
+            heading: f.yaw as f32,
+            pitch: f.pitch as f32,
+            roll: f.roll as f32,
+            extent: extent(st),
+        }
+    };
+
+    let mut shapes = Vec::new();
+    let repeats: Vec<Repeat> = node
+        .children()
+        .filter(|n| n.has_tag_name("repeat"))
+        .filter_map(|n| Repeat::parse(n, at.shift))
+        .collect();
+    let outlines = outline_nodes(node);
+    // Each shape with the road station it is anchored at.
+    if repeats.is_empty() && outlines.is_empty() && on_road(base.s) {
+        shapes.push((solid(&base), base.s, base.t));
+    }
+    for repeat in &repeats {
+        if repeat.distance > 0.0 {
+            let stations = repeat.stations(&base);
+            shapes.extend(
+                stations
+                    .iter()
+                    .filter(|st| on_road(st.s))
+                    .map(|st| (solid(st), st.s, st.t)),
+            );
+        } else if let Some((sections, start)) = sweep(repeat, &base, road_length, surface) {
+            shapes.push((Shape::Sweep { sections }, start.s, start.t));
+        }
+    }
+    let origin = on_road(base.s).then(|| frame(&base));
+    for outline_node in outlines {
+        if let Some(shape) = outline(outline_node, origin.as_ref(), at.shift, surface, on_road) {
+            shapes.push((shape, base.s, base.t));
+        }
+    }
+
+    let kind = object_type(node.attribute("type"));
+    let text = |name| node.attribute(name).unwrap_or_default().to_string();
+    for (shape, s, t) in shapes {
+        let id = ObjectId(out.baked.len());
+        out.baked.push(Object {
+            id,
+            kind,
+            subtype: text("subtype"),
+            name: text("name"),
+            dynamic: node.attribute("dynamic") == Some("yes"),
+            shape,
+        });
+        out.provenance.push(ObjectProvenance {
+            object: id,
+            road_id: road_id.to_string(),
+            od_id: text("id"),
             s,
             t,
-            z_offset: attr_f64(node, "zOffset").unwrap_or(0.0),
-            length: attr_f64(node, "length"),
-            width: attr_f64(node, "width"),
-            height: attr_f64(node, "height"),
-            radius: attr_f64(node, "radius"),
-        };
-        let hdg = attr_f64(node, "hdg").unwrap_or(0.0);
-        let pitch = attr_f64(node, "pitch").unwrap_or(0.0);
-        let roll = attr_f64(node, "roll").unwrap_or(0.0);
-        let frame = |st: &Station| {
-            let (mut origin, road_hdg) = surface(st.s, st.t);
-            origin.z += st.z_offset as f32;
-            Frame {
-                origin,
-                yaw: road_hdg + hdg,
-                pitch,
-                roll,
-            }
-        };
-        let solid = |st: &Station| {
-            let f = frame(st);
-            Shape::Solid {
-                position: f.origin,
-                heading: f.yaw as f32,
-                pitch: f.pitch as f32,
-                roll: f.roll as f32,
-                extent: extent(st),
-            }
-        };
-
-        let mut shapes = Vec::new();
-        let repeats: Vec<Repeat> = node
-            .children()
-            .filter(|n| n.has_tag_name("repeat"))
-            .filter_map(Repeat::parse)
-            .collect();
-        let outlines = outline_nodes(node);
-        // Each shape with the road station it is anchored at.
-        if repeats.is_empty() && outlines.is_empty() && on_road(base.s) {
-            shapes.push((solid(&base), base.s, base.t));
-        }
-        for repeat in &repeats {
-            if repeat.distance > 0.0 {
-                let stations = repeat.stations(&base);
-                shapes.extend(
-                    stations
-                        .iter()
-                        .filter(|st| on_road(st.s))
-                        .map(|st| (solid(st), st.s, st.t)),
-                );
-            } else if let Some((sections, start)) = sweep(repeat, &base, road_length, &surface) {
-                shapes.push((Shape::Sweep { sections }, start.s, start.t));
-            }
-        }
-        let origin = on_road(base.s).then(|| frame(&base));
-        for outline_node in outlines {
-            if let Some(shape) = outline(outline_node, origin.as_ref(), &surface, on_road) {
-                shapes.push((shape, base.s, base.t));
-            }
-        }
-
-        let kind = object_type(node.attribute("type"));
-        let text = |name| node.attribute(name).unwrap_or_default().to_string();
-        let orientation = match node.attribute("orientation") {
-            Some("+") => Orientation::Positive,
-            Some("-") => Orientation::Negative,
-            _ => Orientation::Both,
-        };
-        for (shape, s, t) in shapes {
-            let id = ObjectId(out.baked.len());
-            out.baked.push(Object {
-                id,
-                kind,
-                subtype: text("subtype"),
-                name: text("name"),
-                dynamic: node.attribute("dynamic") == Some("yes"),
-                shape,
-            });
-            out.provenance.push(ObjectProvenance {
-                object: id,
-                road_id: road_id.to_string(),
-                od_id: text("id"),
-                s,
-                t,
-                orientation,
-                valid_length: attr_f64(node, "validLength"),
-            });
-        }
+            orientation: at.orientation,
+            valid_length: at.valid_length,
+            referenced_from: at.referenced_from.map(str::to_string),
+        });
     }
 }
 
@@ -1094,17 +1214,21 @@ struct Repeat<'a> {
     start: f64,
     length: f64,
     distance: f64,
+    /// Added to the `t` values the repeat gives, from its [`Placement`].
+    shift_t: f64,
 }
 
 impl<'a> Repeat<'a> {
-    /// `None` for a repeat missing its `s`, `length` or `distance`, or
-    /// carrying a negative one of the last two.
-    fn parse(node: roxmltree::Node<'a, 'a>) -> Option<Self> {
+    /// The repeat moved by a [`Placement`]'s `shift`, or `None` for one
+    /// missing its `s`, `length` or `distance`, or carrying a negative one of
+    /// the last two.
+    fn parse(node: roxmltree::Node<'a, 'a>, (shift_s, shift_t): (f64, f64)) -> Option<Self> {
         let repeat = Self {
             node,
-            start: attr_f64(node, "s")?,
+            start: attr_f64(node, "s")? + shift_s,
             length: attr_f64(node, "length")?,
             distance: attr_f64(node, "distance")?,
+            shift_t,
         };
         (repeat.length >= 0.0 && repeat.distance >= 0.0).then_some(repeat)
     }
@@ -1113,19 +1237,20 @@ impl<'a> Repeat<'a> {
     /// `t`, `zOffset` and each dimension interpolated from its start value to
     /// its end value. A value the repeat does not give is the object's own.
     fn at(&self, base: &Station, f: f64) -> Station {
-        let lerp = |name: &str, fallback: Option<f64>| {
-            let start = attr_f64(self.node, &format!("{name}Start")).or(fallback)?;
-            let end = attr_f64(self.node, &format!("{name}End")).unwrap_or(start);
+        let lerp = |name: &str, fallback: Option<f64>, shift: f64| {
+            let given = |end| attr_f64(self.node, &format!("{name}{end}")).map(|v| v + shift);
+            let start = given("Start").or(fallback)?;
+            let end = given("End").unwrap_or(start);
             Some(start + (end - start) * f)
         };
         Station {
             s: self.start + self.length * f,
-            t: lerp("t", Some(base.t)).unwrap_or(base.t),
-            z_offset: lerp("zOffset", Some(base.z_offset)).unwrap_or(base.z_offset),
-            length: lerp("length", base.length),
-            width: lerp("width", base.width),
-            height: lerp("height", base.height),
-            radius: lerp("radius", base.radius),
+            t: lerp("t", Some(base.t), self.shift_t).unwrap_or(base.t),
+            z_offset: lerp("zOffset", Some(base.z_offset), 0.0).unwrap_or(base.z_offset),
+            length: lerp("length", base.length, 0.0),
+            width: lerp("width", base.width, 0.0),
+            height: lerp("height", base.height, 0.0),
+            radius: lerp("radius", base.radius, 0.0),
         }
     }
 
@@ -1204,7 +1329,8 @@ fn outline_nodes<'a>(object: roxmltree::Node<'a, 'a>) -> Vec<roxmltree::Node<'a,
 
 /// One `<outline>` as a [`Shape::Outline`] in the network's frame.
 ///
-/// A `<cornerRoad>` is a road station `(s, t)` raised by `dz`. A
+/// A `<cornerRoad>` is a road station `(s, t)`, moved by `shift`, raised by
+/// `dz`. A
 /// `<cornerLocal>` is `(u, v, z)` in the object's own frame, so it needs the
 /// object's origin to be on the road. Each corner's top is `height` above its
 /// base, up in the frame the corner is given in. An outline with a corner
@@ -1213,13 +1339,14 @@ fn outline_nodes<'a>(object: roxmltree::Node<'a, 'a>) -> Vec<roxmltree::Node<'a,
 fn outline(
     node: roxmltree::Node,
     frame: Option<&Frame>,
+    (shift_s, shift_t): (f64, f64),
     surface: &impl Fn(f64, f64) -> (Point, f64),
     on_road: impl Fn(f64) -> bool,
 ) -> Option<Shape> {
     let corner = |c: roxmltree::Node| -> Option<Corner> {
         let height = attr_f64(c, "height").unwrap_or(0.0);
         if c.has_tag_name("cornerRoad") {
-            let (s, t) = (attr_f64(c, "s")?, attr_f64(c, "t")?);
+            let (s, t) = (attr_f64(c, "s")? + shift_s, attr_f64(c, "t")? + shift_t);
             if !on_road(s) {
                 return None;
             }

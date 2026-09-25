@@ -58,9 +58,10 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   object per step, so a row of posts arrives as posts. A continuous
   `<repeat>`, such as a guard rail, is swept along the road. `<outline>`s,
   in road or local coordinates, arrive as footprint polygons with a height at
-  every corner. Each object has a subtype, whether it moves, and an id to look
-  it up by. Its road, OpenDRIVE id, `(s, t)`, orientation and valid length
-  come from `load_*_with_provenance`, as a lane's road and id do.
+  every corner. An `<objectReference>` places the object it names again, at
+  its own station. Each object has a subtype, whether it moves, and an id to
+  look it up by. Its road, OpenDRIVE id, `(s, t)`, orientation and valid
+  length come from `load_*_with_provenance`, as a lane's road and id do.
 
 For the exact element and attribute list, see
 [the crate docs](https://docs.rs/libopendrive).
@@ -71,9 +72,9 @@ Geometry is cross-checked against the reference C++
 ## What it ignores
 
 Everything else in the file, silently, including `<signals>`, `<roadMark>`,
-and `<geoReference>`. Among objects, `<objectReference>`, `<tunnel>` and
-`<bridge>` are skipped, and an outline's `outer` flag is not read, so an
-outline meant as a hole bakes as a solid. Three
+and `<geoReference>`. Among objects, `<tunnel>` and `<bridge>` are skipped,
+and an outline's `outer` flag is not read, so an outline meant as a hole bakes
+as a solid. Three
 omissions change the road you get back rather than only dropping detail around
 it:
 

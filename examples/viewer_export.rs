@@ -129,7 +129,8 @@ fn buffers(mesh: &Mesh) -> Value {
 }
 
 /// One object's viewer record: its identity, OpenDRIVE provenance, and
-/// shape. A `solid`
+/// shape. `referencedFrom` is the road of the `<object>` an
+/// `<objectReference>` placed again, and null otherwise. A `solid`
 /// carries a pose, angles in radians applied yaw, then pitch, then roll, and
 /// an `extent` that is null for an object the map gives no size. An
 /// `outline` and a `sweep` carry corners already in world coordinates, each
@@ -194,6 +195,7 @@ fn object_entry(object: &Object, prov: Option<&ObjectProvenance>) -> Value {
         "t": prov.map(|p| p.t),
         "orientation": prov.map(|p| orientation(p.orientation)),
         "validLength": prov.and_then(|p| p.valid_length),
+        "referencedFrom": prov.and_then(|p| p.referenced_from.as_deref()),
         "shape": shape,
     })
 }

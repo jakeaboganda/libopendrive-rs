@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <OpenDRIVE>
-    <header name="objects" revMajor="1" revMinor="5" date="2026-09-25 12:01:13.258770" north="0.0" south="0.0" east="0.0" west="0.0"/>
+    <header name="objects" revMajor="1" revMinor="5" date="2026-09-25 20:19:51.214688" north="0.0" south="0.0" east="0.0" west="0.0"/>
     <road rule="RHT" id="0" junction="-1" length="100.0">
         <link/>
         <planView>
@@ -69,6 +69,46 @@
                     </outline>
                 </outlines>
             </object>
+        </objects>
+    </road>
+    <road rule="RHT" id="1" junction="-1" length="60">
+        <link/>
+        <planView>
+            <geometry s="0" x="0" y="-40" hdg="0" length="60">
+                <line/>
+            </geometry>
+        </planView>
+        <elevationProfile/>
+        <lateralProfile/>
+        <lanes>
+            <laneSection s="0">
+                <left>
+                    <lane id="1" type="driving" level="false">
+                        <link/>
+                        <width a="3.0" b="0.0" c="-0.0" d="0.0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.2"/>
+                    </lane>
+                </left>
+                <center>
+                    <lane id="0" type="none" level="false">
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.2"/>
+                    </lane>
+                </center>
+                <right>
+                    <lane id="-1" type="driving" level="false">
+                        <link/>
+                        <width a="3.0" b="0.0" c="-0.0" d="0.0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.2"/>
+                    </lane>
+                </right>
+            </laneSection>
+        </lanes>
+        <objects>
+            <objectReference id="1" s="10" t="-5" zOffset="0.2" orientation="-" validLength="3"/>
+            <objectReference id="5" s="0" t="-1"/>
+            <objectReference id="8" s="30" t="8"/>
+            <objectReference id="9" s="20" t="12"/>
+            <objectReference id="99" s="40" t="0"/>
         </objects>
     </road>
 </OpenDRIVE>

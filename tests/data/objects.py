@@ -1,9 +1,14 @@
-"""Generate objects.xodr: one arc road with objects placed along it.
+"""Generate objects.xodr: an arc road with objects placed along it, and a
+straight road that places some of them again by reference.
 
     uv run --with scenariogeneration==0.16.6 tests/data/objects.py
 
-The road is a 100 m left arc of radius 200 m starting at the origin heading
-+X, climbing at 2 %, so every placement has a closed form to check against.
+Road 0 is a 100 m left arc of radius 200 m starting at the origin heading +X,
+climbing at 2 %. Road 1 is a flat 60 m straight from (0, -40) heading +X. So
+every placement has a closed form to check against.
+
+scenariogeneration has no `<objectReference>`, so those are added to its
+output afterwards, as text.
 """
 
 from pathlib import Path
@@ -11,6 +16,7 @@ from pathlib import Path
 from scenariogeneration import xodr
 
 road = xodr.create_road(xodr.Arc(0.005, length=100), id=0, left_lanes=1, right_lanes=1)
+road.planview.set_start_point(0, 0, 0)
 road.add_elevation(0, 1.0, 0.02, 0, 0)
 
 road.add_object(
@@ -72,7 +78,36 @@ for s, t in [(50, -12), (60, -12), (60, -14)]:
 fence.add_outline(line)
 road.add_object(fence)
 
+straight = xodr.create_road(xodr.Line(60), id=1, left_lanes=1, right_lanes=1)
+straight.planview.set_start_point(0, -40, 0)
+
 odr = xodr.OpenDrive("objects")
 odr.add_road(road)
+odr.add_road(straight)
 odr.adjust_roads_and_lanes()
-odr.write_xml(str(Path(__file__).with_name("objects.xodr")))
+out = Path(__file__).with_name("objects.xodr")
+odr.write_xml(str(out))
+
+
+def insert(xml, after, text):
+    """`xml` with `text` spliced in straight after the first `after` in road 1."""
+    road = xml.index('<road rule="RHT" id="1"')
+    at = xml.index(after, road) + len(after)
+    return xml[:at] + text + xml[at:]
+
+
+# Road 1 places objects from road 0 again: the shed with its own zOffset,
+# orientation and validLength; the row of posts, which moves with the
+# reference; the house, outlined in its own frame; the fence, outlined in road
+# coordinates, which moves too; and an id that no object has.
+references = [
+    'id="1" s="10" t="-5" zOffset="0.2" orientation="-" validLength="3"',
+    'id="5" s="0" t="-1"',
+    'id="8" s="30" t="8"',
+    'id="9" s="20" t="12"',
+    'id="99" s="40" t="0"',
+]
+xml = out.read_text()
+xml = insert(xml, "</lanes>", "\n        <objects>" + "".join(
+    f"\n            <objectReference {r}/>" for r in references) + "\n        </objects>")
+out.write_text(xml)

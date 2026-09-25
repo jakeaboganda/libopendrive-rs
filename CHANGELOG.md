@@ -31,9 +31,14 @@ face with no area is left out, so a post given only a height has no span.
 anchoring `(s, t)`, `orientation` and `validLength` are in an
 `ObjectProvenance`, kept apart from the object as a lane's are.
 
-These placements follow libOpenDRIVE. Not imported yet: `<objectReference>`,
-`<tunnel>`, `<bridge>`, and an outline's `outer` flag, so a hole bakes as a
-solid.
+An `<objectReference>` bakes the `<object>` it names, from any road, at the
+reference's `s`, `t` and `zOffset`. The object's repeats and `cornerRoad`
+outlines move with it. The provenance carries the reference's `orientation`
+and `validLength`, and `referenced_from` names the road the original is on. A
+reference to an id no object has is skipped.
+
+These placements follow libOpenDRIVE. Not imported yet: `<tunnel>`,
+`<bridge>`, and an outline's `outer` flag, so a hole bakes as a solid.
 
 - The `serde` form of `RoadNetwork` is now `{ "lanes": [...], "objects": [...] }`
   rather than a bare lane array. JSON written by 0.1.1 does not load.

@@ -65,6 +65,7 @@
 //! | `<connection>` | `incomingRoad`, `connectingRoad`, `contactPoint` |
 //! | `<laneLink>` | `from`, `to` |
 //! | `<objects><object>` | `id`, `type`, `subtype`, `name`, `dynamic`, `orientation`, `validLength`, `s`, `t`, `zOffset`, `hdg`, `pitch`, `roll`, `length`, `width`, `height`, `radius` |
+//! | `<objects><objectReference>` | `id`, `s`, `t`, `zOffset`, `orientation`, `validLength` |
 //! | `<object><repeat>` | `s`, `length`, `distance`, and the `Start`/`End` pair of `t`, `zOffset`, `length`, `width`, `height`, `radius` |
 //! | `<outlines><outline>` | `closed` |
 //! | `<cornerRoad>` | `s`, `t`, `dz`, `height` |
@@ -99,20 +100,27 @@
 //!   has no solid of its own. `<outline>` is read under `<outlines>`, and
 //!   straight under `<object>` as OpenDRIVE 1.4 writes it.
 //!
+//! An `<objectReference>` bakes the `<object>` it names, on whichever road
+//! that is, as if it stood at the reference's `s` and `t` with the
+//! reference's `zOffset`. What the object gives in road coordinates, its
+//! repeats and `<cornerRoad>`s, moves by the same distance along and across
+//! the road. A reference to an id no `<object>` has is skipped.
+//!
 //! An [`Object`] keeps what describes the thing itself: its `subtype`, and
 //! whether it is `dynamic`. What ties it to an OpenDRIVE road, its road id,
 //! `<object id>`, `(s, t)`, `orientation` and `validLength`, is in its
 //! [`ObjectProvenance`], from [`load_str_with_provenance`] or
 //! [`load_file_with_provenance`], the same way [`LaneProvenance`] names a
-//! lane's road. [`RoadNetwork::object_mesh`] tessellates them all.
+//! lane's road. For a referenced object, those are the reference's, and
+//! [`ObjectProvenance::referenced_from`] names the road the original is on. [`RoadNetwork::object_mesh`] tessellates them all.
 //!
 //! # What the importer ignores
 //!
 //! Everything else in the file, silently. That includes `<geoReference>`,
 //! `<signals>`, `<roadMark>`, `<controller>`, `<junctionGroup>`,
 //! `<station>`, and road `<type>` with its `<speed>`. Among objects, that
-//! means `<objectReference>`, `<tunnel>`, `<bridge>`, and an outline's
-//! `outer`, so an outline meant as a hole bakes as a solid.
+//! means `<tunnel>`, `<bridge>`, and an outline's `outer`, so an outline
+//! meant as a hole bakes as a solid.
 //!
 //! Three omissions change the road you get back, rather than only dropping
 //! detail around it:
