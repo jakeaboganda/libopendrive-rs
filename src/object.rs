@@ -81,19 +81,20 @@ impl std::fmt::Display for ObjectType {
     }
 }
 
-/// The volume an object occupies, in its own frame: `length` along its
+/// The volume a placed object occupies, in its own frame: `length` along its
 /// heading, `width` across it, `height` up from its origin.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Extent {
-    /// A box centred on the origin in plan, rising from it.
+    /// A box centred on the origin in plan, rising from it. A dimension the
+    /// map does not give is 0, so a post given only a height is a box with no
+    /// footprint, and a parking bay given no height is a flat one.
     Box {
         /// Along the heading (metres).
         length: f32,
         /// Across the heading (metres).
         width: f32,
-        /// Up from the origin (metres). Zero for a flat footprint such as a
-        /// parking bay.
+        /// Up from the origin (metres).
         height: f32,
     },
     /// An upright cylinder centred on the origin, rising from it.
@@ -105,10 +106,68 @@ pub enum Extent {
     },
 }
 
-/// One object placed in the world.
-///
-/// The orientation is three angles in radians, applied as yaw, then pitch,
-/// then roll.
+/// One point of an outline or a sweep: where it meets the ground and where
+/// its top edge is, both in the network's frame.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Corner {
+    /// The bottom of the corner.
+    pub base: Point,
+    /// The top of the corner. The same as `base` where the height is 0.
+    pub top: Point,
+}
+
+/// One cross-section of a [`Shape::Sweep`]: its two edges at one station.
+/// `left` is the edge toward +t, left of the road's reference line heading.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Section {
+    /// The +t edge.
+    pub left: Corner,
+    /// The -t edge. The same as `left` for a sweep with no width, such as a
+    /// fence.
+    pub right: Corner,
+}
+
+/// Where an object is and what volume it fills.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Shape {
+    /// A solid placed at a pose. The orientation is three angles in
+    /// radians, applied as yaw, then pitch, then roll.
+    Solid {
+        /// The object's origin, the base of its extent.
+        position: Point,
+        /// Yaw about +Z, counter-clockwise from +X.
+        heading: f32,
+        /// Pitch against the ground plane.
+        pitch: f32,
+        /// Roll against the ground plane.
+        roll: f32,
+        /// The volume it occupies, or `None` for an object the map gives no
+        /// size.
+        extent: Option<Extent>,
+    },
+    /// A footprint polygon, walled from each corner's base to its top. Already
+    /// in the network's frame, so there is no pose to apply.
+    Outline {
+        /// The polygon, in order. At least two.
+        corners: Vec<Corner>,
+        /// Whether the last corner joins the first. A closed outline encloses
+        /// an area, such as a building. An open one is a line of wall, such as
+        /// a fence.
+        closed: bool,
+    },
+    /// A rectangular cross-section swept along a road, such as a guard rail
+    /// or a wall. Already in the network's frame. Consecutive sections are
+    /// joined by straight walls.
+    Sweep {
+        /// The cross-sections in order along the road. At least two.
+        sections: Vec<Section>,
+    },
+}
+
+/// One object in the world.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Object {
@@ -116,14 +175,6 @@ pub struct Object {
     pub kind: ObjectType,
     /// The name the map gives it, often a model file. Empty if it has none.
     pub name: String,
-    /// The object's origin, the base of its extent, in the network's frame.
-    pub position: Point,
-    /// Yaw about +Z, counter-clockwise from +X.
-    pub heading: f32,
-    /// Pitch against the ground plane.
-    pub pitch: f32,
-    /// Roll against the ground plane.
-    pub roll: f32,
-    /// The volume it occupies, or `None` for an object the map gives no size.
-    pub extent: Option<Extent>,
+    /// Where it is and what it fills.
+    pub shape: Shape,
 }

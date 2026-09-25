@@ -5,7 +5,7 @@
 //! of curvature 0.005 from the origin heading +X, at elevation `1 + 0.02 s`,
 //! which puts every expected placement in closed form.
 
-use libopendrive::{load_file, Extent, Object, ObjectType, Point};
+use libopendrive::{load_file, Corner, Extent, Object, ObjectType, Point, Section, Shape};
 
 const OBJECTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/objects.xodr");
 const E6MINI: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/e6mini.xodr");
@@ -21,23 +21,61 @@ fn on_road(s: f64, t: f64) -> (Point, f64) {
     (Point::new(x as f32, y as f32, z as f32), hdg)
 }
 
-fn assert_at(object: &Object, s: f64, t: f64, z_offset: f32, hdg: f64) {
-    let (mut expected, road_hdg) = on_road(s, t);
-    expected.z += z_offset;
-    let miss = (object.position - expected).length();
+/// `on_road(s, t)` raised by `dz`.
+fn raised(s: f64, t: f64, dz: f64) -> Point {
+    let (mut p, _) = on_road(s, t);
+    p.z += dz as f32;
+    p
+}
+
+fn assert_near(got: Point, want: Point, what: &str) {
     assert!(
-        miss < 1e-3,
-        "{} at s={s} t={t}: got {:?}, expected {expected:?}",
-        object.kind,
-        object.position
+        (got - want).length() < 1e-3,
+        "{what}: got {got:?}, expected {want:?}"
     );
-    let expected_heading = (road_hdg + hdg) as f32;
+}
+
+/// A corner whose base is `base` and whose top is `height` straight above it.
+fn assert_corner(got: &Corner, base: Point, height: f32, what: &str) {
+    assert_near(got.base, base, &format!("{what} base"));
+    assert_near(
+        got.top,
+        Point::new(base.x, base.y, base.z + height),
+        &format!("{what} top"),
+    );
+}
+
+/// The solid's pose and extent, after checking it sits at `(s, t)` raised by
+/// `z_offset`, turned `hdg` against the road.
+fn assert_solid(
+    object: &Object,
+    s: f64,
+    t: f64,
+    z_offset: f64,
+    hdg: f64,
+) -> (f32, f32, Option<Extent>) {
+    let Shape::Solid {
+        position,
+        heading,
+        pitch,
+        roll,
+        extent,
+    } = object.shape
+    else {
+        panic!("{} is not a solid: {:?}", object.kind, object.shape);
+    };
+    assert_near(
+        position,
+        raised(s, t, z_offset),
+        &format!("{} at s={s}", object.kind),
+    );
+    let want = (CURVATURE * s + hdg) as f32;
     assert!(
-        (object.heading - expected_heading).abs() < 1e-5,
-        "{} at s={s}: heading {} expected {expected_heading}",
-        object.kind,
-        object.heading
+        (heading - want).abs() < 1e-5,
+        "{} at s={s}: heading {heading}, expected {want}",
+        object.kind
     );
+    (pitch, roll, extent)
 }
 
 fn objects() -> Vec<Object> {
@@ -47,6 +85,10 @@ fn objects() -> Vec<Object> {
         .to_vec()
 }
 
+fn of_kind(kind: ObjectType) -> Vec<Object> {
+    objects().into_iter().filter(|o| o.kind == kind).collect()
+}
+
 #[test]
 fn single_objects_sit_on_the_road_surface_at_their_station() {
     let objects = objects();
@@ -54,9 +96,9 @@ fn single_objects_sit_on_the_road_surface_at_their_station() {
     let shed = &objects[0];
     assert_eq!(shed.kind, ObjectType::Building);
     assert_eq!(shed.name, "Shed");
-    assert_at(shed, 40.0, -6.0, 0.5, 0.3);
+    let (_, _, extent) = assert_solid(shed, 40.0, -6.0, 0.5, 0.3);
     assert_eq!(
-        shed.extent,
+        extent,
         Some(Extent::Box {
             length: 8.0,
             width: 4.0,
@@ -67,10 +109,10 @@ fn single_objects_sit_on_the_road_surface_at_their_station() {
     let tree = &objects[1];
     assert_eq!(tree.kind, ObjectType::Tree);
     assert_eq!(tree.name, "");
-    assert_at(tree, 60.0, 5.0, 0.0, 0.0);
-    assert_eq!((tree.pitch, tree.roll), (0.1, -0.2));
+    let (pitch, roll, extent) = assert_solid(tree, 60.0, 5.0, 0.0, 0.0);
+    assert_eq!((pitch, roll), (0.1, -0.2));
     assert_eq!(
-        tree.extent,
+        extent,
         Some(Extent::Cylinder {
             radius: 1.5,
             height: 7.0
@@ -79,30 +121,35 @@ fn single_objects_sit_on_the_road_surface_at_their_station() {
 
     let marker = &objects[2];
     assert_eq!(marker.kind, ObjectType::None);
-    assert_at(marker, 10.0, 0.0, 0.0, 0.0);
-    assert_eq!(marker.extent, None);
+    let (_, _, extent) = assert_solid(marker, 10.0, 0.0, 0.0, 0.0);
+    assert_eq!(extent, None);
 
-    // A vendor's own type is still an object, with the position the file
-    // gives it. Only its category is lost.
+    // A vendor's own type is still an object, and a height alone still
+    // makes a box, one with no footprint.
     let post = &objects[3];
     assert_eq!(post.kind, ObjectType::Unknown);
-    assert_at(post, 20.0, 4.0, 0.0, 0.0);
+    let (_, _, extent) = assert_solid(post, 20.0, 4.0, 0.0, 0.0);
+    assert_eq!(
+        extent,
+        Some(Extent::Box {
+            length: 0.0,
+            width: 0.0,
+            height: 1.2
+        })
+    );
 }
 
 #[test]
 fn a_repeat_becomes_one_object_per_step_with_its_values_interpolated() {
-    let poles: Vec<_> = objects()
-        .into_iter()
-        .filter(|o| o.kind == ObjectType::Pole)
-        .collect();
+    let poles = of_kind(ObjectType::Pole);
     // s = 5, 15, ..., 85: nine steps of 10 m over 80 m, both ends included.
     assert_eq!(poles.len(), 9);
     for (k, pole) in poles.iter().enumerate() {
         let f = k as f64 / 8.0;
         let s = 5.0 + 10.0 * k as f64;
-        assert_at(pole, s, -4.0 - 2.0 * f, 0.0, 0.0);
+        let (_, _, extent) = assert_solid(pole, s, -4.0 - 2.0 * f, 0.0, 0.0);
         assert_eq!(
-            pole.extent,
+            extent,
             Some(Extent::Cylinder {
                 radius: 0.1,
                 height: (1.0 + f) as f32
@@ -111,26 +158,142 @@ fn a_repeat_becomes_one_object_per_step_with_its_values_interpolated() {
     }
 }
 
-#[test]
-fn a_continuous_repeat_bakes_no_object() {
-    let objects = objects();
-    assert!(objects.iter().all(|o| o.kind != ObjectType::Railing));
-    assert_eq!(objects.len(), 4 + 9);
+fn sections(object: &Object) -> &[Section] {
+    let Shape::Sweep { sections } = &object.shape else {
+        panic!("{} is not a sweep: {:?}", object.kind, object.shape);
+    };
+    sections
 }
 
 #[test]
-fn a_real_file_expands_its_rows_of_posts() {
+fn a_continuous_repeat_with_no_width_is_a_wall_along_the_road() {
+    let railings = of_kind(ObjectType::Railing);
+    assert_eq!(railings.len(), 1);
+    let sections = sections(&railings[0]);
+    // One section every 2 m over the 100 m road, both ends included.
+    assert_eq!(sections.len(), 51);
+    for (k, section) in sections.iter().enumerate() {
+        let s = 2.0 * k as f64;
+        assert_eq!(section.left, section.right, "no width at s={s}");
+        assert_corner(&section.left, raised(s, 7.0, 0.0), 0.8, &format!("s={s}"));
+    }
+}
+
+#[test]
+fn a_continuous_repeat_interpolates_its_cross_section_and_stops_at_the_road_end() {
+    let barrier = of_kind(ObjectType::Barrier)
+        .into_iter()
+        .find(|o| matches!(o.shape, Shape::Sweep { .. }))
+        .expect("the barrier sweep");
+    let sections = sections(&barrier);
+    // The repeat covers s = 70..110 on a 100 m road: s = 70, 72, ..., 100.
+    assert_eq!(sections.len(), 16);
+    for (k, section) in sections.iter().enumerate() {
+        let s = 70.0 + 2.0 * k as f64;
+        let f = (s - 70.0) / 40.0;
+        let (t, half, z) = (-8.0 - f, (0.5 + 0.5 * f) / 2.0, 0.4 * f);
+        assert_corner(
+            &section.left,
+            raised(s, t + half, z),
+            1.0,
+            &format!("left s={s}"),
+        );
+        assert_corner(
+            &section.right,
+            raised(s, t - half, z),
+            1.0,
+            &format!("right s={s}"),
+        );
+    }
+}
+
+fn outline(object: &Object) -> (&[Corner], bool) {
+    let Shape::Outline { corners, closed } = &object.shape else {
+        panic!("{} is not an outline: {:?}", object.kind, object.shape);
+    };
+    (corners, *closed)
+}
+
+#[test]
+fn a_local_outline_is_placed_in_the_objects_own_frame() {
+    let house = objects()
+        .into_iter()
+        .find(|o| o.name == "House")
+        .expect("the house");
+    let (corners, closed) = outline(&house);
+    assert!(closed);
+    // The frame's origin is the object's station raised by its zOffset, and
+    // its u axis is the road heading plus the object's hdg.
+    let origin = raised(30.0, 10.0, 0.1);
+    let yaw = CURVATURE * 30.0 + 0.2;
+    let (sin, cos) = (yaw.sin() as f32, yaw.cos() as f32);
+    for (corner, (u, v)) in corners
+        .iter()
+        .zip([(0.0, 0.0), (6.0, 0.0), (6.0, 4.0), (0.0, 4.0)])
+    {
+        let base = Point::new(
+            origin.x + u * cos - v * sin,
+            origin.y + u * sin + v * cos,
+            origin.z,
+        );
+        assert_corner(corner, base, 5.0, &format!("house ({u}, {v})"));
+    }
+    assert_eq!(corners.len(), 4);
+}
+
+#[test]
+fn a_road_outline_follows_the_road_and_stays_open() {
+    let fence = objects()
+        .into_iter()
+        .find(|o| o.name == "Fence")
+        .expect("the fence");
+    let (corners, closed) = outline(&fence);
+    assert!(!closed);
+    assert_eq!(corners.len(), 3);
+    for (corner, (s, t)) in corners
+        .iter()
+        .zip([(50.0, -12.0), (60.0, -12.0), (60.0, -14.0)])
+    {
+        assert_corner(corner, raised(s, t, 0.0), 1.5, &format!("fence ({s}, {t})"));
+    }
+}
+
+#[test]
+fn an_outlined_object_has_no_solid_of_its_own() {
+    let solids = objects()
+        .into_iter()
+        .filter(|o| matches!(o.shape, Shape::Solid { .. }))
+        .count();
+    // Shed, tree, marker, guide post, nine poles. The outlined house and
+    // fence, and the swept railing and barrier, add no solid.
+    assert_eq!(solids, 4 + 9);
+    assert_eq!(objects().len(), 4 + 9 + 2 + 2);
+}
+
+#[test]
+fn a_real_file_expands_its_rows_of_posts_and_sweeps_its_railings() {
     // e6mini lines a 1464 m road with a pole every 4 m and a guide post every
-    // 50 m on each side, and with two continuous railings, which are dropped.
+    // 50 m on each side, and a continuous railing on each side.
     let net = load_file(E6MINI).expect("e6mini loads");
     const ROAD_LENGTH: f64 = 1_464.434_350_705_6;
     let per_side_poles = (ROAD_LENGTH / 4.0).floor() as usize + 1;
     let per_side_guides = (ROAD_LENGTH / 50.0).floor() as usize + 1;
-    assert_eq!(net.objects().len(), 2 * (per_side_poles + per_side_guides));
-    assert!(net
+    let sweeps = net
         .objects()
         .iter()
-        .all(|o| o.position.to_array().iter().all(|c| c.is_finite())));
+        .filter(|o| matches!(o.shape, Shape::Sweep { .. }))
+        .count();
+    assert_eq!(sweeps, 2);
+    assert_eq!(
+        net.objects().len(),
+        2 * (per_side_poles + per_side_guides + 1)
+    );
+    // The posts give a height and no footprint.
+    assert!(net.objects().iter().all(|o| match &o.shape {
+        Shape::Solid { extent, .. } => matches!(extent, Some(Extent::Box { length, width, height })
+            if *length == 0.0 && *width == 0.0 && *height > 0.0),
+        _ => true,
+    }));
 }
 
 #[cfg(feature = "serde")]

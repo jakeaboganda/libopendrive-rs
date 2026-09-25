@@ -52,10 +52,13 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   point is drawn as the wedge it is.
 - Road/lane `<link>`s and `<junction>`s, resolved into a drive-direction lane
   graph.
-- `<object>`s, placed in world coordinates on the road surface with their
-  heading, pitch, roll, and a box or cylinder extent. `<repeat>` expands into
-  one object per step, so a row of posts arrives as posts. Read them from
-  `RoadNetwork::objects`.
+- `<object>`s, in world coordinates on the road surface, from
+  `RoadNetwork::objects`. A plain object is a box or cylinder placed with its
+  heading, pitch and roll. A `<repeat>` with a `distance` expands into one
+  object per step, so a row of posts arrives as posts. A continuous
+  `<repeat>`, such as a guard rail, is swept along the road. `<outline>`s,
+  in road or local coordinates, arrive as footprint polygons with a height at
+  every corner.
 
 For the exact element and attribute list, see
 [the crate docs](https://docs.rs/libopendrive).
@@ -66,8 +69,9 @@ Geometry is cross-checked against the reference C++
 ## What it ignores
 
 Everything else in the file, silently, including `<signals>`, `<roadMark>`,
-and `<geoReference>`. An object's `<outlines>` are skipped, and a `<repeat>`
-with `distance="0"`, a continuous railing or barrier, bakes no object. Three
+and `<geoReference>`. Among objects, `<objectReference>`, `<tunnel>` and
+`<bridge>` are skipped, and an outline's `outer` flag is not read, so an
+outline meant as a hole bakes as a solid. Three
 omissions change the road you get back rather than only dropping detail around
 it:
 

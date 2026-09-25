@@ -66,6 +66,9 @@
 //! | `<laneLink>` | `from`, `to` |
 //! | `<objects><object>` | `type`, `name`, `s`, `t`, `zOffset`, `hdg`, `pitch`, `roll`, `length`, `width`, `height`, `radius` |
 //! | `<object><repeat>` | `s`, `length`, `distance`, and the `Start`/`End` pair of `t`, `zOffset`, `length`, `width`, `height`, `radius` |
+//! | `<outlines><outline>` | `closed` |
+//! | `<cornerRoad>` | `s`, `t`, `dz`, `height` |
+//! | `<cornerLocal>` | `u`, `v`, `z`, `height` |
 //!
 //! Four attribute values steer the import:
 //!
@@ -81,22 +84,28 @@
 //! "Successor" means "a lane you can drive into off this lane's exit end",
 //! not a raw mirror of the file's `+s` links.
 //!
-//! Each `<object>` becomes an [`Object`] in world coordinates, sitting on the
-//! road surface at its `(s, t)` and raised by `zOffset`. `<object type>`
-//! chooses its [`ObjectType`], and an unrecognised name bakes as
-//! [`ObjectType::Unknown`]. A `radius` makes its [`Extent`] a cylinder, a
-//! `length` with a `width` makes it a box, and neither leaves it without one.
-//! An object with `<repeat>`s is replaced by one object every `distance`
-//! metres along each repeat.
+//! Each `<object>` bakes to one or more [`Object`]s in world coordinates,
+//! sitting on the road surface and raised by `zOffset`. `<object type>`
+//! chooses their [`ObjectType`], and an unrecognised name bakes as
+//! [`ObjectType::Unknown`]. The [`Shape`] follows libOpenDRIVE:
+//!
+//! - A plain object is a [`Shape::Solid`] at its `(s, t)`. A `radius` makes
+//!   its [`Extent`] a cylinder. Any of `length`, `width` and `height` makes it
+//!   a box, 0 in the dimensions not given.
+//! - A `<repeat>` with a `distance` is one [`Shape::Solid`] every `distance`
+//!   metres. One with a `distance` of 0 is a [`Shape::Sweep`], its
+//!   cross-section swept continuously along the road, such as a guard rail.
+//! - Each `<outline>` is a [`Shape::Outline`], and an object with outlines
+//!   has no solid of its own. `<outline>` is read under `<outlines>`, and
+//!   straight under `<object>` as OpenDRIVE 1.4 writes it.
 //!
 //! # What the importer ignores
 //!
 //! Everything else in the file, silently. That includes `<geoReference>`,
 //! `<signals>`, `<roadMark>`, `<controller>`, `<junctionGroup>`,
 //! `<station>`, and road `<type>` with its `<speed>`. Among objects, that
-//! means `<outlines>`, `<objectReference>`, `<tunnel>` and `<bridge>`, and every
-//! repeat with a `distance` of 0. That is a continuous railing or barrier,
-//! and it bakes no object at all.
+//! means `<objectReference>`, `<tunnel>`, `<bridge>`, and an outline's
+//! `outer`, so an outline meant as a hole bakes as a solid.
 //!
 //! Three omissions change the road you get back, rather than only dropping
 //! detail around it:
@@ -169,7 +178,7 @@ pub use geometry::TooFewPoints;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
 pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};
 pub use network::{Direction, Lane, LaneId, LaneType, RoadNetwork};
-pub use object::{Extent, Object, ObjectType};
+pub use object::{Corner, Extent, Object, ObjectType, Section, Shape};
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ImportError,
     LaneProvenance,

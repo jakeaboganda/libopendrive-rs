@@ -4,17 +4,27 @@
 
 ### Objects
 
-`<object>`s now import. Each one becomes an `Object` on
-`RoadNetwork::objects`, in world coordinates: it sits on the road surface at
-its `(s, t)`, raised by `zOffset`, so it follows the elevation and
-superelevation profiles the lanes do. It carries an `ObjectType`, its name,
-its heading (the road's plus its own), pitch and roll, and an `Extent`, a box
-or a cylinder, when the file gives it a size. A `<repeat>` expands into one
-object per `distance`, with `t`, `zOffset` and the dimensions interpolated
-along it. On esmini's e6mini that turns six objects into 794 posts.
+`<object>`s now import. Each one bakes to one or more `Object`s on
+`RoadNetwork::objects`, in world coordinates, with an `ObjectType`, a name,
+and a `Shape`:
 
-Not imported yet: `<outlines>`, and a `<repeat>` with `distance="0"`, which
-describes one continuous railing or barrier rather than a row of objects.
+- `Shape::Solid`: a plain object, placed on the road surface at its `(s, t)`
+  and raised by `zOffset`. It carries its heading (the road's plus its own),
+  its pitch and roll, and an `Extent`: a cylinder if it has a radius, or a
+  box if it has any of a length, a width and a height.
+- A `<repeat>` with a `distance` is one solid every `distance` metres, with
+  `t`, `zOffset` and the dimensions interpolated along it. On esmini's
+  e6mini that turns four objects into 794 posts.
+- `Shape::Sweep`: a `<repeat>` with a `distance` of 0, a cross-section swept
+  along the road, such as a guard rail or a wall.
+- `Shape::Outline`: one per `<outline>`, a polygon of `cornerRoad` or
+  `cornerLocal` corners, each with a base and a top. An object with outlines
+  gets no solid of its own. The 1.4 layout, `<outline>` straight under
+  `<object>`, is read too.
+
+These placements follow libOpenDRIVE. Not imported yet: `<objectReference>`,
+`<tunnel>`, `<bridge>`, and an outline's `outer` flag, so a hole bakes as a
+solid.
 
 - The `serde` form of `RoadNetwork` is now `{ "lanes": [...], "objects": [...] }`
   rather than a bare lane array. JSON written by 0.1.1 does not load.

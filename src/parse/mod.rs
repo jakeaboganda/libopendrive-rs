@@ -9,7 +9,10 @@
 //! [libOpenDRIVE](https://github.com/pageldev/libOpenDRIVE).
 
 use crate::coords::{Point, Vector};
-use crate::{Direction, Extent, Lane, LaneId, LaneType, Object, ObjectType, Polyline, RoadNetwork};
+use crate::{
+    Corner, Direction, Extent, Lane, LaneId, LaneType, Object, ObjectType, Polyline, RoadNetwork,
+    Section, Shape,
+};
 
 mod links;
 use links::{LaneMeta, RoadInfo, Topology};
@@ -860,9 +863,9 @@ fn parse_width_cubics(lane: roxmltree::Node) -> Vec<Cubic> {
 
 // --- Objects ------------------------------------------------------------------
 
-/// Where one object instance sits along its road, and how big it is there.
-/// An `<object>` gives one of these, and a `<repeat>` gives one per instance.
-struct Placement {
+/// Where an object sits along its road, and how big it is there. An
+/// `<object>` gives one of these, and a `<repeat>` gives one per station.
+struct Station {
     s: f64,
     t: f64,
     z_offset: f64,
@@ -872,30 +875,60 @@ struct Placement {
     radius: Option<f64>,
 }
 
-/// Place every `<object>` under one road's `<objects>` in the world.
-/// `surface` maps a road station `(s, t)` to the road surface there and the
-/// reference line's heading.
+/// An object's own frame at one station: its origin, raised off the road by
+/// `zOffset`, and its orientation. The yaw is the reference line's heading
+/// plus the object's `hdg`. `pitch` and `roll` are already against the ground
+/// plane.
+struct Frame {
+    origin: Point,
+    yaw: f64,
+    pitch: f64,
+    roll: f64,
+}
+
+impl Frame {
+    /// A point given in this frame, in the network's. The rotation is yaw
+    /// about Z, then pitch about the turned Y, then roll about the turned X.
+    fn point(&self, [u, v, z]: [f64; 3]) -> Point {
+        let (sr, cr) = self.roll.sin_cos();
+        let (sp, cp) = self.pitch.sin_cos();
+        let (sy, cy) = self.yaw.sin_cos();
+        let (v, z) = (v * cr - z * sr, v * sr + z * cr);
+        let (u, z) = (u * cp + z * sp, -u * sp + z * cp);
+        let (u, v) = (u * cy - v * sy, u * sy + v * cy);
+        self.origin + Vector::new(u as f32, v as f32, z as f32)
+    }
+}
+
+/// Bake every `<object>` under one road's `<objects>` into `out`. `surface`
+/// maps a road station `(s, t)` to the road surface there and the reference
+/// line's heading.
 ///
-/// An object sits on the road surface at its `(s, t)`, raised by `zOffset`,
-/// so it rides the elevation and superelevation profiles like a lane does. Its
-/// `hdg` is relative to the reference line, so the baked heading adds the
-/// line's own. `pitch` and `roll` are already against the ground plane and
-/// pass through.
+/// Each object sits on the road surface, so it rides the elevation and
+/// superelevation profiles like a lane does. One `<object>` can bake to
+/// several [`Object`]s, following libOpenDRIVE:
 ///
-/// An object with `<repeat>` children is replaced by its repeats' instances,
-/// as libOpenDRIVE does. An object missing `s` or `t`, and any instance off
-/// the ends of the road, is skipped.
+/// - with neither `<repeat>`s nor outlines, one [`Shape::Solid`];
+/// - one [`Shape::Solid`] per step of each `<repeat>` with a `distance`, and
+///   one [`Shape::Sweep`] per `<repeat>` with a `distance` of 0;
+/// - one [`Shape::Outline`] per `<outline>`. Outlines are not repeated, and
+///   an object with outlines gets no solid of its own.
+///
+/// An object missing `s` or `t` is skipped. So is any part of one that falls
+/// off the ends of the road: a solid, a whole outline with a corner there, or
+/// the length of a sweep past the end.
 fn place_objects(
     objects_node: roxmltree::Node,
     road_length: f64,
     surface: impl Fn(f64, f64) -> (Point, f64),
     out: &mut Vec<Object>,
 ) {
+    let on_road = |s: f64| (0.0..=road_length).contains(&s);
     for node in objects_node.children().filter(|n| n.has_tag_name("object")) {
         let (Some(s), Some(t)) = (attr_f64(node, "s"), attr_f64(node, "t")) else {
             continue;
         };
-        let base = Placement {
+        let base = Station {
             s,
             t,
             z_offset: attr_f64(node, "zOffset").unwrap_or(0.0),
@@ -904,106 +937,245 @@ fn place_objects(
             height: attr_f64(node, "height"),
             radius: attr_f64(node, "radius"),
         };
-        let repeats: Vec<_> = node
+        let hdg = attr_f64(node, "hdg").unwrap_or(0.0);
+        let pitch = attr_f64(node, "pitch").unwrap_or(0.0);
+        let roll = attr_f64(node, "roll").unwrap_or(0.0);
+        let frame = |st: &Station| {
+            let (mut origin, road_hdg) = surface(st.s, st.t);
+            origin.z += st.z_offset as f32;
+            Frame {
+                origin,
+                yaw: road_hdg + hdg,
+                pitch,
+                roll,
+            }
+        };
+        let solid = |st: &Station| {
+            let f = frame(st);
+            Shape::Solid {
+                position: f.origin,
+                heading: f.yaw as f32,
+                pitch: f.pitch as f32,
+                roll: f.roll as f32,
+                extent: extent(st),
+            }
+        };
+
+        let mut shapes = Vec::new();
+        let repeats: Vec<Repeat> = node
             .children()
             .filter(|n| n.has_tag_name("repeat"))
+            .filter_map(Repeat::parse)
             .collect();
-        let placements = if repeats.is_empty() {
-            vec![base]
-        } else {
-            repeats
-                .into_iter()
-                .flat_map(|r| repeat_placements(r, &base))
-                .collect()
-        };
+        let outlines = outline_nodes(node);
+        if repeats.is_empty() && outlines.is_empty() && on_road(base.s) {
+            shapes.push(solid(&base));
+        }
+        for repeat in &repeats {
+            if repeat.distance > 0.0 {
+                let stations = repeat.stations(&base);
+                shapes.extend(stations.iter().filter(|st| on_road(st.s)).map(solid));
+            } else if let Some(sections) = sweep(repeat, &base, road_length, &surface) {
+                shapes.push(Shape::Sweep { sections });
+            }
+        }
+        let origin = on_road(base.s).then(|| frame(&base));
+        for outline_node in outlines {
+            if let Some(shape) = outline(outline_node, origin.as_ref(), &surface, on_road) {
+                shapes.push(shape);
+            }
+        }
 
         let kind = object_type(node.attribute("type"));
         let name = node.attribute("name").unwrap_or_default();
-        let hdg = attr_f64(node, "hdg").unwrap_or(0.0);
-        let pitch = attr_f64(node, "pitch").unwrap_or(0.0) as f32;
-        let roll = attr_f64(node, "roll").unwrap_or(0.0) as f32;
-        for p in placements {
-            if !(0.0..=road_length).contains(&p.s) {
-                continue;
-            }
-            let (mut position, road_hdg) = surface(p.s, p.t);
-            position.z += p.z_offset as f32;
-            out.push(Object {
-                kind,
-                name: name.to_string(),
-                position,
-                heading: (road_hdg + hdg) as f32,
-                pitch,
-                roll,
-                extent: extent(&p),
-            });
-        }
+        out.extend(shapes.into_iter().map(|shape| Object {
+            kind,
+            name: name.to_string(),
+            shape,
+        }));
     }
 }
 
-/// The instances one `<repeat>` stands for: one every `distance` metres from
-/// its `s` over its `length`, with `t`, `zOffset` and each dimension
-/// interpolated from its start value to its end value. A value the repeat does
-/// not give falls back to the object's own.
-///
-/// A `distance` of 0 means one continuous object swept along the road, such as
-/// a railing. That is a shape rather than a row of placements, so it yields
-/// nothing, as does a repeat that would exceed [`MAX_REPEAT_INSTANCES`].
-fn repeat_placements(repeat: roxmltree::Node, base: &Placement) -> Vec<Placement> {
-    let (Some(start), Some(length), Some(distance)) = (
-        attr_f64(repeat, "s"),
-        attr_f64(repeat, "length"),
-        attr_f64(repeat, "distance"),
-    ) else {
-        return Vec::new();
-    };
-    if length < 0.0 || distance <= 0.0 {
-        return Vec::new();
+/// One `<repeat>`: the object again along `length` metres of road from `s`,
+/// either every `distance` metres or, for a `distance` of 0, continuously.
+struct Repeat<'a> {
+    node: roxmltree::Node<'a, 'a>,
+    start: f64,
+    length: f64,
+    distance: f64,
+}
+
+impl<'a> Repeat<'a> {
+    /// `None` for a repeat missing its `s`, `length` or `distance`, or
+    /// carrying a negative one of the last two.
+    fn parse(node: roxmltree::Node<'a, 'a>) -> Option<Self> {
+        let repeat = Self {
+            node,
+            start: attr_f64(node, "s")?,
+            length: attr_f64(node, "length")?,
+            distance: attr_f64(node, "distance")?,
+        };
+        (repeat.length >= 0.0 && repeat.distance >= 0.0).then_some(repeat)
     }
-    let count = (length / distance).floor() + 1.0;
-    if count > MAX_REPEAT_INSTANCES {
-        return Vec::new();
+
+    /// The object's station a fraction `f` of the way along the repeat, with
+    /// `t`, `zOffset` and each dimension interpolated from its start value to
+    /// its end value. A value the repeat does not give is the object's own.
+    fn at(&self, base: &Station, f: f64) -> Station {
+        let lerp = |name: &str, fallback: Option<f64>| {
+            let start = attr_f64(self.node, &format!("{name}Start")).or(fallback)?;
+            let end = attr_f64(self.node, &format!("{name}End")).unwrap_or(start);
+            Some(start + (end - start) * f)
+        };
+        Station {
+            s: self.start + self.length * f,
+            t: lerp("t", Some(base.t)).unwrap_or(base.t),
+            z_offset: lerp("zOffset", Some(base.z_offset)).unwrap_or(base.z_offset),
+            length: lerp("length", base.length),
+            width: lerp("width", base.width),
+            height: lerp("height", base.height),
+            radius: lerp("radius", base.radius),
+        }
     }
-    // A value interpolated at fraction `f` of the way along the repeat.
-    let lerp = |name: &str, fallback: Option<f64>, f: f64| {
-        let start = attr_f64(repeat, &format!("{name}Start")).or(fallback)?;
-        let end = attr_f64(repeat, &format!("{name}End")).unwrap_or(start);
-        Some(start + (end - start) * f)
-    };
-    (0..count as usize)
-        .map(|k| {
-            let along = k as f64 * distance;
-            let f = if length > 0.0 { along / length } else { 0.0 };
-            Placement {
-                s: start + along,
-                t: lerp("t", Some(base.t), f).unwrap_or(base.t),
-                z_offset: lerp("zOffset", Some(base.z_offset), f).unwrap_or(base.z_offset),
-                length: lerp("length", base.length, f),
-                width: lerp("width", base.width, f),
-                height: lerp("height", base.height, f),
-                radius: lerp("radius", base.radius, f),
+
+    /// One station every `distance` metres, both ends included, or none if
+    /// that is more than [`MAX_REPEAT_INSTANCES`].
+    fn stations(&self, base: &Station) -> Vec<Station> {
+        let count = (self.length / self.distance).floor() + 1.0;
+        if count > MAX_REPEAT_INSTANCES {
+            return Vec::new();
+        }
+        (0..count as usize)
+            .map(|k| {
+                let along = k as f64 * self.distance;
+                let f = if self.length > 0.0 {
+                    along / self.length
+                } else {
+                    0.0
+                };
+                self.at(base, f)
+            })
+            .collect()
+    }
+}
+
+/// A continuous repeat's cross-section at every sample station along the part
+/// of it on the road: `width` wide about its `t`, `height` tall from its
+/// `zOffset`. A missing width is 0, a wall with no thickness, as libOpenDRIVE
+/// has it. `None` if less than a millimetre of it is on the road.
+fn sweep(
+    repeat: &Repeat,
+    base: &Station,
+    road_length: f64,
+    surface: &impl Fn(f64, f64) -> (Point, f64),
+) -> Option<Vec<Section>> {
+    let start = repeat.start.max(0.0);
+    let end = (repeat.start + repeat.length).min(road_length);
+    if end - start < 1e-3 {
+        return None;
+    }
+    let sections = sample_positions(start, end)
+        .into_iter()
+        .map(|s| {
+            let st = repeat.at(base, (s - repeat.start) / repeat.length);
+            let half = st.width.unwrap_or(0.0) / 2.0;
+            let height = st.height.unwrap_or(0.0) as f32;
+            let corner = |t| {
+                let (mut base, _) = surface(s, t);
+                base.z += st.z_offset as f32;
+                Corner {
+                    base,
+                    top: base + Vector::Z * height,
+                }
+            };
+            Section {
+                left: corner(st.t + half),
+                right: corner(st.t - half),
             }
         })
+        .collect();
+    Some(sections)
+}
+
+/// An object's `<outline>`s: under `<outlines>` since OpenDRIVE 1.5, and
+/// straight under the `<object>` in 1.4.
+fn outline_nodes<'a>(object: roxmltree::Node<'a, 'a>) -> Vec<roxmltree::Node<'a, 'a>> {
+    child(object, "outlines")
+        .unwrap_or(object)
+        .children()
+        .filter(|n| n.has_tag_name("outline"))
         .collect()
 }
 
-/// The volume a placement occupies: a cylinder if it has a radius, a box if it
-/// has a length and a width, and nothing otherwise. A missing height is 0 m,
-/// a flat footprint.
-fn extent(p: &Placement) -> Option<Extent> {
-    let height = p.height.unwrap_or(0.0) as f32;
-    match (p.radius, p.length, p.width) {
-        (Some(radius), _, _) => Some(Extent::Cylinder {
+/// One `<outline>` as a [`Shape::Outline`] in the network's frame.
+///
+/// A `<cornerRoad>` is a road station `(s, t)` raised by `dz`. A
+/// `<cornerLocal>` is `(u, v, z)` in the object's own frame, so it needs the
+/// object's origin to be on the road. Each corner's top is `height` above its
+/// base, up in the frame the corner is given in. An outline with a corner
+/// that cannot be placed is dropped whole, because the polygon without it is
+/// a different shape. So is one with fewer than two corners.
+fn outline(
+    node: roxmltree::Node,
+    frame: Option<&Frame>,
+    surface: &impl Fn(f64, f64) -> (Point, f64),
+    on_road: impl Fn(f64) -> bool,
+) -> Option<Shape> {
+    let corner = |c: roxmltree::Node| -> Option<Corner> {
+        let height = attr_f64(c, "height").unwrap_or(0.0);
+        if c.has_tag_name("cornerRoad") {
+            let (s, t) = (attr_f64(c, "s")?, attr_f64(c, "t")?);
+            if !on_road(s) {
+                return None;
+            }
+            let (mut base, _) = surface(s, t);
+            base.z += attr_f64(c, "dz").unwrap_or(0.0) as f32;
+            Some(Corner {
+                base,
+                top: base + Vector::Z * height as f32,
+            })
+        } else {
+            let frame = frame?;
+            let (u, v) = (attr_f64(c, "u")?, attr_f64(c, "v")?);
+            let z = attr_f64(c, "z").unwrap_or(0.0);
+            Some(Corner {
+                base: frame.point([u, v, z]),
+                top: frame.point([u, v, z + height]),
+            })
+        }
+    };
+    let corners = node
+        .children()
+        .filter(|n| n.has_tag_name("cornerRoad") || n.has_tag_name("cornerLocal"))
+        .map(corner)
+        .collect::<Option<Vec<_>>>()?;
+    if corners.len() < 2 {
+        return None;
+    }
+    // Closed unless the file says otherwise, as libOpenDRIVE reads it.
+    let closed = node.attribute("closed") != Some("false");
+    Some(Shape::Outline { corners, closed })
+}
+
+/// The volume a solid occupies: a cylinder if it has a radius, a box if it
+/// has any of a length, a width or a height, and nothing otherwise. A
+/// dimension the box does not have is 0.
+fn extent(st: &Station) -> Option<Extent> {
+    let height = st.height.unwrap_or(0.0) as f32;
+    if let Some(radius) = st.radius {
+        return Some(Extent::Cylinder {
             radius: radius as f32,
             height,
-        }),
-        (None, Some(length), Some(width)) => Some(Extent::Box {
-            length: length as f32,
-            width: width as f32,
-            height,
-        }),
-        _ => None,
+        });
     }
+    if st.length.is_none() && st.width.is_none() && st.height.is_none() {
+        return None;
+    }
+    Some(Extent::Box {
+        length: st.length.unwrap_or(0.0) as f32,
+        width: st.width.unwrap_or(0.0) as f32,
+        height,
+    })
 }
 
 /// The [`ObjectType`] an OpenDRIVE `<object>` `type` maps to. The deprecated
@@ -2287,13 +2459,27 @@ mod tests {
         load_str(xml).expect("import").objects().to_vec()
     }
 
+    /// A solid's position, pitch, roll and extent.
+    fn solid(object: &Object) -> (Point, f32, f32, Option<Extent>) {
+        match object.shape {
+            Shape::Solid {
+                position,
+                pitch,
+                roll,
+                extent,
+                ..
+            } => (position, pitch, roll, extent),
+            ref other => panic!("not a solid: {other:?}"),
+        }
+    }
+
     #[test]
     fn an_object_rides_the_banked_surface_like_a_lane() {
         // Same pivot as a lane at t = 3: up by 3 sin 0.1, in to 3 cos 0.1.
         let objects = objects_of(&banked_road_with(
             r#"<object id="1" s="10" t="3" zOffset="0.5"/>"#,
         ));
-        let p = objects[0].position;
+        let (p, pitch, roll, _) = solid(&objects[0]);
         assert!((p.x - 10.0).abs() < 1e-5, "x {}", p.x);
         assert!((p.y - 3.0 * 0.1_f32.cos()).abs() < 1e-5, "y {}", p.y);
         assert!(
@@ -2302,7 +2488,7 @@ mod tests {
             p.z
         );
         // Pitch and roll are the file's, not the road's bank.
-        assert_eq!((objects[0].pitch, objects[0].roll), (0.0, 0.0));
+        assert_eq!((pitch, roll), (0.0, 0.0));
     }
 
     #[test]
@@ -2311,7 +2497,7 @@ mod tests {
             r#"<object id="1" t="3"/><object id="2" s="NaN" t="3"/><object id="3" s="4" t="0"/>"#,
         ));
         assert_eq!(objects.len(), 1);
-        assert_eq!(objects[0].position.x, 4.0);
+        assert_eq!(solid(&objects[0]).0.x, 4.0);
     }
 
     #[test]
@@ -2324,7 +2510,7 @@ mod tests {
                </object>
                <object id="2" s="-1" t="0"/>"#,
         ));
-        let xs: Vec<f32> = objects.iter().map(|o| o.position.x).collect();
+        let xs: Vec<f32> = objects.iter().map(|o| solid(o).0.x).collect();
         assert_eq!(xs, vec![15.0, 20.0]);
     }
 
@@ -2349,7 +2535,7 @@ mod tests {
         ));
         assert_eq!(objects.len(), 4);
         assert!(objects.iter().all(|o| o.kind == ObjectType::Pole));
-        assert!(objects.iter().all(|o| o.extent
+        assert!(objects.iter().all(|o| solid(o).3
             == Some(Extent::Cylinder {
                 radius: 0.1,
                 height: 0.0
@@ -2359,5 +2545,106 @@ mod tests {
     #[test]
     fn a_road_without_objects_has_none() {
         assert!(load_str(STRAIGHT).expect("import").objects().is_empty());
+    }
+
+    #[test]
+    fn a_sweep_rises_straight_up_off_a_banked_road() {
+        // The base follows the bank like a lane does. The top is `height`
+        // above it in +Z, the same way zOffset raises a solid.
+        let objects = objects_of(&banked_road_with(
+            r#"<object id="1" s="0" t="0">
+                 <repeat s="0" length="20" distance="0" tStart="3" tEnd="3" widthStart="1"
+                         heightStart="2" zOffsetStart="0.5"/>
+               </object>"#,
+        ));
+        let Shape::Sweep { sections } = &objects[0].shape else {
+            panic!("not a sweep: {:?}", objects[0].shape);
+        };
+        assert_eq!(sections.len(), 11, "every 2 m over 20 m");
+        let (sin, cos) = 0.1_f32.sin_cos();
+        for section in sections {
+            for (corner, t) in [(section.left, 3.5_f32), (section.right, 2.5)] {
+                assert!(
+                    (corner.base.y - t * cos).abs() < 1e-5,
+                    "y {}",
+                    corner.base.y
+                );
+                assert!((corner.base.z - (t * sin + 0.5)).abs() < 1e-5);
+                assert_eq!(corner.top - corner.base, Vector::new(0.0, 0.0, 2.0));
+            }
+        }
+    }
+
+    #[test]
+    fn a_sweep_entirely_off_the_road_bakes_nothing() {
+        let objects = objects_of(&banked_road_with(
+            r#"<object id="1" s="0" t="0">
+                 <repeat s="25" length="10" distance="0" tStart="3"/>
+               </object>"#,
+        ));
+        assert!(objects.is_empty());
+    }
+
+    #[test]
+    fn an_outline_straight_under_the_object_is_read_as_opendrive_1_4_writes_it() {
+        let objects = objects_of(&banked_road_with(
+            r#"<object id="1" s="5" t="0">
+                 <outline><cornerRoad s="5" t="0"/><cornerRoad s="6" t="0"/></outline>
+               </object>"#,
+        ));
+        assert!(matches!(
+            &objects[0].shape,
+            Shape::Outline { corners, closed: true } if corners.len() == 2
+        ));
+    }
+
+    #[test]
+    fn an_outline_with_a_corner_off_the_road_is_dropped_whole() {
+        // Keeping the three corners that fit would bake a triangle where the
+        // file has a square.
+        let objects = objects_of(&banked_road_with(
+            r#"<object id="1" s="5" t="0"><outlines><outline>
+                 <cornerRoad s="18" t="0"/><cornerRoad s="22" t="0"/>
+                 <cornerRoad s="22" t="2"/><cornerRoad s="18" t="2"/>
+               </outline></outlines></object>"#,
+        ));
+        assert!(objects.is_empty());
+    }
+
+    #[test]
+    fn a_frame_turns_yaw_then_pitch_then_roll() {
+        let frame = |yaw: f64, pitch: f64, roll: f64| Frame {
+            origin: Point::new(1.0, 2.0, 3.0),
+            yaw,
+            pitch,
+            roll,
+        };
+        let near = |got: Point, want: [f32; 3]| {
+            assert!(
+                (got - Point::from_array(want)).length() < 1e-6,
+                "{got:?} != {want:?}"
+            );
+        };
+        let half = std::f64::consts::FRAC_PI_2;
+        // Each on its own: yaw takes u to +Y, pitch takes u down, roll takes
+        // v up.
+        near(
+            frame(half, 0.0, 0.0).point([1.0, 0.0, 0.0]),
+            [1.0, 3.0, 3.0],
+        );
+        near(
+            frame(0.0, half, 0.0).point([1.0, 0.0, 0.0]),
+            [1.0, 2.0, 2.0],
+        );
+        near(
+            frame(0.0, 0.0, half).point([0.0, 1.0, 0.0]),
+            [1.0, 2.0, 4.0],
+        );
+        // Together, roll acts first: it turns v up, pitch then tips up to
+        // forward, and yaw turns forward to +Y.
+        near(
+            frame(half, half, half).point([0.0, 1.0, 0.0]),
+            [1.0, 3.0, 3.0],
+        );
     }
 }

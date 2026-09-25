@@ -123,10 +123,12 @@ const OBJECT_COLORS = {
 const OBJECT_FALLBACK_COLOR = 0x22d3ee;
 
 // Size in metres of the marker drawn for an object with no extent, and the
-// least height a drawn box or cylinder gets. A flat footprint such as a
-// parking bay has a height of 0, and at 0 it would z-fight with the road.
+// least size a drawn box or cylinder gets. A flat footprint such as a parking
+// bay has a height of 0, and at 0 it would z-fight with the road. A post
+// given only a height has no footprint, and at 0 it would not draw at all.
 const MARKER_SIZE = 0.4;
 const MIN_OBJECT_HEIGHT = 0.02;
+const MIN_OBJECT_FOOTPRINT = 0.1;
 
 // Length in metres of a drawn normal hair. Road scale, so it reads against a
 // lane without burying it.
@@ -399,7 +401,10 @@ function buildLanes(data) {
 // however many objects, so a highway lined with posts stays cheap. Each unit
 // shape stands on its origin, which is where the crate puts an object's base.
 function buildObjects(data) {
-  objects = data.objects ?? [];
+  // Solids only for now; outlines and sweeps are exported but not drawn yet.
+  objects = (data.objects ?? [])
+    .filter(o => o.shape.kind === 'solid')
+    .map(o => ({ objectType: o.objectType, name: o.name, ...o.shape }));
   const box = new THREE.BoxGeometry(1, 1, 1).translate(0, 0, 0.5);
   const cylinder = new THREE.CylinderGeometry(1, 1, 1, 16).rotateX(Math.PI / 2).translate(0, 0, 0.5);
   const marker = new THREE.OctahedronGeometry(MARKER_SIZE / 2).translate(0, 0, MARKER_SIZE / 2);
@@ -418,8 +423,9 @@ function buildObjects(data) {
     list.forEach((o, i) => {
       const e = o.extent;
       const h = e ? Math.max(e.height, MIN_OBJECT_HEIGHT) : 1;
-      if (shape === 'box') scale.set(e.length, e.width, h);
-      else if (shape === 'cylinder') scale.set(e.radius, e.radius, h);
+      const foot = d => Math.max(d, MIN_OBJECT_FOOTPRINT);
+      if (shape === 'box') scale.set(foot(e.length), foot(e.width), h);
+      else if (shape === 'cylinder') scale.set(foot(e.radius), foot(e.radius), h);
       else scale.set(1, 1, 1);
       euler.set(o.roll, o.pitch, o.heading);
       m.compose(pos.fromArray(o.position), q.setFromEuler(euler), scale);

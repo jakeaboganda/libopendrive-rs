@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <OpenDRIVE>
-    <header name="objects" revMajor="1" revMinor="5" date="2026-09-25 09:43:43.640185" north="0.0" south="0.0" east="0.0" west="0.0"/>
+    <header name="objects" revMajor="1" revMinor="5" date="2026-09-25 10:07:16.348763" north="0.0" south="0.0" east="0.0" west="0.0"/>
     <road rule="RHT" id="0" junction="-1" length="100.0">
         <link/>
         <planView>
@@ -45,6 +45,28 @@
             </object>
             <object id="6" s="0" t="7" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" height="0.8" type="railing" orientation="none" hdg="0">
                 <repeat length="100" distance="0" s="0" tStart="7" tEnd="7" heightStart="0.8" heightEnd="0.8" zOffsetStart="0" zOffsetEnd="0"/>
+            </object>
+            <object id="7" s="0" t="0" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" type="barrier" orientation="none" hdg="0">
+                <repeat length="40" distance="0" s="70" tStart="-8" tEnd="-9" heightStart="1" heightEnd="1" zOffsetStart="0" zOffsetEnd="0.4" widthStart="0.5" widthEnd="1.0"/>
+            </object>
+            <object id="8" s="30" t="10" subtype="None" dynamic="no" zOffset="0.1" pitch="0" roll="0" name="House" type="building" orientation="none" hdg="0.2">
+                <outlines>
+                    <outline closed="true">
+                        <cornerLocal u="0" v="0" z="0" height="5"/>
+                        <cornerLocal u="6" v="0" z="0" height="5"/>
+                        <cornerLocal u="6" v="4" z="0" height="5"/>
+                        <cornerLocal u="0" v="4" z="0" height="5"/>
+                    </outline>
+                </outlines>
+            </object>
+            <object id="9" s="50" t="-12" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" name="Fence" type="barrier" orientation="none" hdg="0">
+                <outlines>
+                    <outline closed="false">
+                        <cornerRoad s="50" t="-12" dz="0" height="1.5"/>
+                        <cornerRoad s="60" t="-12" dz="0" height="1.5"/>
+                        <cornerRoad s="60" t="-14" dz="0" height="1.5"/>
+                    </outline>
+                </outlines>
             </object>
         </objects>
     </road>

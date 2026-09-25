@@ -34,11 +34,37 @@ posts.repeat(repeatLength=80, repeatDistance=10, sStart=5, tStart=-4, tEnd=-6,
              heightStart=1, heightEnd=2, zOffsetStart=0, zOffsetEnd=0)
 road.add_object(posts)
 
-# A continuous railing: a swept shape, not a row of placements.
+# A continuous railing with no width: a wall swept along the road.
 rail = xodr.Object(s=0, t=7, Type=xodr.ObjectType.railing, id="6", height=0.8)
 rail.repeat(repeatLength=100, repeatDistance=0, sStart=0, tStart=7, tEnd=7,
             heightStart=0.8, heightEnd=0.8, zOffsetStart=0, zOffsetEnd=0)
 road.add_object(rail)
+
+# A continuous barrier that widens, moves outward and rises over 40 m, and
+# runs 10 m past the end of the road.
+barrier = xodr.Object(s=0, t=0, Type=xodr.ObjectType.barrier, id="7")
+barrier.repeat(repeatLength=40, repeatDistance=0, sStart=70, tStart=-8, tEnd=-9,
+               widthStart=0.5, widthEnd=1.0, heightStart=1, heightEnd=1,
+               zOffsetStart=0, zOffsetEnd=0.4)
+road.add_object(barrier)
+
+# A building outlined in its own frame: a 6 x 4 m footprint, 5 m tall,
+# turned 0.2 rad against the road.
+house = xodr.Object(s=30, t=10, Type=xodr.ObjectType.building, id="8", name="House",
+                    zOffset=0.1, hdg=0.2)
+footprint = xodr.Outline(closed=True)
+for u, v in [(0, 0), (6, 0), (6, 4), (0, 4)]:
+    footprint.add_corner(xodr.CornerLocal(u, v, 0, 5))
+house.add_outline(footprint)
+road.add_object(house)
+
+# A fence outlined in road coordinates, open at the end.
+fence = xodr.Object(s=50, t=-12, Type=xodr.ObjectType.barrier, id="9", name="Fence")
+line = xodr.Outline(closed=False)
+for s, t in [(50, -12), (60, -12), (60, -14)]:
+    line.add_corner(xodr.CornerRoad(s, t, 0, 1.5))
+fence.add_outline(line)
+road.add_object(fence)
 
 odr = xodr.OpenDrive("objects")
 odr.add_road(road)

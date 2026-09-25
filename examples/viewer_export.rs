@@ -12,8 +12,8 @@
 //! the lane is for, the mesh slice it owns (so a picked triangle resolves to a
 //! lane), and its centerline with the heading at each point (so the viewer can
 //! project the cursor to `(s, t)` and read out the same heading the crate
-//! would). Each object entry is its type, name, world position, orientation,
-//! and extent, which is all the viewer needs to place a box or a cylinder.
+//! would). Each object entry is its type, name, and shape: a pose and extent
+//! for a solid, or world-space corners for an outline or a sweep.
 //!
 //! Lane boundaries are not exported. They are already in the mesh: a lane's
 //! vertex range alternates left and right rib, which is what the viewer draws
@@ -24,8 +24,8 @@ use std::fs;
 use std::process::ExitCode;
 
 use libopendrive::{
-    load_file_with_provenance, Direction, Extent, LaneProvenance, LaneSpan, Mesh, Object,
-    RoadNetwork,
+    load_file_with_provenance, Corner, Direction, Extent, LaneProvenance, LaneSpan, Mesh, Object,
+    RoadNetwork, Shape,
 };
 use serde_json::{json, Map, Value};
 
@@ -98,29 +98,55 @@ fn build_scene(net: &RoadNetwork, mesh: &Mesh, provenance: &[LaneProvenance]) ->
     })
 }
 
-/// One object's viewer record. Angles are radians, applied yaw, then pitch,
-/// then roll. `extent` is null for an object the map gives no size.
+/// One object's viewer record: its type and name, and its shape. A `solid`
+/// carries a pose, angles in radians applied yaw, then pitch, then roll, and
+/// an `extent` that is null for an object the map gives no size. An
+/// `outline` and a `sweep` carry corners already in world coordinates, each
+/// a `[base, top]` pair of points.
 fn object_entry(object: &Object) -> Value {
-    let extent = match object.extent {
-        Some(Extent::Box {
-            length,
-            width,
-            height,
-        }) => json!({ "shape": "box", "length": length, "width": width, "height": height }),
-        Some(Extent::Cylinder { radius, height }) => {
-            json!({ "shape": "cylinder", "radius": radius, "height": height })
+    let corner = |c: &Corner| json!([c.base.to_array(), c.top.to_array()]);
+    let shape = match &object.shape {
+        Shape::Solid {
+            position,
+            heading,
+            pitch,
+            roll,
+            extent,
+        } => {
+            let extent = match extent {
+                Some(Extent::Box {
+                    length,
+                    width,
+                    height,
+                }) => json!({ "shape": "box", "length": length, "width": width, "height": height }),
+                Some(Extent::Cylinder { radius, height }) => {
+                    json!({ "shape": "cylinder", "radius": radius, "height": height })
+                }
+                None => Value::Null,
+            };
+            json!({
+                "kind": "solid",
+                "position": position.to_array(),
+                "heading": heading,
+                "pitch": pitch,
+                "roll": roll,
+                "extent": extent,
+            })
         }
-        None => Value::Null,
+        Shape::Outline { corners, closed } => json!({
+            "kind": "outline",
+            "corners": corners.iter().map(corner).collect::<Vec<_>>(),
+            "closed": closed,
+        }),
+        Shape::Sweep { sections } => json!({
+            "kind": "sweep",
+            "sections": sections
+                .iter()
+                .map(|s| json!({ "left": corner(&s.left), "right": corner(&s.right) }))
+                .collect::<Vec<_>>(),
+        }),
     };
-    json!({
-        "objectType": object.kind.as_str(),
-        "name": object.name,
-        "position": object.position.to_array(),
-        "heading": object.heading,
-        "pitch": object.pitch,
-        "roll": object.roll,
-        "extent": extent,
-    })
+    json!({ "objectType": object.kind.as_str(), "name": object.name, "shape": shape })
 }
 
 /// One lane's viewer record: identity, OpenDRIVE provenance, its mesh slice,
