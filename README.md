@@ -59,8 +59,10 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   `<repeat>`, such as a guard rail, is swept along the road. `<outline>`s,
   in road or local coordinates, arrive as footprint polygons with a height at
   every corner. An `<objectReference>` places the object it names again, at
-  its own station. Each object has a subtype, whether it moves, the lanes it
-  applies to from its `<validity>`, and an id to look it up by. Its road, OpenDRIVE id, `(s, t)`, orientation and valid
+  its own station. A `<marking>` on an outline, such as a crosswalk's
+  stripes, arrives as painted pieces along the edges it names. Each object
+  has a subtype, whether it moves, the lanes it applies to from its
+  `<validity>`, and an id to look it up by. Its road, OpenDRIVE id, `(s, t)`, orientation and valid
   length come from `load_*_with_provenance`, as a lane's road and id do.
 
 For the exact element and attribute list, see

@@ -42,6 +42,12 @@ stretch of road it spans, narrowed by its `<validity>` `fromLane`-`toLane`
 ranges, or all of them if it has none. A reference takes its own
 `<validity>`, not its object's.
 
+`Object::markings` is the paint on an outline, one `Marking` per
+`<marking>` whose `<cornerReference>`s all name its corners. It carries the
+marking's side, colour, width, line length and space length, and the painted
+pieces: quads in world coordinates along the referenced edges, dashed where
+the marking is. A marking with no corner references is skipped.
+
 These placements follow libOpenDRIVE. Not imported yet: `<tunnel>`,
 `<bridge>`, and an outline's `outer` flag, so a hole bakes as a solid.
 

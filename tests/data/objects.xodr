@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <OpenDRIVE>
-    <header name="objects" revMajor="1" revMinor="5" date="2026-09-25 21:00:01.820783" north="0.0" south="0.0" east="0.0" west="0.0"/>
+    <header name="objects" revMajor="1" revMinor="5" date="2026-09-25 21:38:42.797184" north="0.0" south="0.0" east="0.0" west="0.0"/>
     <road rule="RHT" id="0" junction="-1" length="100.0">
         <link/>
         <planView>
@@ -70,6 +70,27 @@
                         <cornerRoad s="60" t="-14" dz="0" height="1.5"/>
                     </outline>
                 </outlines>
+            </object>
+            <object id="11" s="15" t="0" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" name="Crossing" type="crosswalk" orientation="none" hdg="0">
+                <outlines>
+                    <outline closed="true">
+                        <cornerRoad s="13" t="-3" dz="0" height="0" id="0"/>
+                        <cornerRoad s="13" t="3" dz="0" height="0" id="1"/>
+                        <cornerRoad s="17" t="3" dz="0" height="0" id="2"/>
+                        <cornerRoad s="17" t="-3" dz="0" height="0" id="3"/>
+                    </outline>
+                </outlines>
+                <markings>
+                    <marking color="white" lineLength="0.5" side="left" spaceLength="0.5" startOffset="0.25" stopOffset="0.25" width="0.4" zOffset="0.01">
+                        <cornerReference id="0"/>
+                        <cornerReference id="1"/>
+                    </marking>
+                    <marking color="yellow" lineLength="0" side="right" spaceLength="0" startOffset="0" stopOffset="0" width="0.2">
+                        <cornerReference id="1"/>
+                        <cornerReference id="2"/>
+                        <cornerReference id="3"/>
+                    </marking>
+                </markings>
             </object>
         </objects>
     </road>

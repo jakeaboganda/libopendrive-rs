@@ -69,8 +69,10 @@
 //! | `<object><validity>`, `<objectReference><validity>` | `fromLane`, `toLane` |
 //! | `<object><repeat>` | `s`, `length`, `distance`, and the `Start`/`End` pair of `t`, `zOffset`, `length`, `width`, `height`, `radius` |
 //! | `<outlines><outline>` | `closed` |
-//! | `<cornerRoad>` | `s`, `t`, `dz`, `height` |
-//! | `<cornerLocal>` | `u`, `v`, `z`, `height` |
+//! | `<cornerRoad>` | `id`, `s`, `t`, `dz`, `height` |
+//! | `<cornerLocal>` | `id`, `u`, `v`, `z`, `height` |
+//! | `<markings><marking>` | `side`, `color`, `width`, `zOffset`, `lineLength`, `spaceLength`, `startOffset`, `stopOffset` |
+//! | `<cornerReference>` | `id` |
 //!
 //! Four attribute values steer the import:
 //!
@@ -112,6 +114,12 @@
 //! `fromLane`-`toLane` ranges of its `<validity>`s if it has any. A
 //! reference's own `<validity>`s apply, not its `<object>`'s, whose lane ids
 //! are on another road.
+//!
+//! A `<marking>` becomes a [`Marking`] on the outline holding every corner
+//! its `<cornerReference>`s name: a strip `width` across, centred on the
+//! edges through those corners, cut into dashes by `lineLength` and
+//! `spaceLength`. A marking with no corner references, one that places paint
+//! on a side of an object's box, is skipped.
 //!
 //! An [`Object`] keeps what describes the thing itself: its `subtype`, and
 //! whether it is `dynamic`. What ties it to an OpenDRIVE road, its road id,
@@ -201,7 +209,7 @@ pub use geometry::TooFewPoints;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
 pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};
 pub use network::{Direction, Lane, LaneId, LaneType, RoadNetwork};
-pub use object::{Corner, Extent, Object, ObjectId, ObjectType, Section, Shape};
+pub use object::{Corner, Extent, Marking, Object, ObjectId, ObjectType, Section, Shape};
 pub use object_mesh::ObjectSpan;
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ImportError,

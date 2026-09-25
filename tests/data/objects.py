@@ -80,6 +80,27 @@ for s, t in [(50, -12), (60, -12), (60, -14)]:
 fence.add_outline(line)
 road.add_object(fence)
 
+# A crosswalk across the road, outlined flat in road coordinates. One marking
+# dashes across the road along its s = 13 edge. The other is solid and turns
+# the corner from the s = 17 edge's far end back across.
+crosswalk = xodr.Object(s=15, t=0, Type=xodr.ObjectType.crosswalk, id="11", name="Crossing")
+area = xodr.Outline(closed=True)
+for id, (s, t) in enumerate([(13, -3), (13, 3), (17, 3), (17, -3)]):
+    area.add_corner(xodr.CornerRoad(s, t, 0, 0, id=id))
+crosswalk.add_outline(area)
+stripes = xodr.Marking(xodr.RoadMarkColor.white, lineLength=0.5, side="left",
+                       spaceLength=0.5, startOffset=0.25, stopOffset=0.25, width=0.4,
+                       zOffset=0.01)
+stripes.add_cornerReference(0)
+stripes.add_cornerReference(1)
+crosswalk.add_marking(stripes)
+edge = xodr.Marking(xodr.RoadMarkColor.yellow, lineLength=0, side="right", spaceLength=0,
+                    startOffset=0, stopOffset=0, width=0.2)
+for id in [1, 2, 3]:
+    edge.add_cornerReference(id)
+crosswalk.add_marking(edge)
+road.add_object(crosswalk)
+
 straight = xodr.create_road(xodr.Line(60), id=1, left_lanes=1, right_lanes=1)
 straight.planview.set_start_point(0, -40, 0)
 

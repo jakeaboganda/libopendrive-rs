@@ -13,8 +13,8 @@ use std::collections::HashMap;
 use crate::coords::{Point, Vector};
 use crate::object::orient;
 use crate::{
-    Corner, Direction, Extent, Lane, LaneId, LaneType, Object, ObjectId, ObjectType, Polyline,
-    RoadNetwork, Section, Shape,
+    Corner, Direction, Extent, Lane, LaneId, LaneType, Marking, Object, ObjectId, ObjectType,
+    Polyline, RoadNetwork, Section, Shape,
 };
 
 mod links;
@@ -23,8 +23,9 @@ use links::{LaneMeta, RoadInfo, Topology};
 /// Arc-length spacing (meters) at which curved geometry is baked to points.
 const SAMPLE_STEP: f64 = 2.0;
 
-/// The most objects one `<repeat>` may expand to. A tiny `distance` over a
-/// long `length` would otherwise ask for billions of them. Real rows are far
+/// The most objects one `<repeat>` may expand to, and the most dashes one
+/// `<marking>` may paint. A tiny `distance` over a long `length` would
+/// otherwise ask for billions of them. Real rows are far
 /// shorter: esmini's e6mini, a 1.5 km highway lined with posts every 4 m,
 /// repeats 367 at most.
 const MAX_REPEAT_INSTANCES: f64 = 100_000.0;
@@ -1247,43 +1248,41 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
         }
     };
 
-    let mut shapes = Vec::new();
+    let mut parts = Vec::new();
     let repeats: Vec<Repeat> = node
         .children()
         .filter(|n| n.has_tag_name("repeat"))
         .filter_map(|n| Repeat::parse(n, at.shift))
         .collect();
     let outlines = outline_nodes(node);
-    // Each shape with the road station it is anchored at, and the stretch
-    // of road it spans.
+    let point = |st: &Station| Part::new(solid(st), st, (st.s, st.s));
     if repeats.is_empty() && outlines.is_empty() && road.on_road(base.s) {
-        shapes.push((solid(&base), base.s, base.t, (base.s, base.s)));
+        parts.push(point(&base));
     }
     for repeat in &repeats {
         if repeat.distance > 0.0 {
             let stations = repeat.stations(&base);
-            shapes.extend(
-                stations
-                    .iter()
-                    .filter(|st| road.on_road(st.s))
-                    .map(|st| (solid(st), st.s, st.t, (st.s, st.s))),
-            );
+            parts.extend(stations.iter().filter(|st| road.on_road(st.s)).map(point));
         } else if let Some((sections, start, end)) = sweep(repeat, &base, road) {
-            shapes.push((Shape::Sweep { sections }, start.s, start.t, (start.s, end)));
+            parts.push(Part::new(Shape::Sweep { sections }, &start, (start.s, end)));
         }
     }
     let origin = road.on_road(base.s).then(|| frame(&base));
     for outline_node in outlines {
-        if let Some((shape, stretch)) =
-            outline(outline_node, origin.as_ref(), base.s, at.shift, road)
-        {
-            shapes.push((shape, base.s, base.t, stretch));
+        let Some((shape, stretch)) = outline(outline_node, origin.as_ref(), base.s, at.shift, road)
+        else {
+            continue;
+        };
+        let mut part = Part::new(shape, &base, stretch);
+        if let Shape::Outline { corners, .. } = &part.shape {
+            part.markings = markings(node, outline_node, corners);
         }
+        parts.push(part);
     }
 
     let kind = object_type(node.attribute("type"));
     let text = |name| node.attribute(name).unwrap_or_default().to_string();
-    for (shape, s, t, stretch) in shapes {
+    for part in parts {
         let id = ObjectId(out.baked.len());
         out.baked.push(Object {
             id,
@@ -1291,19 +1290,44 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
             subtype: text("subtype"),
             name: text("name"),
             dynamic: node.attribute("dynamic") == Some("yes"),
-            lanes: road.lanes(stretch, &at.validity),
-            shape,
+            lanes: road.lanes(part.stretch, &at.validity),
+            markings: part.markings,
+            shape: part.shape,
         });
         out.provenance.push(ObjectProvenance {
             object: id,
             road_id: road.id.to_string(),
             od_id: text("id"),
-            s,
-            t,
+            s: part.s,
+            t: part.t,
             orientation: at.orientation,
             valid_length: at.valid_length,
             referenced_from: at.referenced_from.map(str::to_string),
         });
+    }
+}
+
+/// One shape an `<object>` bakes to, and what goes with it, before it becomes
+/// an [`Object`].
+struct Part {
+    shape: Shape,
+    /// The road station it is anchored at.
+    s: f64,
+    t: f64,
+    /// The stretch of road it spans, which picks its lanes.
+    stretch: (f64, f64),
+    markings: Vec<Marking>,
+}
+
+impl Part {
+    fn new(shape: Shape, at: &Station, stretch: (f64, f64)) -> Self {
+        Self {
+            shape,
+            s: at.s,
+            t: at.t,
+            stretch,
+            markings: Vec::new(),
+        }
     }
 }
 
@@ -1474,17 +1498,138 @@ fn outline(
             })
         }
     };
-    let corners = node
-        .children()
-        .filter(|n| n.has_tag_name("cornerRoad") || n.has_tag_name("cornerLocal"))
-        .map(corner)
-        .collect::<Option<Vec<_>>>()?;
+    let corners = corner_nodes(node).map(corner).collect::<Option<Vec<_>>>()?;
     if corners.len() < 2 {
         return None;
     }
     // Closed unless the file says otherwise, as libOpenDRIVE reads it.
     let closed = node.attribute("closed") != Some("false");
     Some((Shape::Outline { corners, closed }, stretch))
+}
+
+/// An `<outline>`'s corners, in order.
+fn corner_nodes<'a>(
+    outline: roxmltree::Node<'a, 'a>,
+) -> impl Iterator<Item = roxmltree::Node<'a, 'a>> {
+    outline
+        .children()
+        .filter(|n| n.has_tag_name("cornerRoad") || n.has_tag_name("cornerLocal"))
+}
+
+/// The `<marking>`s under `object`'s `<markings>` that run along edges of
+/// one of its outlines, `outline`, whose placed corners are `corners`.
+///
+/// A marking follows the corners its `<cornerReference>`s name, in order, by
+/// the corners' `id`s. It belongs to the outline that has every one of them,
+/// so one naming a corner the outline lacks is left to another outline. So
+/// is one with fewer than two references, or none of any width.
+///
+/// The paint is raised `zOffset` off the corners' bases, 5 mm if the map does
+/// not say, and starts `startOffset` along the first edge and stops
+/// `stopOffset` short of the end of the last.
+fn markings(object: roxmltree::Node, outline: roxmltree::Node, corners: &[Corner]) -> Vec<Marking> {
+    let ids: Vec<Option<&str>> = corner_nodes(outline).map(|c| c.attribute("id")).collect();
+    let Some(markings) = child(object, "markings") else {
+        return Vec::new();
+    };
+    markings
+        .children()
+        .filter(|n| n.has_tag_name("marking"))
+        .filter_map(|m| {
+            let width = attr_f64(m, "width").filter(|w| *w > 0.0)?;
+            let raise = Vector::Z * attr_f64(m, "zOffset").unwrap_or(0.005) as f32;
+            let path = corner_path(m, &ids, corners)?
+                .into_iter()
+                .map(|p| p + raise)
+                .collect::<Vec<_>>();
+            let line = attr_f64(m, "lineLength").unwrap_or(0.0).max(0.0);
+            let space = attr_f64(m, "spaceLength").unwrap_or(0.0).max(0.0);
+            let text = |name| m.attribute(name).unwrap_or_default().to_string();
+            Some(Marking {
+                side: text("side"),
+                color: text("color"),
+                width: width as f32,
+                line_length: line as f32,
+                space_length: space as f32,
+                pieces: strip(
+                    &path,
+                    attr_f64(m, "startOffset").unwrap_or(0.0),
+                    attr_f64(m, "stopOffset").unwrap_or(0.0),
+                    (line > 0.0 && space > 0.0).then_some((line, space)),
+                    width / 2.0,
+                ),
+            })
+        })
+        .collect()
+}
+
+/// The bases of the corners `node`'s `<cornerReference>`s name, in order.
+/// `ids` are the corners' `id`s, in step with `corners`. `None` if a
+/// reference names no corner in `ids`, or there are fewer than two.
+fn corner_path(
+    node: roxmltree::Node,
+    ids: &[Option<&str>],
+    corners: &[Corner],
+) -> Option<Vec<Point>> {
+    let path = node
+        .children()
+        .filter(|n| n.has_tag_name("cornerReference"))
+        .map(|r| {
+            let id = r.attribute("id")?;
+            let at = ids.iter().position(|c| *c == Some(id))?;
+            Some(corners[at].base)
+        })
+        .collect::<Option<Vec<_>>>()?;
+    (path.len() >= 2).then_some(path)
+}
+
+/// A strip `half_width` either side of the line through `path`, from `start`
+/// metres along it to `stop` metres short of its end: one quad per edge, or
+/// with `dashes` of `(line, space)` metres, one per dash per edge. Each quad
+/// goes anticlockwise seen from above. An edge with no length in plan has no
+/// across to measure, and gets none. Nor does a pattern of more than
+/// [`MAX_REPEAT_INSTANCES`] dashes, as a runaway `<repeat>` does not.
+fn strip(
+    path: &[Point],
+    start: f64,
+    stop: f64,
+    dashes: Option<(f64, f64)>,
+    half_width: f64,
+) -> Vec<[Point; 4]> {
+    let mut along = vec![0.0];
+    for w in path.windows(2) {
+        along.push(along.last().unwrap() + f64::from(w[0].distance_to(w[1])));
+    }
+    let end = along.last().unwrap() - stop;
+    let painted: Vec<(f64, f64)> = match dashes {
+        None => vec![(start, end)],
+        Some((line, space)) if (end - start) / (line + space) > MAX_REPEAT_INSTANCES => Vec::new(),
+        Some((line, space)) => (0..)
+            .map(|k| start + k as f64 * (line + space))
+            .take_while(|&a| a < end)
+            .map(|a| (a, (a + line).min(end)))
+            .collect(),
+    };
+    let mut pieces = Vec::new();
+    for (i, w) in path.windows(2).enumerate() {
+        let (a, b) = (w[0], w[1]);
+        let d = b - a;
+        let across = Vector::new(-d.y, d.x, 0.0).normalize_or_zero() * half_width as f32;
+        if across == Vector::ZERO {
+            continue;
+        }
+        let (from, to) = (along[i], along[i + 1]);
+        for &(p, q) in &painted {
+            let (p, q) = (p.max(from), q.min(to));
+            if q - p < 1e-6 {
+                continue;
+            }
+            let at = |x: f64| a.lerp(b, ((x - from) / (to - from)) as f32);
+            let (p, q) = (at(p), at(q));
+            pieces.push([p - across, q - across, q + across, p + across]);
+        }
+    }
+    pieces
 }
 
 /// The volume a solid occupies: a cylinder if it has a radius, a box if it
@@ -2886,6 +3031,49 @@ mod tests {
         let net = load_str(xml).expect("import");
         assert_eq!(net.objects().len(), 1);
         assert!(net.objects()[0].lanes.is_empty());
+    }
+
+    #[test]
+    fn a_marking_goes_to_the_outline_holding_its_corners() {
+        let square = |id: &str| {
+            let corners: String = [(0, 0), (1, 0), (1, 1), (0, 1)]
+                .iter()
+                .enumerate()
+                .map(|(k, (u, v))| {
+                    format!(r#"<cornerLocal u="{u}" v="{v}" height="0" id="{id}{k}"/>"#)
+                })
+                .collect();
+            format!("<outline>{corners}</outline>")
+        };
+        let marking = |refs: &[&str], width: &str| {
+            let refs: String = refs
+                .iter()
+                .map(|r| format!(r#"<cornerReference id="{r}"/>"#))
+                .collect();
+            format!(r#"<marking width="{width}">{refs}</marking>"#)
+        };
+        let xml = banked_road_with(&format!(
+            r#"<object id="o" s="5" t="0"><outlines>{}{}</outlines><markings>{}{}{}{}{}{}</markings></object>"#,
+            square("a"),
+            square("b"),
+            marking(&["a0", "a1"], "0.1"),
+            marking(&["b1", "b2", "b3"], "0.1"),
+            // Corners of two outlines, a corner of none, a single corner,
+            // and no width.
+            marking(&["a0", "b1"], "0.1"),
+            marking(&["a0", "z9"], "0.1"),
+            marking(&["a0"], "0.1"),
+            marking(&["a0", "a1"], "0"),
+        ));
+        let objects = objects_of(&xml);
+        let pieces = |o: &Object| {
+            o.markings
+                .iter()
+                .map(|m| m.pieces.len())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(pieces(&objects[0]), [1]);
+        assert_eq!(pieces(&objects[1]), [2]);
     }
 
     fn objects_of(xml: &str) -> Vec<Object> {

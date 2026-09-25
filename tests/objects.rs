@@ -8,8 +8,8 @@
 //! `<objectReference>`s. That puts every expected placement in closed form.
 
 use libopendrive::{
-    load_file, load_file_with_provenance, Corner, Extent, Object, ObjectId, ObjectType,
-    Orientation, Point, Section, Shape,
+    load_file, load_file_with_provenance, Corner, Extent, Marking, Object, ObjectId, ObjectType,
+    Orientation, Point, Section, Shape, Vector,
 };
 
 const OBJECTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/objects.xodr");
@@ -360,7 +360,8 @@ fn an_outlined_object_has_no_solid_of_its_own() {
     // Shed, tree, marker, guide post, gate, nine poles. The outlined house
     // and fence, and the swept railing and barrier, add no solid.
     assert_eq!(solids, 5 + 9);
-    assert_eq!(objects().len(), 5 + 9 + 2 + 2);
+    // Plus two sweeps, and the house, fence and crosswalk outlines.
+    assert_eq!(objects().len(), 5 + 9 + 2 + 3);
 }
 
 #[test]
@@ -381,11 +382,7 @@ fn a_reference_places_the_object_it_names_at_its_own_station() {
     };
     // The reference's s, t and zOffset, on road 1, turned by the object's own
     // hdg against a road heading of 0.
-    assert_near(
-        position,
-        on_straight(10.0, -5.0) + libopendrive::Vector::Z * 0.2,
-        "shed",
-    );
+    assert_near(position, on_straight(10.0, -5.0) + Vector::Z * 0.2, "shed");
     assert!((heading - 0.3).abs() < 1e-6, "heading {heading}");
     assert_eq!(
         extent,
@@ -568,4 +565,80 @@ fn objects_survive_a_round_trip() {
     let back: libopendrive::RoadNetwork = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(back.objects(), net.objects());
     assert_eq!(back, net);
+}
+
+/// Checks `piece` paints `width` across the line from `from` to `to`, and
+/// goes anticlockwise seen from above.
+fn assert_piece(piece: &[Point; 4], from: Point, to: Point, width: f32, what: &str) {
+    let [a, b, c, d] = *piece;
+    assert_near(a.lerp(d, 0.5), from, &format!("{what} start"));
+    assert_near(b.lerp(c, 0.5), to, &format!("{what} end"));
+    assert!((a.distance_to(d) - width).abs() < 1e-4, "{what} width");
+    assert!((b.distance_to(c) - width).abs() < 1e-4, "{what} width");
+    let area = (b - a).cross(d - a).z;
+    assert!(area > 0.0, "{what} winds clockwise");
+}
+
+fn crosswalk_markings() -> Vec<Marking> {
+    let crosswalk = objects()
+        .into_iter()
+        .find(|o| o.kind == ObjectType::Crosswalk)
+        .expect("the crosswalk");
+    crosswalk.markings
+}
+
+#[test]
+fn a_dashed_marking_paints_along_the_edge_it_references() {
+    let stripes = &crosswalk_markings()[0];
+    assert_eq!(
+        (stripes.side.as_str(), stripes.color.as_str()),
+        ("left", "white")
+    );
+    assert_eq!(
+        (stripes.width, stripes.line_length, stripes.space_length),
+        (0.4, 0.5, 0.5)
+    );
+    // The edge from corner 0 at (13, -3) to corner 1 at (13, 3) is 6 m. Less
+    // 0.25 m at either end, 0.5 m dashes 0.5 m apart make six.
+    assert_eq!(stripes.pieces.len(), 6);
+    let at = |x: f64| raised(13.0, -3.0 + x, 0.01);
+    for (k, piece) in stripes.pieces.iter().enumerate() {
+        let start = 0.25 + k as f64;
+        assert_piece(piece, at(start), at(start + 0.5), 0.4, &format!("dash {k}"));
+    }
+}
+
+#[test]
+fn a_solid_marking_turns_the_corners_it_references() {
+    let edge = &crosswalk_markings()[1];
+    assert_eq!(
+        (edge.side.as_str(), edge.color.as_str()),
+        ("right", "yellow")
+    );
+    // Corners 1, 2 and 3: one piece along each of the two edges, raised the
+    // default 5 mm.
+    let corner = |s, t| raised(s, t, 0.005);
+    assert_eq!(edge.pieces.len(), 2);
+    assert_piece(
+        &edge.pieces[0],
+        corner(13.0, 3.0),
+        corner(17.0, 3.0),
+        0.2,
+        "first edge",
+    );
+    assert_piece(
+        &edge.pieces[1],
+        corner(17.0, 3.0),
+        corner(17.0, -3.0),
+        0.2,
+        "second edge",
+    );
+}
+
+#[test]
+fn only_an_outline_carries_markings() {
+    assert!(objects()
+        .iter()
+        .filter(|o| o.kind != ObjectType::Crosswalk)
+        .all(|o| o.markings.is_empty()));
 }
