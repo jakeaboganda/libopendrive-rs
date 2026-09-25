@@ -4,10 +4,13 @@ use crate::coords::{Point, Vector};
 use crate::geometry::left_normal;
 use crate::grid::{Aabb, Grid};
 use crate::network::{LaneId, RoadNetwork};
+use crate::object_mesh::ObjectSpan;
 
-/// A triangle mesh (Z-up, meters): per-vertex positions and up-normals, plus
-/// triangle indices. The road surface, shared by the physics collider (which
-/// needs only positions) and a renderer (which needs normals for lighting).
+/// A triangle mesh (Z-up, meters): per-vertex positions and normals, plus
+/// triangle indices. The road surface from [`RoadNetwork::surface_mesh`], or
+/// the objects from [`RoadNetwork::object_mesh`], shared by the physics
+/// collider (which needs only positions) and a renderer (which needs normals
+/// for lighting).
 ///
 /// Deliberately a plain data type with public fields and no engine types in
 /// sight: uploading it is a matter of copying three slices.
@@ -16,7 +19,7 @@ use crate::network::{LaneId, RoadNetwork};
 pub struct Mesh {
     /// Vertex positions.
     pub vertices: Vec<Point>,
-    /// Per-vertex up-normals, parallel to `vertices`.
+    /// Per-vertex normals, parallel to `vertices`. Up, on the road surface.
     pub normals: Vec<Vector>,
     /// Triangle vertex indices, three per triangle.
     pub indices: Vec<u32>,
@@ -26,8 +29,13 @@ pub struct Mesh {
     /// is what a collider and a single draw call want. This is the way back:
     /// it is what lets a renderer pick the lane under the cursor, give one
     /// lane its own material, or name the lane a degenerate triangle came
-    /// from. Empty on a mesh built by hand.
+    /// from. Empty on an object mesh or a mesh built by hand.
     pub lanes: Vec<LaneSpan>,
+    /// Which object each part of the mesh came from, in emission order: the
+    /// way back from [`RoadNetwork::object_mesh`], as `lanes` is from
+    /// [`RoadNetwork::surface_mesh`]. Empty on a surface mesh or a mesh built
+    /// by hand.
+    pub objects: Vec<ObjectSpan>,
 }
 
 /// The slice of a [`Mesh`] belonging to one lane: a half-open range into

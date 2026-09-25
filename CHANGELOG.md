@@ -5,8 +5,8 @@
 ### Objects
 
 `<object>`s now import. Each one bakes to one or more `Object`s on
-`RoadNetwork::objects`, in world coordinates, with an `ObjectType`, a name,
-and a `Shape`:
+`RoadNetwork::objects`, in world coordinates, with an `ObjectId`, an
+`ObjectType`, a subtype, a name, whether it is dynamic, and a `Shape`:
 
 - `Shape::Solid`: a plain object, placed on the road surface at its `(s, t)`
   and raised by `zOffset`. It carries its heading (the road's plus its own),
@@ -22,6 +22,15 @@ and a `Shape`:
   gets no solid of its own. The 1.4 layout, `<outline>` straight under
   `<object>`, is read too.
 
+`RoadNetwork::object_mesh` tessellates them into one `Mesh` of
+outward-facing faces, with an `ObjectSpan` per object in `Mesh::objects`, as
+`surface_mesh` does for lanes. A closed outline gets a lid and a floor, and a
+face with no area is left out, so a post given only a height has no span.
+
+`RoadNetwork::object` looks one up by its id. Its road id, `<object id>`,
+anchoring `(s, t)`, `orientation` and `validLength` are in an
+`ObjectProvenance`, kept apart from the object as a lane's are.
+
 These placements follow libOpenDRIVE. Not imported yet: `<objectReference>`,
 `<tunnel>`, `<bridge>`, and an outline's `outer` flag, so a hole bakes as a
 solid.
@@ -30,6 +39,11 @@ solid.
   rather than a bare lane array. JSON written by 0.1.1 does not load.
 - `From<RoadNetwork> for Vec<Lane>` is gone, since it would drop the objects.
   Read `lanes()` instead.
+- `Mesh` has a new `objects` field, so a `Mesh` literal needs it or
+  `..Default::default()`.
+- `load_str_with_provenance` and `load_file_with_provenance` return a
+  `Provenance`, with the lane records in `lanes` and the object records in
+  `objects`, instead of a `Vec<LaneProvenance>`.
 
 ## 0.1.1 - 2026-09-23
 

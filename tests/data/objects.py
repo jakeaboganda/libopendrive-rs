@@ -15,9 +15,11 @@ road.add_elevation(0, 1.0, 0.02, 0, 0)
 
 road.add_object(
     [
-        # A box, turned against the road.
-        xodr.Object(s=40, t=-6, Type=xodr.ObjectType.building, id="1", name="Shed",
-                    zOffset=0.5, hdg=0.3, length=8, width=4, height=3),
+        # A box, turned against the road, with a subtype, and valid for
+        # traffic along +s over 8 m.
+        xodr.Object(s=40, t=-6, Type=xodr.ObjectType.building, subtype="garage", id="1",
+                    name="Shed", zOffset=0.5, hdg=0.3, length=8, width=4, height=3,
+                    orientation=xodr.Orientation.positive, validLength=8),
         # A cylinder, pitched and rolled.
         xodr.Object(s=60, t=5, Type=xodr.ObjectType.tree, id="2", radius=1.5, height=7,
                     pitch=0.1, roll=-0.2),
@@ -25,6 +27,10 @@ road.add_object(
         xodr.Object(s=10, t=0, Type=xodr.ObjectType.none, id="3"),
         # A type OpenDRIVE does not define.
         xodr.Object(s=20, t=4, Type="guide-post", id="4", height=1.2),
+        # Something that moves, for traffic along -s.
+        xodr.Object(s=90, t=-3, Type=xodr.ObjectType.barrier, subtype="boom", id="10",
+                    name="Gate", dynamic=xodr.Dynamic.yes, length=4, width=0.2, height=1,
+                    orientation=xodr.Orientation.negative),
     ]
 )
 

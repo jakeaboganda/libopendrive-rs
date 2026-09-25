@@ -13,7 +13,9 @@
 //! lane), and its centerline with the heading at each point (so the viewer can
 //! project the cursor to `(s, t)` and read out the same heading the crate
 //! would). Each object entry is its type, name, and shape: a pose and extent
-//! for a solid, or world-space corners for an outline or a sweep.
+//! for a solid, or world-space corners for an outline or a sweep. The object
+//! mesh from [`RoadNetwork::object_mesh`] comes too, in the same flat buffers
+//! with each object's slice of it.
 //!
 //! Lane boundaries are not exported. They are already in the mesh: a lane's
 //! vertex range alternates left and right rib, which is what the viewer draws
@@ -25,7 +27,7 @@ use std::process::ExitCode;
 
 use libopendrive::{
     load_file_with_provenance, Corner, Direction, Extent, LaneProvenance, LaneSpan, Mesh, Object,
-    RoadNetwork, Shape,
+    ObjectProvenance, Orientation, Provenance, RoadNetwork, Shape,
 };
 use serde_json::{json, Map, Value};
 
@@ -51,7 +53,14 @@ fn main() -> ExitCode {
         eprintln!("warning: mesh is not a valid trimesh: {e}");
     }
 
-    let scene = build_scene(&net, &mesh, &provenance);
+    let object_mesh = net.object_mesh();
+    if !object_mesh.objects.is_empty() {
+        if let Err(e) = object_mesh.validate() {
+            eprintln!("warning: object mesh is not a valid trimesh: {e}");
+        }
+    }
+
+    let scene = build_scene(&net, &mesh, &object_mesh, &provenance);
     let bytes = serde_json::to_vec(&scene).expect("scene serializes");
     if let Err(e) = fs::write(&output, &bytes) {
         eprintln!("writing {output}: {e}");
@@ -69,41 +78,63 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Assemble the viewer scene: flat mesh buffers, the lane table, and the
-/// object table.
-fn build_scene(net: &RoadNetwork, mesh: &Mesh, provenance: &[LaneProvenance]) -> Value {
-    // Flatten positions and normals into the [x,y,z, x,y,z, ...] layout a
-    // three.js Float32BufferAttribute takes directly.
-    let mut positions = Vec::with_capacity(mesh.vertices.len() * 3);
-    for v in &mesh.vertices {
-        positions.extend_from_slice(&v.to_array());
-    }
-    let mut normals = Vec::with_capacity(mesh.normals.len() * 3);
-    for n in &mesh.normals {
-        normals.extend_from_slice(&n.to_array());
-    }
-
+/// Assemble the viewer scene: flat mesh buffers, the lane table, the object
+/// table, and the object mesh.
+fn build_scene(
+    net: &RoadNetwork,
+    mesh: &Mesh,
+    object_mesh: &Mesh,
+    provenance: &Provenance,
+) -> Value {
     let lanes: Vec<Value> = mesh
         .lanes
         .iter()
-        .map(|span| lane_entry(net, provenance, span))
+        .map(|span| lane_entry(net, &provenance.lanes, span))
         .collect();
-    let objects: Vec<Value> = net.objects().iter().map(object_entry).collect();
+    let objects: Vec<Value> = net
+        .objects()
+        .iter()
+        .map(|o| object_entry(o, provenance.objects.iter().find(|p| p.object == o.id)))
+        .collect();
+
+    let mut object_buffers = buffers(object_mesh);
+    object_buffers["spans"] = object_mesh
+        .objects
+        .iter()
+        .map(|s| {
+            json!({
+                "objectId": s.object.0,
+                "vertices": [s.vertices.start, s.vertices.end],
+                "indices": [s.indices.start, s.indices.end],
+            })
+        })
+        .collect();
 
     json!({
         "meta": { "generator": "libopendrive viewer_export", "frame": "OpenDRIVE Z-up metres" },
-        "mesh": { "positions": positions, "normals": normals, "indices": mesh.indices },
+        "mesh": buffers(mesh),
         "lanes": lanes,
         "objects": objects,
+        "objectMesh": object_buffers,
     })
 }
 
-/// One object's viewer record: its type and name, and its shape. A `solid`
+/// A mesh's positions, normals and indices, flattened into the
+/// [x,y,z, x,y,z, ...] layout a three.js Float32BufferAttribute takes
+/// directly.
+fn buffers(mesh: &Mesh) -> Value {
+    let positions: Vec<f32> = mesh.vertices.iter().flat_map(|v| v.to_array()).collect();
+    let normals: Vec<f32> = mesh.normals.iter().flat_map(|n| n.to_array()).collect();
+    json!({ "positions": positions, "normals": normals, "indices": mesh.indices })
+}
+
+/// One object's viewer record: its identity, OpenDRIVE provenance, and
+/// shape. A `solid`
 /// carries a pose, angles in radians applied yaw, then pitch, then roll, and
 /// an `extent` that is null for an object the map gives no size. An
 /// `outline` and a `sweep` carry corners already in world coordinates, each
 /// a `[base, top]` pair of points.
-fn object_entry(object: &Object) -> Value {
+fn object_entry(object: &Object, prov: Option<&ObjectProvenance>) -> Value {
     let corner = |c: &Corner| json!([c.base.to_array(), c.top.to_array()]);
     let shape = match &object.shape {
         Shape::Solid {
@@ -146,7 +177,25 @@ fn object_entry(object: &Object) -> Value {
                 .collect::<Vec<_>>(),
         }),
     };
-    json!({ "objectType": object.kind.as_str(), "name": object.name, "shape": shape })
+    let orientation = |o: Orientation| match o {
+        Orientation::Positive => "+",
+        Orientation::Negative => "-",
+        Orientation::Both => "none",
+    };
+    json!({
+        "objectId": object.id.0,
+        "objectType": object.kind.as_str(),
+        "subtype": object.subtype,
+        "name": object.name,
+        "dynamic": object.dynamic,
+        "roadId": prov.map(|p| p.road_id.as_str()),
+        "odId": prov.map(|p| p.od_id.as_str()),
+        "s": prov.map(|p| p.s),
+        "t": prov.map(|p| p.t),
+        "orientation": prov.map(|p| orientation(p.orientation)),
+        "validLength": prov.and_then(|p| p.valid_length),
+        "shape": shape,
+    })
 }
 
 /// One lane's viewer record: identity, OpenDRIVE provenance, its mesh slice,

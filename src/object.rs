@@ -4,6 +4,26 @@
 
 use crate::coords::Point;
 
+/// `[u, v, z]` turned by yaw about Z, then pitch about the turned Y, then
+/// roll about the turned X: an offset in an object's own frame, in the
+/// network's axes.
+pub(crate) fn orient(yaw: f64, pitch: f64, roll: f64, [u, v, z]: [f64; 3]) -> [f64; 3] {
+    let (sr, cr) = roll.sin_cos();
+    let (sp, cp) = pitch.sin_cos();
+    let (sy, cy) = yaw.sin_cos();
+    let (v, z) = (v * cr - z * sr, v * sr + z * cr);
+    let (u, z) = (u * cp + z * sp, -u * sp + z * cp);
+    let (u, v) = (u * cy - v * sy, u * sy + v * cy);
+    [u, v, z]
+}
+
+/// An opaque object identifier. Not a position in
+/// [`RoadNetwork::objects`](crate::RoadNetwork::objects), so look objects up
+/// with [`RoadNetwork::object`](crate::RoadNetwork::object).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ObjectId(pub usize);
+
 /// What an object is.
 ///
 /// The set is the static object vocabulary maps are written in. Anything
@@ -171,10 +191,18 @@ pub enum Shape {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Object {
+    /// This object's identity.
+    pub id: ObjectId,
     /// What the object is.
     pub kind: ObjectType,
+    /// The map's finer category within `kind`, such as a kind of barrier.
+    /// Free text, and empty if the map gives none.
+    pub subtype: String,
     /// The name the map gives it, often a model file. Empty if it has none.
     pub name: String,
+    /// Whether the object can move, such as a gate or a barrier arm. Its
+    /// shape is where it stands in the map.
+    pub dynamic: bool,
     /// Where it is and what it fills.
     pub shape: Shape,
 }

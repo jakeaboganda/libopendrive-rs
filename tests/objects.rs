@@ -5,7 +5,10 @@
 //! of curvature 0.005 from the origin heading +X, at elevation `1 + 0.02 s`,
 //! which puts every expected placement in closed form.
 
-use libopendrive::{load_file, Corner, Extent, Object, ObjectType, Point, Section, Shape};
+use libopendrive::{
+    load_file, load_file_with_provenance, Corner, Extent, Object, ObjectId, ObjectType,
+    Orientation, Point, Section, Shape,
+};
 
 const OBJECTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/objects.xodr");
 const E6MINI: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/e6mini.xodr");
@@ -140,6 +143,79 @@ fn single_objects_sit_on_the_road_surface_at_their_station() {
 }
 
 #[test]
+fn an_object_keeps_its_subtype_and_whether_it_moves() {
+    let objects = objects();
+    let (shed, gate) = (&objects[0], &objects[4]);
+    assert_eq!((shed.subtype.as_str(), shed.dynamic), ("garage", false));
+    assert_eq!(
+        (gate.name.as_str(), gate.subtype.as_str()),
+        ("Gate", "boom")
+    );
+    assert!(gate.dynamic);
+    // scenariogeneration writes the absence of a subtype as the text "None",
+    // and the crate keeps the file's text.
+    assert_eq!(objects[1].subtype, "None");
+}
+
+#[test]
+fn every_object_is_found_by_its_id() {
+    let net = load_file(OBJECTS).expect("objects.xodr loads");
+    for object in net.objects() {
+        assert_eq!(net.object(object.id), Some(object));
+    }
+    assert_eq!(net.object(ObjectId(net.objects().len())), None);
+}
+
+#[test]
+fn provenance_names_each_objects_road_od_id_and_station() {
+    let (net, prov) = load_file_with_provenance(OBJECTS).expect("objects.xodr loads");
+    let prov = prov.objects;
+    assert_eq!(prov.len(), net.objects().len(), "one record per object");
+    for (object, p) in net.objects().iter().zip(&prov) {
+        assert_eq!(p.object, object.id);
+        assert_eq!(p.road_id, "0");
+    }
+
+    let shed = &prov[0];
+    assert_eq!((shed.od_id.as_str(), shed.s, shed.t), ("1", 40.0, -6.0));
+    assert_eq!(shed.orientation, Orientation::Positive);
+    assert_eq!(shed.valid_length, Some(8.0));
+    let gate = &prov[4];
+    assert_eq!(
+        (gate.od_id.as_str(), gate.orientation),
+        ("10", Orientation::Negative)
+    );
+    assert_eq!(gate.valid_length, None);
+    assert_eq!(
+        prov[1].orientation,
+        Orientation::Both,
+        "orientation=\"none\""
+    );
+
+    // Every pole a repeat bakes shares its <object>'s id and has its own
+    // station.
+    let poles: Vec<_> = net
+        .objects()
+        .iter()
+        .zip(&prov)
+        .filter(|(o, _)| o.kind == ObjectType::Pole)
+        .map(|(_, p)| p)
+        .collect();
+    assert!(poles.iter().all(|p| p.od_id == "5"));
+    let stations: Vec<f64> = poles.iter().map(|p| p.s).collect();
+    assert_eq!(
+        stations,
+        (0..9).map(|k| 5.0 + 10.0 * k as f64).collect::<Vec<_>>()
+    );
+
+    // A sweep is anchored where its part on the road starts, and an outline
+    // at its <object>.
+    let at = |od_id: &str| prov.iter().find(|p| p.od_id == od_id).expect(od_id);
+    assert_eq!((at("7").s, at("7").t), (70.0, -8.0));
+    assert_eq!((at("8").s, at("8").t), (30.0, 10.0));
+}
+
+#[test]
 fn a_repeat_becomes_one_object_per_step_with_its_values_interpolated() {
     let poles = of_kind(ObjectType::Pole);
     // s = 5, 15, ..., 85: nine steps of 10 m over 80 m, both ends included.
@@ -264,10 +340,10 @@ fn an_outlined_object_has_no_solid_of_its_own() {
         .into_iter()
         .filter(|o| matches!(o.shape, Shape::Solid { .. }))
         .count();
-    // Shed, tree, marker, guide post, nine poles. The outlined house and
-    // fence, and the swept railing and barrier, add no solid.
-    assert_eq!(solids, 4 + 9);
-    assert_eq!(objects().len(), 4 + 9 + 2 + 2);
+    // Shed, tree, marker, guide post, gate, nine poles. The outlined house
+    // and fence, and the swept railing and barrier, add no solid.
+    assert_eq!(solids, 5 + 9);
+    assert_eq!(objects().len(), 5 + 9 + 2 + 2);
 }
 
 #[test]

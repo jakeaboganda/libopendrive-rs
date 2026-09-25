@@ -4,7 +4,7 @@
 use crate::coords::Point;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
-use crate::object::Object;
+use crate::object::{Object, ObjectId};
 
 /// An opaque lane identifier. **Not** a vector index into `RoadNetwork.lanes`.
 /// An importer may assign arbitrary ids, such as OpenDRIVE lane keys, so look
@@ -391,6 +391,15 @@ impl RoadNetwork {
     /// them.
     pub fn objects(&self) -> &[Object] {
         &self.objects
+    }
+
+    /// The object with this id, by identity (not position), the same way as
+    /// [`Self::lane`].
+    pub fn object(&self, id: ObjectId) -> Option<&Object> {
+        match self.objects.get(id.0) {
+            Some(object) if object.id == id => Some(object),
+            _ => self.objects.iter().find(|o| o.id == id),
+        }
     }
 
     /// The lane with this id, by identity (not position), so ids stay valid

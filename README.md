@@ -58,7 +58,9 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   object per step, so a row of posts arrives as posts. A continuous
   `<repeat>`, such as a guard rail, is swept along the road. `<outline>`s,
   in road or local coordinates, arrive as footprint polygons with a height at
-  every corner.
+  every corner. Each object has a subtype, whether it moves, and an id to look
+  it up by. Its road, OpenDRIVE id, `(s, t)`, orientation and valid length
+  come from `load_*_with_provenance`, as a lane's road and id do.
 
 For the exact element and attribute list, see
 [the crate docs](https://docs.rs/libopendrive).
@@ -112,6 +114,10 @@ engine types in them, and a `LaneSpan` per lane saying which slice of those
 buffers it owns. Buffers plus spans are enough to pick the lane under a
 cursor, or give one lane its own material without re-tessellating. The viewer
 uses the same spans to resolve a raycast hit to a lane.
+
+`object_mesh()` does the same for objects: every box, cylinder, outline and
+sweep tessellated into one mesh of outward-facing faces, with an `ObjectSpan`
+per object.
 
 The optional `serde` feature serializes the network and its mesh. The example
 at `examples/viewer_export.rs` uses it to bake a map straight to the JSON the

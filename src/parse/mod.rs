@@ -9,9 +9,10 @@
 //! [libOpenDRIVE](https://github.com/pageldev/libOpenDRIVE).
 
 use crate::coords::{Point, Vector};
+use crate::object::orient;
 use crate::{
-    Corner, Direction, Extent, Lane, LaneId, LaneType, Object, ObjectType, Polyline, RoadNetwork,
-    Section, Shape,
+    Corner, Direction, Extent, Lane, LaneId, LaneType, Object, ObjectId, ObjectType, Polyline,
+    RoadNetwork, Section, Shape,
 };
 
 mod links;
@@ -61,6 +62,63 @@ pub struct LaneProvenance {
     pub od_id: i32,
 }
 
+/// The OpenDRIVE identity of one baked object: which road and `<object>` it
+/// came from, and where on that road it is anchored.
+///
+/// Like [`LaneProvenance`], this is kept apart from [`Object`] so the baked
+/// object stays format-neutral. Everything here is relative to an OpenDRIVE
+/// road.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ObjectProvenance {
+    /// The baked object this record describes.
+    pub object: ObjectId,
+    /// The `<road id>` the object is on.
+    pub road_id: String,
+    /// The `<object id>` it came from. Every object a `<repeat>` or several
+    /// outlines bake from one `<object>` shares it. Empty if the file gives
+    /// none.
+    pub od_id: String,
+    /// Where on the road the object is anchored, in metres along the
+    /// reference line: a solid's own station, the start of the part of a
+    /// sweep on the road, or the `<object>`'s station for an outline.
+    pub s: f64,
+    /// The lateral offset from the reference line at that station, in metres,
+    /// positive to the left.
+    pub t: f64,
+    /// Which direction of the road the object applies to.
+    pub orientation: Orientation,
+    /// How far along the road the object is valid from `s`, in metres, if
+    /// the file says. Meant for objects such as a speed bump that act over a
+    /// stretch of road.
+    pub valid_length: Option<f64>,
+}
+
+/// Which direction of its road an object applies to, from its
+/// `orientation`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Orientation {
+    /// Traffic along +s, `orientation="+"`.
+    Positive,
+    /// Traffic along -s, `orientation="-"`.
+    Negative,
+    /// Both, `orientation="none"`. Also what a missing or unrecognised
+    /// value reads as.
+    Both,
+}
+
+/// The OpenDRIVE identity of everything a load baked, from
+/// [`load_str_with_provenance`] or [`load_file_with_provenance`].
+#[derive(Debug, Clone, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Provenance {
+    /// One per baked lane, in baked-lane order.
+    pub lanes: Vec<LaneProvenance>,
+    /// One per baked object, in baked-object order.
+    pub objects: Vec<ObjectProvenance>,
+}
+
 /// Load an OpenDRIVE file from disk and bake it into a `RoadNetwork`.
 pub fn load_file(path: impl AsRef<std::path::Path>) -> Result<RoadNetwork, ImportError> {
     load_file_with_provenance(path).map(|(net, _)| net)
@@ -71,28 +129,26 @@ pub fn load_str(xml: &str) -> Result<RoadNetwork, ImportError> {
     load_str_with_provenance(xml).map(|(net, _)| net)
 }
 
-/// Like [`load_file`], but also returns the OpenDRIVE [`LaneProvenance`] of
-/// every baked lane, for a viewer or editor that must name the road, section,
-/// and original lane id a baked lane came from.
+/// Like [`load_file`], but also returns the OpenDRIVE [`Provenance`] of
+/// every baked lane and object, for a viewer or editor that must name the
+/// road and original id each one came from.
 pub fn load_file_with_provenance(
     path: impl AsRef<std::path::Path>,
-) -> Result<(RoadNetwork, Vec<LaneProvenance>), ImportError> {
+) -> Result<(RoadNetwork, Provenance), ImportError> {
     let xml = std::fs::read_to_string(path.as_ref())
         .map_err(|e| ImportError::Malformed(format!("reading {:?}: {e}", path.as_ref())))?;
     load_str_with_provenance(&xml)
 }
 
-/// Like [`load_str`], but also returns the OpenDRIVE [`LaneProvenance`] of
-/// every baked lane. The provenance is in baked-lane order, one entry per
-/// lane, each carrying the [`LaneId`] it describes.
-pub fn load_str_with_provenance(
-    xml: &str,
-) -> Result<(RoadNetwork, Vec<LaneProvenance>), ImportError> {
+/// Like [`load_str`], but also returns the OpenDRIVE [`Provenance`] of
+/// every baked lane and object. Each record carries the [`LaneId`] or
+/// [`ObjectId`] it describes.
+pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), ImportError> {
     let cleaned = sanitize(xml);
     let doc = roxmltree::Document::parse(cleaned.as_ref())?;
     let root = doc.root_element();
     let mut lanes = Vec::new();
-    let mut objects = Vec::new();
+    let mut objects = Objects::default();
     let mut topo = Topology::default();
     for road in root.children().filter(|n| n.has_tag_name("road")) {
         parse_road(road, &mut lanes, &mut objects, &mut topo);
@@ -105,17 +161,23 @@ pub fn load_str_with_provenance(
     links::resolve(&mut lanes, &topo);
     // The parser already recorded each lane's OpenDRIVE origin while baking;
     // surface it rather than reconstructing lane-id order downstream.
-    let provenance = topo
-        .metas
-        .iter()
-        .map(|m| LaneProvenance {
-            lane: m.id,
-            road_id: m.road.clone(),
-            section: m.section,
-            od_id: m.od_id,
-        })
-        .collect();
-    Ok((RoadNetwork::new(lanes).with_objects(objects), provenance))
+    let provenance = Provenance {
+        lanes: topo
+            .metas
+            .iter()
+            .map(|m| LaneProvenance {
+                lane: m.id,
+                road_id: m.road.clone(),
+                section: m.section,
+                od_id: m.od_id,
+            })
+            .collect(),
+        objects: objects.provenance,
+    };
+    Ok((
+        RoadNetwork::new(lanes).with_objects(objects.baked),
+        provenance,
+    ))
 }
 
 /// Make a real-world document parseable: strip a UTF-8 BOM and remove the
@@ -386,7 +448,7 @@ fn attr_f64(node: roxmltree::Node, name: &str) -> Option<f64> {
 fn parse_road(
     road: roxmltree::Node,
     out: &mut Vec<Lane>,
-    objects: &mut Vec<Object>,
+    objects: &mut Objects,
     topo: &mut Topology,
 ) {
     let road_id = road.attribute("id").unwrap_or_default().to_string();
@@ -483,7 +545,7 @@ fn parse_road(
         .unwrap_or_default();
     if let Some(objects_node) = child(road, "objects") {
         let surface = |s, t| surface_at(&geoms, &elevations, &superelevations, s, t);
-        place_objects(objects_node, length, surface, objects);
+        place_objects(objects_node, &road_id, length, surface, objects);
     }
 
     let Some(lanes_node) = child(road, "lanes") else {
@@ -863,6 +925,13 @@ fn parse_width_cubics(lane: roxmltree::Node) -> Vec<Cubic> {
 
 // --- Objects ------------------------------------------------------------------
 
+/// The objects baked so far, and the provenance of each, in step.
+#[derive(Default)]
+struct Objects {
+    baked: Vec<Object>,
+    provenance: Vec<ObjectProvenance>,
+}
+
 /// Where an object sits along its road, and how big it is there. An
 /// `<object>` gives one of these, and a `<repeat>` gives one per station.
 struct Station {
@@ -889,13 +958,8 @@ struct Frame {
 impl Frame {
     /// A point given in this frame, in the network's. The rotation is yaw
     /// about Z, then pitch about the turned Y, then roll about the turned X.
-    fn point(&self, [u, v, z]: [f64; 3]) -> Point {
-        let (sr, cr) = self.roll.sin_cos();
-        let (sp, cp) = self.pitch.sin_cos();
-        let (sy, cy) = self.yaw.sin_cos();
-        let (v, z) = (v * cr - z * sr, v * sr + z * cr);
-        let (u, z) = (u * cp + z * sp, -u * sp + z * cp);
-        let (u, v) = (u * cy - v * sy, u * sy + v * cy);
+    fn point(&self, local: [f64; 3]) -> Point {
+        let [u, v, z] = orient(self.yaw, self.pitch, self.roll, local);
         self.origin + Vector::new(u as f32, v as f32, z as f32)
     }
 }
@@ -919,9 +983,10 @@ impl Frame {
 /// the length of a sweep past the end.
 fn place_objects(
     objects_node: roxmltree::Node,
+    road_id: &str,
     road_length: f64,
     surface: impl Fn(f64, f64) -> (Point, f64),
-    out: &mut Vec<Object>,
+    out: &mut Objects,
 ) {
     let on_road = |s: f64| (0.0..=road_length).contains(&s);
     for node in objects_node.children().filter(|n| n.has_tag_name("object")) {
@@ -968,31 +1033,57 @@ fn place_objects(
             .filter_map(Repeat::parse)
             .collect();
         let outlines = outline_nodes(node);
+        // Each shape with the road station it is anchored at.
         if repeats.is_empty() && outlines.is_empty() && on_road(base.s) {
-            shapes.push(solid(&base));
+            shapes.push((solid(&base), base.s, base.t));
         }
         for repeat in &repeats {
             if repeat.distance > 0.0 {
                 let stations = repeat.stations(&base);
-                shapes.extend(stations.iter().filter(|st| on_road(st.s)).map(solid));
-            } else if let Some(sections) = sweep(repeat, &base, road_length, &surface) {
-                shapes.push(Shape::Sweep { sections });
+                shapes.extend(
+                    stations
+                        .iter()
+                        .filter(|st| on_road(st.s))
+                        .map(|st| (solid(st), st.s, st.t)),
+                );
+            } else if let Some((sections, start)) = sweep(repeat, &base, road_length, &surface) {
+                shapes.push((Shape::Sweep { sections }, start.s, start.t));
             }
         }
         let origin = on_road(base.s).then(|| frame(&base));
         for outline_node in outlines {
             if let Some(shape) = outline(outline_node, origin.as_ref(), &surface, on_road) {
-                shapes.push(shape);
+                shapes.push((shape, base.s, base.t));
             }
         }
 
         let kind = object_type(node.attribute("type"));
-        let name = node.attribute("name").unwrap_or_default();
-        out.extend(shapes.into_iter().map(|shape| Object {
-            kind,
-            name: name.to_string(),
-            shape,
-        }));
+        let text = |name| node.attribute(name).unwrap_or_default().to_string();
+        let orientation = match node.attribute("orientation") {
+            Some("+") => Orientation::Positive,
+            Some("-") => Orientation::Negative,
+            _ => Orientation::Both,
+        };
+        for (shape, s, t) in shapes {
+            let id = ObjectId(out.baked.len());
+            out.baked.push(Object {
+                id,
+                kind,
+                subtype: text("subtype"),
+                name: text("name"),
+                dynamic: node.attribute("dynamic") == Some("yes"),
+                shape,
+            });
+            out.provenance.push(ObjectProvenance {
+                object: id,
+                road_id: road_id.to_string(),
+                od_id: text("id"),
+                s,
+                t,
+                orientation,
+                valid_length: attr_f64(node, "validLength"),
+            });
+        }
     }
 }
 
@@ -1062,13 +1153,14 @@ impl<'a> Repeat<'a> {
 /// A continuous repeat's cross-section at every sample station along the part
 /// of it on the road: `width` wide about its `t`, `height` tall from its
 /// `zOffset`. A missing width is 0, a wall with no thickness, as libOpenDRIVE
-/// has it. `None` if less than a millimetre of it is on the road.
+/// has it. Also returns the station the sections start at. `None` if less
+/// than a millimetre of it is on the road.
 fn sweep(
     repeat: &Repeat,
     base: &Station,
     road_length: f64,
     surface: &impl Fn(f64, f64) -> (Point, f64),
-) -> Option<Vec<Section>> {
+) -> Option<(Vec<Section>, Station)> {
     let start = repeat.start.max(0.0);
     let end = (repeat.start + repeat.length).min(road_length);
     if end - start < 1e-3 {
@@ -1094,7 +1186,10 @@ fn sweep(
             }
         })
         .collect();
-    Some(sections)
+    Some((
+        sections,
+        repeat.at(base, (start - repeat.start) / repeat.length),
+    ))
 }
 
 /// An object's `<outline>`s: under `<outlines>` since OpenDRIVE 1.5, and
@@ -1486,7 +1581,8 @@ mod tests {
 
     #[test]
     fn every_named_lane_type_bakes_as_itself() {
-        let (net, prov) = load_str_with_provenance(MANY_TYPES).expect("import");
+        let (net, Provenance { lanes: prov, .. }) =
+            load_str_with_provenance(MANY_TYPES).expect("import");
         let kind = |od_id: i32| {
             prov.iter()
                 .find(|p| p.od_id == od_id)
@@ -1535,7 +1631,8 @@ mod tests {
     fn a_lane_that_opens_out_of_nothing_keeps_its_width_along_its_length() {
         // The width runs 0 -> 4 m. Reporting the width at s=0 as the lane's
         // width made the whole strip 0 m wide.
-        let (net, prov) = load_str_with_provenance(TAPERED).expect("import");
+        let (net, Provenance { lanes: prov, .. }) =
+            load_str_with_provenance(TAPERED).expect("import");
         let lane = prov
             .iter()
             .find(|p| p.od_id == -2)
@@ -1567,7 +1664,8 @@ mod tests {
     fn a_tapered_lane_tessellates_to_a_wedge_not_a_sliver() {
         // What the viewer showed. The lane was in the lane list, it had a span
         // in the mesh, and it covered no area.
-        let (net, prov) = load_str_with_provenance(TAPERED).expect("import");
+        let (net, Provenance { lanes: prov, .. }) =
+            load_str_with_provenance(TAPERED).expect("import");
         let id = prov
             .iter()
             .find(|p| p.od_id == -2)
@@ -1598,7 +1696,8 @@ mod tests {
         // An unrecognised type still describes a real strip of surface. It
         // bakes with its geometry intact, under a name that says the type was
         // not understood.
-        let (net, prov) = load_str_with_provenance(MANY_TYPES).expect("import");
+        let (net, Provenance { lanes: prov, .. }) =
+            load_str_with_provenance(MANY_TYPES).expect("import");
         let lane = prov
             .iter()
             .find(|p| p.od_id == 4)
@@ -1618,7 +1717,8 @@ mod tests {
         // Left side, center outward: median 1.0, special1 1.0, driving 3.5. The
         // driving lane's center is at t = +(1.0 + 1.0 + 3.5/2) = +3.75. Missing
         // either inner width would leave it at +2.75 or nearer.
-        let (net, prov) = load_str_with_provenance(MANY_TYPES).expect("import");
+        let (net, Provenance { lanes: prov, .. }) =
+            load_str_with_provenance(MANY_TYPES).expect("import");
         let driving = prov
             .iter()
             .find(|p| p.od_id == 3)
@@ -1630,7 +1730,8 @@ mod tests {
 
     #[test]
     fn lane_change_edges_stop_at_the_first_lane_traffic_cannot_use() {
-        let (net, prov) = load_str_with_provenance(MANY_TYPES).expect("import");
+        let (net, Provenance { lanes: prov, .. }) =
+            load_str_with_provenance(MANY_TYPES).expect("import");
         let lane = |od_id: i32| {
             prov.iter()
                 .find(|p| p.od_id == od_id)
@@ -1655,7 +1756,8 @@ mod tests {
 
     #[test]
     fn provenance_names_each_baked_lane_by_road_section_and_od_id() {
-        let (net, prov) = load_str_with_provenance(TWO_SECTIONS).expect("import with provenance");
+        let (net, Provenance { lanes: prov, .. }) =
+            load_str_with_provenance(TWO_SECTIONS).expect("import with provenance");
         assert_eq!(prov.len(), net.lanes().len(), "one record per baked lane");
         // Every record points at a real lane, and names the source road/lane.
         for p in &prov {
@@ -2573,6 +2675,19 @@ mod tests {
                 assert_eq!(corner.top - corner.base, Vector::new(0.0, 0.0, 2.0));
             }
         }
+    }
+
+    #[test]
+    fn a_sweep_starting_before_the_road_is_anchored_where_the_road_starts() {
+        // s = -10..10 with t going 0..4: at s = 0 it is halfway, t = 2.
+        let (_, prov) = load_str_with_provenance(&banked_road_with(
+            r#"<object id="1" s="0" t="0">
+                 <repeat s="-10" length="20" distance="0" tStart="0" tEnd="4"/>
+               </object>"#,
+        ))
+        .expect("import");
+        let p = &prov.objects[0];
+        assert_eq!((p.s, p.t), (0.0, 2.0));
     }
 
     #[test]

@@ -3,7 +3,7 @@
 //! starts from the same station - derives the same rib direction and the two
 //! strips join without a V-shaped gap.
 
-use libopendrive::{load_file_with_provenance, LaneId, LaneProvenance, Mesh, Point};
+use libopendrive::{load_file_with_provenance, LaneId, LaneProvenance, Mesh, Point, Provenance};
 
 /// The mesh rib (left vertex, right vertex) at one end of a lane's strip.
 fn rib(mesh: &Mesh, lane: LaneId, at_end: bool) -> Option<(Point, Point)> {
@@ -38,7 +38,8 @@ fn joints(prov: &[LaneProvenance]) -> Vec<(LaneId, LaneId)> {
 
 #[test]
 fn section_joints_share_a_rib_direction() {
-    let (net, prov) = load_file_with_provenance("tests/data/town07.xodr").unwrap();
+    let (net, Provenance { lanes: prov, .. }) =
+        load_file_with_provenance("tests/data/town07.xodr").unwrap();
     let mesh = net.surface_mesh();
 
     let mut checked = 0;
@@ -62,7 +63,8 @@ fn section_joints_share_a_rib_direction() {
 
 #[test]
 fn equal_width_section_joints_have_no_gap() {
-    let (net, prov) = load_file_with_provenance("tests/data/town07.xodr").unwrap();
+    let (net, Provenance { lanes: prov, .. }) =
+        load_file_with_provenance("tests/data/town07.xodr").unwrap();
     let mesh = net.surface_mesh();
 
     let mut checked = 0;

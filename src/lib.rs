@@ -64,7 +64,7 @@
 //! | `<junction>` | `id` |
 //! | `<connection>` | `incomingRoad`, `connectingRoad`, `contactPoint` |
 //! | `<laneLink>` | `from`, `to` |
-//! | `<objects><object>` | `type`, `name`, `s`, `t`, `zOffset`, `hdg`, `pitch`, `roll`, `length`, `width`, `height`, `radius` |
+//! | `<objects><object>` | `id`, `type`, `subtype`, `name`, `dynamic`, `orientation`, `validLength`, `s`, `t`, `zOffset`, `hdg`, `pitch`, `roll`, `length`, `width`, `height`, `radius` |
 //! | `<object><repeat>` | `s`, `length`, `distance`, and the `Start`/`End` pair of `t`, `zOffset`, `length`, `width`, `height`, `radius` |
 //! | `<outlines><outline>` | `closed` |
 //! | `<cornerRoad>` | `s`, `t`, `dz`, `height` |
@@ -98,6 +98,13 @@
 //! - Each `<outline>` is a [`Shape::Outline`], and an object with outlines
 //!   has no solid of its own. `<outline>` is read under `<outlines>`, and
 //!   straight under `<object>` as OpenDRIVE 1.4 writes it.
+//!
+//! An [`Object`] keeps what describes the thing itself: its `subtype`, and
+//! whether it is `dynamic`. What ties it to an OpenDRIVE road, its road id,
+//! `<object id>`, `(s, t)`, `orientation` and `validLength`, is in its
+//! [`ObjectProvenance`], from [`load_str_with_provenance`] or
+//! [`load_file_with_provenance`], the same way [`LaneProvenance`] names a
+//! lane's road. [`RoadNetwork::object_mesh`] tessellates them all.
 //!
 //! # What the importer ignores
 //!
@@ -167,6 +174,7 @@ mod grid;
 mod mesh;
 mod network;
 mod object;
+mod object_mesh;
 mod parse;
 mod route;
 
@@ -178,8 +186,9 @@ pub use geometry::TooFewPoints;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
 pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};
 pub use network::{Direction, Lane, LaneId, LaneType, RoadNetwork};
-pub use object::{Corner, Extent, Object, ObjectType, Section, Shape};
+pub use object::{Corner, Extent, Object, ObjectId, ObjectType, Section, Shape};
+pub use object_mesh::ObjectSpan;
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ImportError,
-    LaneProvenance,
+    LaneProvenance, ObjectProvenance, Orientation, Provenance,
 };
