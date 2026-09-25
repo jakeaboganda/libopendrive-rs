@@ -127,15 +127,15 @@
 //! `spaceLength`. A marking with no corner references, one that places paint
 //! on a side of an object's box, is skipped.
 //!
-//! An object's `<parkingSpace>` becomes its [`ParkingSpace`], and each
-//! `<material>` one of its [`Material`]s. Each `<userData>` is a
-//! [`UserData`] of its `code` and `value`. Any XML nested inside one is not
-//! kept.
-//!
 //! A `<border>` becomes a [`Border`] on the outline its `outlineId` names, or
 //! on each that fits it if it names none: a band `width` across, centred on
 //! every edge with `useCompleteOutline`, or on the edges through its
 //! `<cornerReference>`s otherwise.
+//!
+//! An object's `<parkingSpace>` becomes its [`ParkingSpace`], and each
+//! `<material>` one of its [`Material`]s. Each `<userData>` is a
+//! [`UserData`] of its `code` and `value`. Any XML nested inside one is not
+//! kept.
 //!
 //! An [`Object`] keeps what describes the thing itself: its `subtype`, and
 //! whether it is `dynamic`. What ties it to an OpenDRIVE road, its road id,
@@ -144,7 +144,9 @@
 //! [`load_file_with_provenance`], the same way [`LaneProvenance`] names a
 //! lane's road. For a referenced object, those are the reference's, and
 //! [`ObjectProvenance::referenced_from`] names the road the original is on.
-//! [`RoadNetwork::object_mesh`] tessellates them all.
+//! [`RoadNetwork::object_mesh`] tessellates them all. Markings and borders
+//! are not in it: they are already quads, in [`Marking::pieces`] and
+//! [`Border::pieces`].
 //!
 //! Each `<tunnel>` and `<bridge>` bakes to a [`Structure`] with no geometry,
 //! since OpenDRIVE describes neither a tube nor a deck. It covers the lanes
