@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Objects
+
+`<object>`s now import. Each one becomes an `Object` on
+`RoadNetwork::objects`, in world coordinates: it sits on the road surface at
+its `(s, t)`, raised by `zOffset`, so it follows the elevation and
+superelevation profiles the lanes do. It carries an `ObjectType`, its name,
+its heading (the road's plus its own), pitch and roll, and an `Extent`, a box
+or a cylinder, when the file gives it a size. A `<repeat>` expands into one
+object per `distance`, with `t`, `zOffset` and the dimensions interpolated
+along it. On esmini's e6mini that turns six objects into 794 posts.
+
+Not imported yet: `<outlines>`, and a `<repeat>` with `distance="0"`, which
+describes one continuous railing or barrier rather than a row of objects.
+
+- The `serde` form of `RoadNetwork` is now `{ "lanes": [...], "objects": [...] }`
+  rather than a bare lane array. JSON written by 0.1.1 does not load.
+- `From<RoadNetwork> for Vec<Lane>` is gone, since it would drop the objects.
+  Read `lanes()` instead.
+
 ## 0.1.1 - 2026-09-23
 
 ### Lane types

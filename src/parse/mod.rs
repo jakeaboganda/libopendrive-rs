@@ -9,13 +9,19 @@
 //! [libOpenDRIVE](https://github.com/pageldev/libOpenDRIVE).
 
 use crate::coords::{Point, Vector};
-use crate::{Direction, Lane, LaneId, LaneType, Polyline, RoadNetwork};
+use crate::{Direction, Extent, Lane, LaneId, LaneType, Object, ObjectType, Polyline, RoadNetwork};
 
 mod links;
 use links::{LaneMeta, RoadInfo, Topology};
 
 /// Arc-length spacing (meters) at which curved geometry is baked to points.
 const SAMPLE_STEP: f64 = 2.0;
+
+/// The most objects one `<repeat>` may expand to. A tiny `distance` over a
+/// long `length` would otherwise ask for billions of them. Real rows are far
+/// shorter: esmini's e6mini, a 1.5 km highway lined with posts every 4 m,
+/// repeats 367 at most.
+const MAX_REPEAT_INSTANCES: f64 = 100_000.0;
 
 /// Why an OpenDRIVE document did not import.
 #[derive(Debug, thiserror::Error)]
@@ -83,9 +89,10 @@ pub fn load_str_with_provenance(
     let doc = roxmltree::Document::parse(cleaned.as_ref())?;
     let root = doc.root_element();
     let mut lanes = Vec::new();
+    let mut objects = Vec::new();
     let mut topo = Topology::default();
     for road in root.children().filter(|n| n.has_tag_name("road")) {
-        parse_road(road, &mut lanes, &mut topo);
+        parse_road(road, &mut lanes, &mut objects, &mut topo);
     }
     if lanes.is_empty() {
         return Err(ImportError::Malformed("no lanes found".into()));
@@ -105,7 +112,7 @@ pub fn load_str_with_provenance(
             od_id: m.od_id,
         })
         .collect();
-    Ok((RoadNetwork::new(lanes), provenance))
+    Ok((RoadNetwork::new(lanes).with_objects(objects), provenance))
 }
 
 /// Make a real-world document parseable: strip a UTF-8 BOM and remove the
@@ -365,7 +372,7 @@ fn attr_f64(node: roxmltree::Node, name: &str) -> Option<f64> {
         .filter(|v| v.is_finite())
 }
 
-/// Bakes one `<road>`'s lanes into `out`.
+/// Bakes one `<road>`'s lanes into `out`, and places its objects in `objects`.
 ///
 /// A road the importer cannot interpret is *skipped*, not fatal. That covers
 /// no length, no `<planView>`, no supported geometry, and no `<lanes>`. Real
@@ -373,7 +380,12 @@ fn attr_f64(node: roxmltree::Node, name: &str) -> Option<f64> {
 /// of them is the worse failure. Individual malformed lanes are already skipped the
 /// same way. `load_str` still errors if the document as a whole yielded no
 /// lanes at all, so a thoroughly broken file is never silently accepted.
-fn parse_road(road: roxmltree::Node, out: &mut Vec<Lane>, topo: &mut Topology) {
+fn parse_road(
+    road: roxmltree::Node,
+    out: &mut Vec<Lane>,
+    objects: &mut Vec<Object>,
+    topo: &mut Topology,
+) {
     let road_id = road.attribute("id").unwrap_or_default().to_string();
     let Some(length) = attr_f64(road, "length") else {
         return;
@@ -457,9 +469,6 @@ fn parse_road(road: roxmltree::Node, out: &mut Vec<Lane>, topo: &mut Topology) {
     }
     geoms.sort_by(|a, b| a.s.total_cmp(&b.s));
 
-    let Some(lanes_node) = child(road, "lanes") else {
-        return;
-    };
     let elevations = child(road, "elevationProfile")
         .map(|n| cubics_in(n, "elevation", "s"))
         .unwrap_or_default();
@@ -469,6 +478,14 @@ fn parse_road(road: roxmltree::Node, out: &mut Vec<Lane>, topo: &mut Topology) {
     let superelevations = child(road, "lateralProfile")
         .map(|n| cubics_in(n, "superelevation", "s"))
         .unwrap_or_default();
+    if let Some(objects_node) = child(road, "objects") {
+        let surface = |s, t| surface_at(&geoms, &elevations, &superelevations, s, t);
+        place_objects(objects_node, length, surface, objects);
+    }
+
+    let Some(lanes_node) = child(road, "lanes") else {
+        return;
+    };
     // laneOffset shifts the whole lane cross-section laterally off lane 0 (lane
     // widening, merges, a centerline that isn't the road reference). It adds to
     // every lane's offset, so it must be applied or all lanes are mis-placed.
@@ -713,26 +730,7 @@ fn sample_lane(
             let base = active(lane_offsets, s).map(|o| o.eval(s)).unwrap_or(0.0);
             let inner_w: f64 = inner.iter().map(|l| width_at(l, s_lane)).sum();
             let t = base + sign * (inner_w + width_at(lane, s_lane) / 2.0);
-
-            let g = geom_at(geoms, s);
-            let (x, y, hdg) = g.pose(s);
-            let elev = active(elevations, s).map(|e| e.eval(s)).unwrap_or(0.0);
-            // Reference-line pivot: superelevation rolls the cross-section about
-            // the reference line by phi, so a point at lateral t rides up by
-            // t·sin phi (positive t = left edge, raised for phi > 0) and its
-            // horizontal reach shrinks to t·cos phi. phi = 0 leaves this the
-            // pure-horizontal offset it was.
-            let phi = active(superelevations, s).map(|e| e.eval(s)).unwrap_or(0.0);
-            let (sin_phi, cos_phi) = phi.sin_cos();
-            let t_h = t * cos_phi;
-            // The baked frame is OpenDRIVE's own, so the reference-line point
-            // needs no mapping. Offset along the left-hand normal, which in the
-            // reference line's plane is (-sin hdg, cos hdg).
-            let point = Point::new(
-                (x - t_h * hdg.sin()) as f32,
-                (y + t_h * hdg.cos()) as f32,
-                (elev + t * sin_phi) as f32,
-            );
+            let (point, hdg) = surface_at(geoms, elevations, superelevations, s, t);
             // A lane offset laterally by a constant `t` is parallel to the
             // reference line, so it shares its heading. Where `t` varies with
             // `s` the lane's own tangent swings off it slightly; the reference
@@ -743,6 +741,36 @@ fn sample_lane(
             (point, heading)
         })
         .unzip()
+}
+
+/// The road surface at station `s`, lateral offset `t` from the reference
+/// line, and the reference line's heading there.
+fn surface_at(
+    geoms: &[GeomRec],
+    elevations: &[Cubic],
+    superelevations: &[Cubic],
+    s: f64,
+    t: f64,
+) -> (Point, f64) {
+    let (x, y, hdg) = geom_at(geoms, s).pose(s);
+    let elev = active(elevations, s).map(|e| e.eval(s)).unwrap_or(0.0);
+    // Reference-line pivot: superelevation rolls the cross-section about the
+    // reference line by phi, so a point at lateral t rides up by t·sin phi
+    // (positive t = left edge, raised for phi > 0) and its horizontal reach
+    // shrinks to t·cos phi. phi = 0 leaves this the pure-horizontal offset it
+    // was.
+    let phi = active(superelevations, s).map(|e| e.eval(s)).unwrap_or(0.0);
+    let (sin_phi, cos_phi) = phi.sin_cos();
+    let t_h = t * cos_phi;
+    // The baked frame is OpenDRIVE's own, so the reference-line point needs no
+    // mapping. Offset along the left-hand normal, which in the reference line's
+    // plane is (-sin hdg, cos hdg).
+    let point = Point::new(
+        (x - t_h * hdg.sin()) as f32,
+        (y + t_h * hdg.cos()) as f32,
+        (elev + t * sin_phi) as f32,
+    );
+    (point, hdg)
 }
 
 fn width_at(lane: &LaneDef, s_lane: f64) -> f64 {
@@ -828,6 +856,179 @@ fn parse_width_cubics(lane: roxmltree::Node) -> Vec<Cubic> {
         .collect();
     out.sort_by(|a, b| a.start.total_cmp(&b.start));
     out
+}
+
+// --- Objects ------------------------------------------------------------------
+
+/// Where one object instance sits along its road, and how big it is there.
+/// An `<object>` gives one of these, and a `<repeat>` gives one per instance.
+struct Placement {
+    s: f64,
+    t: f64,
+    z_offset: f64,
+    length: Option<f64>,
+    width: Option<f64>,
+    height: Option<f64>,
+    radius: Option<f64>,
+}
+
+/// Place every `<object>` under one road's `<objects>` in the world.
+/// `surface` maps a road station `(s, t)` to the road surface there and the
+/// reference line's heading.
+///
+/// An object sits on the road surface at its `(s, t)`, raised by `zOffset`,
+/// so it rides the elevation and superelevation profiles like a lane does. Its
+/// `hdg` is relative to the reference line, so the baked heading adds the
+/// line's own. `pitch` and `roll` are already against the ground plane and
+/// pass through.
+///
+/// An object with `<repeat>` children is replaced by its repeats' instances,
+/// as libOpenDRIVE does. An object missing `s` or `t`, and any instance off
+/// the ends of the road, is skipped.
+fn place_objects(
+    objects_node: roxmltree::Node,
+    road_length: f64,
+    surface: impl Fn(f64, f64) -> (Point, f64),
+    out: &mut Vec<Object>,
+) {
+    for node in objects_node.children().filter(|n| n.has_tag_name("object")) {
+        let (Some(s), Some(t)) = (attr_f64(node, "s"), attr_f64(node, "t")) else {
+            continue;
+        };
+        let base = Placement {
+            s,
+            t,
+            z_offset: attr_f64(node, "zOffset").unwrap_or(0.0),
+            length: attr_f64(node, "length"),
+            width: attr_f64(node, "width"),
+            height: attr_f64(node, "height"),
+            radius: attr_f64(node, "radius"),
+        };
+        let repeats: Vec<_> = node
+            .children()
+            .filter(|n| n.has_tag_name("repeat"))
+            .collect();
+        let placements = if repeats.is_empty() {
+            vec![base]
+        } else {
+            repeats
+                .into_iter()
+                .flat_map(|r| repeat_placements(r, &base))
+                .collect()
+        };
+
+        let kind = object_type(node.attribute("type"));
+        let name = node.attribute("name").unwrap_or_default();
+        let hdg = attr_f64(node, "hdg").unwrap_or(0.0);
+        let pitch = attr_f64(node, "pitch").unwrap_or(0.0) as f32;
+        let roll = attr_f64(node, "roll").unwrap_or(0.0) as f32;
+        for p in placements {
+            if !(0.0..=road_length).contains(&p.s) {
+                continue;
+            }
+            let (mut position, road_hdg) = surface(p.s, p.t);
+            position.z += p.z_offset as f32;
+            out.push(Object {
+                kind,
+                name: name.to_string(),
+                position,
+                heading: (road_hdg + hdg) as f32,
+                pitch,
+                roll,
+                extent: extent(&p),
+            });
+        }
+    }
+}
+
+/// The instances one `<repeat>` stands for: one every `distance` metres from
+/// its `s` over its `length`, with `t`, `zOffset` and each dimension
+/// interpolated from its start value to its end value. A value the repeat does
+/// not give falls back to the object's own.
+///
+/// A `distance` of 0 means one continuous object swept along the road, such as
+/// a railing. That is a shape rather than a row of placements, so it yields
+/// nothing, as does a repeat that would exceed [`MAX_REPEAT_INSTANCES`].
+fn repeat_placements(repeat: roxmltree::Node, base: &Placement) -> Vec<Placement> {
+    let (Some(start), Some(length), Some(distance)) = (
+        attr_f64(repeat, "s"),
+        attr_f64(repeat, "length"),
+        attr_f64(repeat, "distance"),
+    ) else {
+        return Vec::new();
+    };
+    if length < 0.0 || distance <= 0.0 {
+        return Vec::new();
+    }
+    let count = (length / distance).floor() + 1.0;
+    if count > MAX_REPEAT_INSTANCES {
+        return Vec::new();
+    }
+    // A value interpolated at fraction `f` of the way along the repeat.
+    let lerp = |name: &str, fallback: Option<f64>, f: f64| {
+        let start = attr_f64(repeat, &format!("{name}Start")).or(fallback)?;
+        let end = attr_f64(repeat, &format!("{name}End")).unwrap_or(start);
+        Some(start + (end - start) * f)
+    };
+    (0..count as usize)
+        .map(|k| {
+            let along = k as f64 * distance;
+            let f = if length > 0.0 { along / length } else { 0.0 };
+            Placement {
+                s: start + along,
+                t: lerp("t", Some(base.t), f).unwrap_or(base.t),
+                z_offset: lerp("zOffset", Some(base.z_offset), f).unwrap_or(base.z_offset),
+                length: lerp("length", base.length, f),
+                width: lerp("width", base.width, f),
+                height: lerp("height", base.height, f),
+                radius: lerp("radius", base.radius, f),
+            }
+        })
+        .collect()
+}
+
+/// The volume a placement occupies: a cylinder if it has a radius, a box if it
+/// has a length and a width, and nothing otherwise. A missing height is 0 m,
+/// a flat footprint.
+fn extent(p: &Placement) -> Option<Extent> {
+    let height = p.height.unwrap_or(0.0) as f32;
+    match (p.radius, p.length, p.width) {
+        (Some(radius), _, _) => Some(Extent::Cylinder {
+            radius: radius as f32,
+            height,
+        }),
+        (None, Some(length), Some(width)) => Some(Extent::Box {
+            length: length as f32,
+            width: width as f32,
+            height,
+        }),
+        _ => None,
+    }
+}
+
+/// The [`ObjectType`] an OpenDRIVE `<object>` `type` maps to. The deprecated
+/// moving participants (`car`, `pedestrian` and the rest) are
+/// [`ObjectType::Unknown`] along with every other unrecognised name.
+fn object_type(od_type: Option<&str>) -> ObjectType {
+    match od_type.unwrap_or_default() {
+        "none" => ObjectType::None,
+        "obstacle" => ObjectType::Obstacle,
+        "pole" => ObjectType::Pole,
+        "tree" => ObjectType::Tree,
+        "vegetation" => ObjectType::Vegetation,
+        "barrier" => ObjectType::Barrier,
+        "building" => ObjectType::Building,
+        "parkingSpace" => ObjectType::ParkingSpace,
+        "patch" => ObjectType::Patch,
+        "railing" => ObjectType::Railing,
+        "trafficIsland" => ObjectType::TrafficIsland,
+        "crosswalk" => ObjectType::Crosswalk,
+        "streetLamp" => ObjectType::StreetLamp,
+        "gantry" => ObjectType::Gantry,
+        "soundBarrier" => ObjectType::SoundBarrier,
+        "roadMark" => ObjectType::RoadMark,
+        _ => ObjectType::Unknown,
+    }
 }
 
 fn child<'a>(node: roxmltree::Node<'a, 'a>, tag: &str) -> Option<roxmltree::Node<'a, 'a>> {
@@ -2057,5 +2258,106 @@ mod tests {
             "late height should be banked (t=-1.75), z {}",
             lane.center.point_at(18.0).z
         );
+    }
+
+    /// A straight 20 m road along +X, banked a constant 0.1 rad, carrying
+    /// `objects` as its `<objects>` children.
+    fn banked_road_with(objects: &str) -> String {
+        format!(
+            r#"<OpenDRIVE>
+  <road name="o" length="20.0" id="1" junction="-1">
+    <planView>
+      <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="20.0"><line/></geometry>
+    </planView>
+    <lateralProfile>
+      <superelevation s="0.0" a="0.1" b="0.0" c="0.0" d="0.0"/>
+    </lateralProfile>
+    <lanes>
+      <laneSection s="0.0">
+        <right><lane id="-1" type="driving"><width sOffset="0.0" a="3.5"/></lane></right>
+      </laneSection>
+    </lanes>
+    <objects>{objects}</objects>
+  </road>
+</OpenDRIVE>"#
+        )
+    }
+
+    fn objects_of(xml: &str) -> Vec<Object> {
+        load_str(xml).expect("import").objects().to_vec()
+    }
+
+    #[test]
+    fn an_object_rides_the_banked_surface_like_a_lane() {
+        // Same pivot as a lane at t = 3: up by 3 sin 0.1, in to 3 cos 0.1.
+        let objects = objects_of(&banked_road_with(
+            r#"<object id="1" s="10" t="3" zOffset="0.5"/>"#,
+        ));
+        let p = objects[0].position;
+        assert!((p.x - 10.0).abs() < 1e-5, "x {}", p.x);
+        assert!((p.y - 3.0 * 0.1_f32.cos()).abs() < 1e-5, "y {}", p.y);
+        assert!(
+            (p.z - (3.0 * 0.1_f32.sin() + 0.5)).abs() < 1e-5,
+            "z {}",
+            p.z
+        );
+        // Pitch and roll are the file's, not the road's bank.
+        assert_eq!((objects[0].pitch, objects[0].roll), (0.0, 0.0));
+    }
+
+    #[test]
+    fn an_object_without_a_station_is_skipped() {
+        let objects = objects_of(&banked_road_with(
+            r#"<object id="1" t="3"/><object id="2" s="NaN" t="3"/><object id="3" s="4" t="0"/>"#,
+        ));
+        assert_eq!(objects.len(), 1);
+        assert_eq!(objects[0].position.x, 4.0);
+    }
+
+    #[test]
+    fn instances_past_the_ends_of_the_road_are_dropped() {
+        // s = 15, 20, 25, 30: only the two on the 20 m road survive, and a lone
+        // object before its start goes too.
+        let objects = objects_of(&banked_road_with(
+            r#"<object id="1" s="0" t="0">
+                 <repeat s="15" length="15" distance="5" tStart="0" tEnd="0"/>
+               </object>
+               <object id="2" s="-1" t="0"/>"#,
+        ));
+        let xs: Vec<f32> = objects.iter().map(|o| o.position.x).collect();
+        assert_eq!(xs, vec![15.0, 20.0]);
+    }
+
+    #[test]
+    fn a_runaway_repeat_is_refused_rather_than_expanded() {
+        // A billion posts is a malformed file, not a map; the road still loads.
+        let objects = objects_of(&banked_road_with(
+            r#"<object id="1" s="0" t="0">
+                 <repeat s="0" length="20" distance="0.00000002"/>
+               </object>"#,
+        ));
+        assert!(objects.is_empty());
+    }
+
+    #[test]
+    fn each_repeat_of_an_object_contributes_its_own_row() {
+        let objects = objects_of(&banked_road_with(
+            r#"<object id="1" type="pole" s="0" t="0" radius="0.1">
+                 <repeat s="0" length="10" distance="10" tStart="2" tEnd="2"/>
+                 <repeat s="0" length="10" distance="10" tStart="-2" tEnd="-2"/>
+               </object>"#,
+        ));
+        assert_eq!(objects.len(), 4);
+        assert!(objects.iter().all(|o| o.kind == ObjectType::Pole));
+        assert!(objects.iter().all(|o| o.extent
+            == Some(Extent::Cylinder {
+                radius: 0.1,
+                height: 0.0
+            })));
+    }
+
+    #[test]
+    fn a_road_without_objects_has_none() {
+        assert!(load_str(STRAIGHT).expect("import").objects().is_empty());
     }
 }

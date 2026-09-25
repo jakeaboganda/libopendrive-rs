@@ -64,6 +64,8 @@
 //! | `<junction>` | `id` |
 //! | `<connection>` | `incomingRoad`, `connectingRoad`, `contactPoint` |
 //! | `<laneLink>` | `from`, `to` |
+//! | `<objects><object>` | `type`, `name`, `s`, `t`, `zOffset`, `hdg`, `pitch`, `roll`, `length`, `width`, `height`, `radius` |
+//! | `<object><repeat>` | `s`, `length`, `distance`, and the `Start`/`End` pair of `t`, `zOffset`, `length`, `width`, `height`, `radius` |
 //!
 //! Four attribute values steer the import:
 //!
@@ -79,11 +81,22 @@
 //! "Successor" means "a lane you can drive into off this lane's exit end",
 //! not a raw mirror of the file's `+s` links.
 //!
+//! Each `<object>` becomes an [`Object`] in world coordinates, sitting on the
+//! road surface at its `(s, t)` and raised by `zOffset`. `<object type>`
+//! chooses its [`ObjectType`], and an unrecognised name bakes as
+//! [`ObjectType::Unknown`]. A `radius` makes its [`Extent`] a cylinder, a
+//! `length` with a `width` makes it a box, and neither leaves it without one.
+//! An object with `<repeat>`s is replaced by one object every `distance`
+//! metres along each repeat.
+//!
 //! # What the importer ignores
 //!
 //! Everything else in the file, silently. That includes `<geoReference>`,
-//! `<objects>`, `<signals>`, `<roadMark>`, `<controller>`,
-//! `<junctionGroup>`, `<station>`, and road `<type>` with its `<speed>`.
+//! `<signals>`, `<roadMark>`, `<controller>`, `<junctionGroup>`,
+//! `<station>`, and road `<type>` with its `<speed>`. Among objects, that
+//! means `<outlines>`, `<objectReference>`, `<tunnel>` and `<bridge>`, and every
+//! repeat with a `distance` of 0. That is a continuous railing or barrier,
+//! and it bakes no object at all.
 //!
 //! Three omissions change the road you get back, rather than only dropping
 //! detail around it:
@@ -144,6 +157,7 @@ mod geometry;
 mod grid;
 mod mesh;
 mod network;
+mod object;
 mod parse;
 mod route;
 
@@ -155,6 +169,7 @@ pub use geometry::TooFewPoints;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
 pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};
 pub use network::{Direction, Lane, LaneId, LaneType, RoadNetwork};
+pub use object::{Extent, Object, ObjectType};
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ImportError,
     LaneProvenance,

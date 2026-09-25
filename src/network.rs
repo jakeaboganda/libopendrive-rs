@@ -4,6 +4,7 @@
 use crate::coords::Point;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
+use crate::object::Object;
 
 /// An opaque lane identifier. **Not** a vector index into `RoadNetwork.lanes`.
 /// An importer may assign arbitrary ids, such as OpenDRIVE lane keys, so look
@@ -227,40 +228,60 @@ pub struct Lane {
 /// to go stale. A map that changed under its own index would answer
 /// `nearest_lane` with a lane that is no longer there.
 ///
-/// Serializes as its lanes alone; the index is rebuilt on the way back in, so
-/// a network that crossed a process boundary is indistinguishable from one
-/// that was just imported.
+/// Serializes as its lanes and objects; the index is rebuilt on the way back
+/// in, so a network that crossed a process boundary is indistinguishable from
+/// one that was just imported.
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(
     feature = "serde",
     derive(serde::Serialize, serde::Deserialize),
-    serde(into = "Vec<Lane>", from = "Vec<Lane>")
+    serde(into = "NetworkData", from = "NetworkData")
 )]
 pub struct RoadNetwork {
     lanes: Vec<Lane>,
+    objects: Vec<Object>,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
     /// [`Self::nearest_lane`]. Derived from `lanes`, so it takes no part in
     /// equality.
     index: LaneIndex,
 }
 
-/// Two networks are equal when their lanes are; the index is a function of
-/// them.
+/// Two networks are equal when their lanes and objects are; the index is a
+/// function of the lanes.
 impl PartialEq for RoadNetwork {
     fn eq(&self, other: &Self) -> bool {
-        self.lanes == other.lanes
+        self.lanes == other.lanes && self.objects == other.objects
+    }
+}
+
+/// What a [`RoadNetwork`] serializes as: its content without the index.
+#[cfg(feature = "serde")]
+#[derive(serde::Serialize, serde::Deserialize)]
+struct NetworkData {
+    lanes: Vec<Lane>,
+    objects: Vec<Object>,
+}
+
+#[cfg(feature = "serde")]
+impl From<NetworkData> for RoadNetwork {
+    fn from(data: NetworkData) -> Self {
+        Self::new(data.lanes).with_objects(data.objects)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl From<RoadNetwork> for NetworkData {
+    fn from(net: RoadNetwork) -> Self {
+        Self {
+            lanes: net.lanes,
+            objects: net.objects,
+        }
     }
 }
 
 impl From<Vec<Lane>> for RoadNetwork {
     fn from(lanes: Vec<Lane>) -> Self {
         Self::new(lanes)
-    }
-}
-
-impl From<RoadNetwork> for Vec<Lane> {
-    fn from(net: RoadNetwork) -> Self {
-        net.lanes
     }
 }
 
@@ -347,13 +368,29 @@ impl RoadNetwork {
     /// lanes by their ground footprint. Linear in the total number of centerline points.
     pub fn new(lanes: Vec<Lane>) -> Self {
         let index = LaneIndex::build(&lanes);
-        Self { lanes, index }
+        Self {
+            lanes,
+            objects: Vec::new(),
+            index,
+        }
+    }
+
+    /// This network with `objects` placed on it, replacing any it had.
+    pub fn with_objects(mut self, objects: Vec<Object>) -> Self {
+        self.objects = objects;
+        self
     }
 
     /// Every lane, in the order the importer emitted them. Positions are not
     /// ids. Look a specific lane up with [`RoadNetwork::lane`].
     pub fn lanes(&self) -> &[Lane] {
         &self.lanes
+    }
+
+    /// Every object placed along the roads, in the order the importer emitted
+    /// them.
+    pub fn objects(&self) -> &[Object] {
+        &self.objects
     }
 
     /// The lane with this id, by identity (not position), so ids stay valid

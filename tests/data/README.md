@@ -24,3 +24,11 @@ and three banked curves of known radius. The rest are minimal files aimed at
 one behaviour each -- `spiral`, `banked_sweeper`, `right_banked_sweeper`,
 `climbing_banked`, `mid_road_super`, and the malformed set (`no_geometry`,
 `non_finite`, `zero_length`, `dangling_link`).
+
+`objects.xodr` is generated rather than written by hand: `objects.py` builds it
+with [scenariogeneration], so the object fixture comes from a writer other than
+this crate. Regenerate with
+
+    uv run --with scenariogeneration==0.16.6 tests/data/objects.py
+
+[scenariogeneration]: https://github.com/pyoscx/scenariogeneration

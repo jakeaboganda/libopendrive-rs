@@ -52,6 +52,10 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   point is drawn as the wedge it is.
 - Road/lane `<link>`s and `<junction>`s, resolved into a drive-direction lane
   graph.
+- `<object>`s, placed in world coordinates on the road surface with their
+  heading, pitch, roll, and a box or cylinder extent. `<repeat>` expands into
+  one object per step, so a row of posts arrives as posts. Read them from
+  `RoadNetwork::objects`.
 
 For the exact element and attribute list, see
 [the crate docs](https://docs.rs/libopendrive).
@@ -61,9 +65,11 @@ Geometry is cross-checked against the reference C++
 
 ## What it ignores
 
-Everything else in the file, silently, including `<objects>`, `<signals>`,
-`<roadMark>`, and `<geoReference>`. Three omissions change the road you get
-back rather than only dropping detail around it:
+Everything else in the file, silently, including `<signals>`, `<roadMark>`,
+and `<geoReference>`. An object's `<outlines>` are skipped, and a `<repeat>`
+with `distance="0"`, a continuous railing or barrier, bakes no object. Three
+omissions change the road you get back rather than only dropping detail around
+it:
 
 - `<shape>`, the other lateralProfile child, so a crowned or cambered
   cross-section imports flat across its width.
@@ -106,7 +112,7 @@ uses the same spans to resolve a raycast hit to a lane.
 The optional `serde` feature serializes the network and its mesh. The example
 at `examples/viewer_export.rs` uses it to bake a map straight to the JSON the
 viewer reads; the same feature works for caching an import. A `RoadNetwork`
-sends its lanes alone and rebuilds its index on arrival, so what arrives
+sends its lanes and objects and rebuilds its index on arrival, so what arrives
 behaves like a freshly imported map.
 
 ```toml
