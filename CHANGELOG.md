@@ -48,6 +48,12 @@ marking's side, colour, width, line length and space length, and the painted
 pieces: quads in world coordinates along the referenced edges, dashed where
 the marking is. A marking with no corner references is skipped.
 
+`Object::borders` is the bands along an outline's edges, one `Border` per
+`<border>`, such as the kerb of a traffic island. It carries the border's
+type and width, and one quad per edge in world coordinates, along the whole
+outline with `useCompleteOutline` or along the edges its `<cornerReference>`s
+name otherwise.
+
 These placements follow libOpenDRIVE. Not imported yet: `<tunnel>`,
 `<bridge>`, and an outline's `outer` flag, so a hole bakes as a solid.
 

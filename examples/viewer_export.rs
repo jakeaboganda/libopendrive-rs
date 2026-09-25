@@ -27,7 +27,7 @@ use std::process::ExitCode;
 
 use libopendrive::{
     load_file_with_provenance, Corner, Direction, Extent, LaneProvenance, LaneSpan, Marking, Mesh,
-    Object, ObjectProvenance, Orientation, Provenance, RoadNetwork, Shape,
+    Object, ObjectProvenance, Orientation, Point, Provenance, RoadNetwork, Shape,
 };
 use serde_json::{json, Map, Value};
 
@@ -129,7 +129,8 @@ fn buffers(mesh: &Mesh) -> Value {
 }
 
 /// One object's viewer record: its identity, OpenDRIVE provenance, and
-/// shape. `lanes` is the `LaneId`s it applies to, and `markings` its paint. `referencedFrom` is the road of the `<object>` an
+/// shape. `lanes` is the `LaneId`s it applies to, `markings` its paint, and
+/// `borders` the bands along its edges. `referencedFrom` is the road of the `<object>` an
 /// `<objectReference>` placed again, and null otherwise. A `solid`
 /// carries a pose, angles in radians applied yaw, then pitch, then roll, and
 /// an `extent` that is null for an object the map gives no size. An
@@ -191,6 +192,11 @@ fn object_entry(object: &Object, prov: Option<&ObjectProvenance>) -> Value {
         "dynamic": object.dynamic,
         "lanes": object.lanes.iter().map(|l| l.0).collect::<Vec<_>>(),
         "markings": object.markings.iter().map(marking_entry).collect::<Vec<_>>(),
+        "borders": object
+            .borders
+            .iter()
+            .map(|b| json!({ "type": b.kind, "width": b.width, "pieces": pieces(&b.pieces) }))
+            .collect::<Vec<_>>(),
         "roadId": prov.map(|p| p.road_id.as_str()),
         "odId": prov.map(|p| p.od_id.as_str()),
         "s": prov.map(|p| p.s),
@@ -211,8 +217,13 @@ fn marking_entry(m: &Marking) -> Value {
         "width": m.width,
         "lineLength": m.line_length,
         "spaceLength": m.space_length,
-        "pieces": m.pieces.iter().map(|q| q.map(|p| p.to_array())).collect::<Vec<_>>(),
+        "pieces": pieces(&m.pieces),
     })
+}
+
+/// Quads of world-space points, as nested arrays.
+fn pieces(quads: &[[Point; 4]]) -> Vec<[[f32; 3]; 4]> {
+    quads.iter().map(|q| q.map(|p| p.to_array())).collect()
 }
 
 /// One lane's viewer record: identity, OpenDRIVE provenance, its mesh slice,

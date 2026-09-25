@@ -360,8 +360,8 @@ fn an_outlined_object_has_no_solid_of_its_own() {
     // Shed, tree, marker, guide post, gate, nine poles. The outlined house
     // and fence, and the swept railing and barrier, add no solid.
     assert_eq!(solids, 5 + 9);
-    // Plus two sweeps, and the house, fence and crosswalk outlines.
-    assert_eq!(objects().len(), 5 + 9 + 2 + 3);
+    // Plus two sweeps, and the house, fence, crosswalk and island outlines.
+    assert_eq!(objects().len(), 5 + 9 + 2 + 4);
 }
 
 #[test]
@@ -641,4 +641,48 @@ fn only_an_outline_carries_markings() {
         .iter()
         .filter(|o| o.kind != ObjectType::Crosswalk)
         .all(|o| o.markings.is_empty()));
+}
+
+#[test]
+fn a_border_runs_round_the_whole_outline_or_along_the_edges_it_references() {
+    let island = objects()
+        .into_iter()
+        .find(|o| o.kind == ObjectType::TrafficIsland)
+        .expect("the island");
+    let corner = |s, t| raised(s, t, 0.0);
+    let [curb, paint] = &island.borders[..] else {
+        panic!("two borders: {:?}", island.borders);
+    };
+
+    // All four edges, the closing one too, level with the outline's base.
+    assert_eq!((curb.kind.as_str(), curb.width), ("curb", 0.3));
+    let round = [
+        (64.0, -1.0),
+        (70.0, -1.0),
+        (70.0, 1.0),
+        (64.0, 1.0),
+        (64.0, -1.0),
+    ];
+    assert_eq!(curb.pieces.len(), 4);
+    for (k, piece) in curb.pieces.iter().enumerate() {
+        let ((s0, t0), (s1, t1)) = (round[k], round[k + 1]);
+        assert_piece(
+            piece,
+            corner(s0, t0),
+            corner(s1, t1),
+            0.3,
+            &format!("edge {k}"),
+        );
+    }
+
+    // Corners 1 and 2 only: the s = 70 end.
+    assert_eq!((paint.kind.as_str(), paint.width), ("paint", 0.5));
+    assert_eq!(paint.pieces.len(), 1);
+    assert_piece(
+        &paint.pieces[0],
+        corner(70.0, -1.0),
+        corner(70.0, 1.0),
+        0.5,
+        "end",
+    );
 }

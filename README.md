@@ -60,7 +60,8 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   in road or local coordinates, arrive as footprint polygons with a height at
   every corner. An `<objectReference>` places the object it names again, at
   its own station. A `<marking>` on an outline, such as a crosswalk's
-  stripes, arrives as painted pieces along the edges it names. Each object
+  stripes, arrives as painted pieces along the edges it names, and a
+  `<border>`, such as a kerb, as a band along them. Each object
   has a subtype, whether it moves, the lanes it applies to from its
   `<validity>`, and an id to look it up by. Its road, OpenDRIVE id, `(s, t)`, orientation and valid
   length come from `load_*_with_provenance`, as a lane's road and id do.
@@ -82,8 +83,9 @@ it:
 
 - `<shape>`, the other lateralProfile child, so a crowned or cambered
   cross-section imports flat across its width.
-- `<border>`. A lane whose extent comes from a border rather than a width
-  element has nothing to sample, so the importer drops it.
+- A lane's `<border>`, as opposed to an object's. A lane whose extent comes
+  from a border rather than a width element has nothing to sample, so the
+  importer drops it.
 - `<center>`, so lane 0 never becomes a `Lane`.
 
 ## Coordinate frame

@@ -7,8 +7,8 @@ Road 0 is a 100 m left arc of radius 200 m starting at the origin heading +X,
 climbing at 2 %. Road 1 is a flat 60 m straight from (0, -40) heading +X. So
 every placement has a closed form to check against.
 
-scenariogeneration has no `<objectReference>`, so those are added to its
-output afterwards, as text.
+scenariogeneration has no `<objectReference>` and no `<borders>`, so those
+are added to its output afterwards, as text.
 """
 
 from pathlib import Path
@@ -101,6 +101,15 @@ for id in [1, 2, 3]:
 crosswalk.add_marking(edge)
 road.add_object(crosswalk)
 
+# A traffic island in the middle of the road, outlined in road coordinates,
+# with borders added below.
+island = xodr.Object(s=67, t=0, Type=xodr.ObjectType.trafficIsland, id="12", name="Island")
+kerb = xodr.Outline(closed=True, id=0)
+for id, (s, t) in enumerate([(64, -1), (70, -1), (70, 1), (64, 1)]):
+    kerb.add_corner(xodr.CornerRoad(s, t, 0, 0.15, id=id))
+island.add_outline(kerb)
+road.add_object(island)
+
 straight = xodr.create_road(xodr.Line(60), id=1, left_lanes=1, right_lanes=1)
 straight.planview.set_start_point(0, -40, 0)
 
@@ -112,11 +121,23 @@ out = Path(__file__).with_name("objects.xodr")
 odr.write_xml(str(out))
 
 
-def insert(xml, after, text):
-    """`xml` with `text` spliced in straight after the first `after` in road 1."""
-    road = xml.index('<road rule="RHT" id="1"')
-    at = xml.index(after, road) + len(after)
+def insert(xml, anchor, after, text):
+    """`xml` with `text` spliced in straight after the first `after` that
+    follows `anchor`."""
+    at = xml.index(after, xml.index(anchor)) + len(after)
     return xml[:at] + text + xml[at:]
+
+
+# The island gets a curb all the way round, and paint along its s = 70 end.
+xml = out.read_text()
+xml = insert(xml, 'name="Island"', "</outlines>", """
+                <borders>
+                    <border width="0.3" type="curb" outlineId="0" useCompleteOutline="true"/>
+                    <border width="0.5" type="paint" outlineId="0" useCompleteOutline="false">
+                        <cornerReference id="1"/>
+                        <cornerReference id="2"/>
+                    </border>
+                </borders>""")
 
 
 # Road 1 places objects from road 0 again: the shed with its own zOffset,
@@ -141,7 +162,6 @@ def reference(attrs, children):
             "\n            </objectReference>")
 
 
-xml = out.read_text()
-xml = insert(xml, "</lanes>", "\n        <objects>" + "".join(
+xml = insert(xml, '<road rule="RHT" id="1"', "</lanes>", "\n        <objects>" + "".join(
     reference(*r) for r in references) + "\n        </objects>")
 out.write_text(xml)

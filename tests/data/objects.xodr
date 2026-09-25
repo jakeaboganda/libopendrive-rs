@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <OpenDRIVE>
-    <header name="objects" revMajor="1" revMinor="5" date="2026-09-25 21:38:42.797184" north="0.0" south="0.0" east="0.0" west="0.0"/>
+    <header name="objects" revMajor="1" revMinor="5" date="2026-09-25 22:14:08.839320" north="0.0" south="0.0" east="0.0" west="0.0"/>
     <road rule="RHT" id="0" junction="-1" length="100.0">
         <link/>
         <planView>
@@ -91,6 +91,23 @@
                         <cornerReference id="3"/>
                     </marking>
                 </markings>
+            </object>
+            <object id="12" s="67" t="0" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" name="Island" type="trafficIsland" orientation="none" hdg="0">
+                <outlines>
+                    <outline closed="true" id="0">
+                        <cornerRoad s="64" t="-1" dz="0" height="0.15" id="0"/>
+                        <cornerRoad s="70" t="-1" dz="0" height="0.15" id="1"/>
+                        <cornerRoad s="70" t="1" dz="0" height="0.15" id="2"/>
+                        <cornerRoad s="64" t="1" dz="0" height="0.15" id="3"/>
+                    </outline>
+                </outlines>
+                <borders>
+                    <border width="0.3" type="curb" outlineId="0" useCompleteOutline="true"/>
+                    <border width="0.5" type="paint" outlineId="0" useCompleteOutline="false">
+                        <cornerReference id="1"/>
+                        <cornerReference id="2"/>
+                    </border>
+                </borders>
             </object>
         </objects>
     </road>

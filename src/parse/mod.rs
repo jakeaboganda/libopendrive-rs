@@ -13,8 +13,8 @@ use std::collections::HashMap;
 use crate::coords::{Point, Vector};
 use crate::object::orient;
 use crate::{
-    Corner, Direction, Extent, Lane, LaneId, LaneType, Marking, Object, ObjectId, ObjectType,
-    Polyline, RoadNetwork, Section, Shape,
+    Border, Corner, Direction, Extent, Lane, LaneId, LaneType, Marking, Object, ObjectId,
+    ObjectType, Polyline, RoadNetwork, Section, Shape,
 };
 
 mod links;
@@ -1274,8 +1274,9 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
             continue;
         };
         let mut part = Part::new(shape, &base, stretch);
-        if let Shape::Outline { corners, .. } = &part.shape {
+        if let Shape::Outline { corners, closed } = &part.shape {
             part.markings = markings(node, outline_node, corners);
+            part.borders = borders(node, outline_node, corners, *closed);
         }
         parts.push(part);
     }
@@ -1292,6 +1293,7 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
             dynamic: node.attribute("dynamic") == Some("yes"),
             lanes: road.lanes(part.stretch, &at.validity),
             markings: part.markings,
+            borders: part.borders,
             shape: part.shape,
         });
         out.provenance.push(ObjectProvenance {
@@ -1317,6 +1319,7 @@ struct Part {
     /// The stretch of road it spans, which picks its lanes.
     stretch: (f64, f64),
     markings: Vec<Marking>,
+    borders: Vec<Border>,
 }
 
 impl Part {
@@ -1327,6 +1330,7 @@ impl Part {
             t: at.t,
             stretch,
             markings: Vec::new(),
+            borders: Vec::new(),
         }
     }
 }
@@ -1558,6 +1562,51 @@ fn markings(object: roxmltree::Node, outline: roxmltree::Node, corners: &[Corner
                     (line > 0.0 && space > 0.0).then_some((line, space)),
                     width / 2.0,
                 ),
+            })
+        })
+        .collect()
+}
+
+/// The `<border>`s under `object`'s `<borders>` that run along edges of one
+/// of its outlines, `outline`, whose placed corners are `corners`.
+///
+/// A border belongs to the outline whose `id` is its `outlineId`, or with no
+/// `outlineId`, to any outline that fits it. With `useCompleteOutline` it
+/// runs along every edge, the closing one too if the outline is `closed`.
+/// Otherwise it follows the corners its `<cornerReference>`s name, as a
+/// [`Marking`] does. One with no width is skipped.
+fn borders(
+    object: roxmltree::Node,
+    outline: roxmltree::Node,
+    corners: &[Corner],
+    closed: bool,
+) -> Vec<Border> {
+    let ids: Vec<Option<&str>> = corner_nodes(outline).map(|c| c.attribute("id")).collect();
+    let Some(borders) = child(object, "borders") else {
+        return Vec::new();
+    };
+    borders
+        .children()
+        .filter(|n| n.has_tag_name("border"))
+        .filter(|b| {
+            b.attribute("outlineId")
+                .is_none_or(|id| outline.attribute("id") == Some(id))
+        })
+        .filter_map(|b| {
+            let width = attr_f64(b, "width").filter(|w| *w > 0.0)?;
+            let path = if b.attribute("useCompleteOutline") == Some("true") {
+                let mut path: Vec<Point> = corners.iter().map(|c| c.base).collect();
+                if closed {
+                    path.push(corners[0].base);
+                }
+                path
+            } else {
+                corner_path(b, &ids, corners)?
+            };
+            Some(Border {
+                kind: b.attribute("type").unwrap_or_default().to_string(),
+                width: width as f32,
+                pieces: strip(&path, 0.0, 0.0, None, width / 2.0),
             })
         })
         .collect()
@@ -3074,6 +3123,31 @@ mod tests {
         };
         assert_eq!(pieces(&objects[0]), [1]);
         assert_eq!(pieces(&objects[1]), [2]);
+    }
+
+    #[test]
+    fn a_border_goes_to_the_outline_it_names() {
+        let square = |id: &str| {
+            format!(
+                r#"<outline id="{id}"><cornerLocal u="0" v="0"/><cornerLocal u="1" v="0"/><cornerLocal u="1" v="1"/></outline>"#
+            )
+        };
+        let border =
+            |outline: &str| format!(r#"<border width="0.2" {outline} useCompleteOutline="true"/>"#);
+        let xml = banked_road_with(&format!(
+            r#"<object id="o" s="5" t="0"><outlines>{}{}</outlines><borders>{}{}{}</borders></object>"#,
+            square("a"),
+            square("b"),
+            border(r#"outlineId="b""#),
+            border(""),
+            border(r#"outlineId="z""#),
+        ));
+        let objects = objects_of(&xml);
+        let pieces = |o: &Object| o.borders.iter().map(|b| b.pieces.len()).collect::<Vec<_>>();
+        // A closed triangle has three edges. The border naming no outline is
+        // on both, and the one naming an outline that is not there on none.
+        assert_eq!(pieces(&objects[0]), [3]);
+        assert_eq!(pieces(&objects[1]), [3, 3]);
     }
 
     fn objects_of(xml: &str) -> Vec<Object> {

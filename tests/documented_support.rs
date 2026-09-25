@@ -10,6 +10,10 @@ const PARSER: &str = include_str!("../src/parse/mod.rs");
 const LINKS: &str = include_str!("../src/parse/links.rs");
 const CRATE_DOCS: &str = include_str!("../src/lib.rs");
 
+/// Tags read in one place and ignored in another, which a scan of tag names
+/// alone cannot tell apart. An object's `<border>` is read, a lane's is not.
+const READ_IN_ANOTHER_PLACE: [&str; 1] = ["border"];
+
 /// `<left>` and `<right>` reach `child()` through a loop variable rather than
 /// a literal, so no scan of the source can see them.
 const LOOKED_UP_BY_VARIABLE: [&str; 2] = ["left", "right"];
@@ -126,7 +130,10 @@ fn nothing_named_as_ignored_is_actually_read() {
         ignored.len() > 5,
         "the ignored list came out as {ignored:?}; the scan itself is broken"
     );
-    let contradictions: Vec<_> = ignored.iter().filter(|t| read.contains(t)).collect();
+    let contradictions: Vec<_> = ignored
+        .iter()
+        .filter(|t| read.contains(t) && !READ_IN_ANOTHER_PLACE.contains(&t.as_str()))
+        .collect();
     assert!(
         contradictions.is_empty(),
         "the crate docs call {contradictions:?} ignored, but the parser reads them"

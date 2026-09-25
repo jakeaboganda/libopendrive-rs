@@ -213,6 +213,22 @@ pub struct Marking {
     pub pieces: Vec<[Point; 4]>,
 }
 
+/// A band along edges of an object's outline, such as the kerb round a
+/// traffic island, centred on the edges.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Border {
+    /// What the border is, such as `curb`, `concrete` or `paint`. Free text,
+    /// and empty if the map gives none.
+    pub kind: String,
+    /// Metres across.
+    pub width: f32,
+    /// The band, one piece per edge, in order along the edges, in the
+    /// network's frame. Each is four corners going anticlockwise seen from
+    /// above, level with the outline's base.
+    pub pieces: Vec<[Point; 4]>,
+}
+
 /// One object in the world.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -236,6 +252,9 @@ pub struct Object {
     pub lanes: Vec<LaneId>,
     /// The paint on the object. Only an [`Shape::Outline`] has any.
     pub markings: Vec<Marking>,
+    /// The borders along the object's edges. Only an [`Shape::Outline`] has
+    /// any.
+    pub borders: Vec<Border>,
     /// Where it is and what it fills.
     pub shape: Shape,
 }

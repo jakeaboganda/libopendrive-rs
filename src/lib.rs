@@ -68,10 +68,11 @@
 //! | `<objects><objectReference>` | `id`, `s`, `t`, `zOffset`, `orientation`, `validLength` |
 //! | `<object><validity>`, `<objectReference><validity>` | `fromLane`, `toLane` |
 //! | `<object><repeat>` | `s`, `length`, `distance`, and the `Start`/`End` pair of `t`, `zOffset`, `length`, `width`, `height`, `radius` |
-//! | `<outlines><outline>` | `closed` |
+//! | `<outlines><outline>` | `id`, `closed` |
 //! | `<cornerRoad>` | `id`, `s`, `t`, `dz`, `height` |
 //! | `<cornerLocal>` | `id`, `u`, `v`, `z`, `height` |
 //! | `<markings><marking>` | `side`, `color`, `width`, `zOffset`, `lineLength`, `spaceLength`, `startOffset`, `stopOffset` |
+//! | `<borders><border>` | `type`, `width`, `outlineId`, `useCompleteOutline` |
 //! | `<cornerReference>` | `id` |
 //!
 //! Four attribute values steer the import:
@@ -121,6 +122,11 @@
 //! `spaceLength`. A marking with no corner references, one that places paint
 //! on a side of an object's box, is skipped.
 //!
+//! A `<border>` becomes a [`Border`] on the outline its `outlineId` names, or
+//! on each that fits it if it names none: a band `width` across, centred on
+//! every edge with `useCompleteOutline`, or on the edges through its
+//! `<cornerReference>`s otherwise.
+//!
 //! An [`Object`] keeps what describes the thing itself: its `subtype`, and
 //! whether it is `dynamic`. What ties it to an OpenDRIVE road, its road id,
 //! `<object id>`, `(s, t)`, `orientation` and `validLength`, is in its
@@ -142,8 +148,9 @@
 //!
 //! - `<shape>`, the other lateralProfile child, so a crowned or cambered
 //!   cross-section imports flat across its width.
-//! - `<border>`. A lane whose extent comes from a border rather than a width
-//!   element has nothing to sample, so the importer drops it.
+//! - A lane's `<border>`, as opposed to an object's. A lane whose extent
+//!   comes from a border rather than a width element has nothing to sample,
+//!   so the importer drops it.
 //! - `<center>`, so lane 0 never becomes a [`Lane`].
 //!
 //! # Coordinate frame
@@ -209,7 +216,7 @@ pub use geometry::TooFewPoints;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
 pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};
 pub use network::{Direction, Lane, LaneId, LaneType, RoadNetwork};
-pub use object::{Corner, Extent, Marking, Object, ObjectId, ObjectType, Section, Shape};
+pub use object::{Border, Corner, Extent, Marking, Object, ObjectId, ObjectType, Section, Shape};
 pub use object_mesh::ObjectSpan;
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ImportError,
