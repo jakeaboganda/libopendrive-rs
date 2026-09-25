@@ -19,13 +19,15 @@ road = xodr.create_road(xodr.Arc(0.005, length=100), id=0, left_lanes=1, right_l
 road.planview.set_start_point(0, 0, 0)
 road.add_elevation(0, 1.0, 0.02, 0, 0)
 
+# A box, turned against the road, with a subtype, valid for traffic along +s
+# over 8 m, and only for lane -1.
+shed = xodr.Object(s=40, t=-6, Type=xodr.ObjectType.building, subtype="garage", id="1",
+                   name="Shed", zOffset=0.5, hdg=0.3, length=8, width=4, height=3,
+                   orientation=xodr.Orientation.positive, validLength=8)
+shed.add_validity(-1, -1)
 road.add_object(
     [
-        # A box, turned against the road, with a subtype, and valid for
-        # traffic along +s over 8 m.
-        xodr.Object(s=40, t=-6, Type=xodr.ObjectType.building, subtype="garage", id="1",
-                    name="Shed", zOffset=0.5, hdg=0.3, length=8, width=4, height=3,
-                    orientation=xodr.Orientation.positive, validLength=8),
+        shed,
         # A cylinder, pitched and rolled.
         xodr.Object(s=60, t=5, Type=xodr.ObjectType.tree, id="2", radius=1.5, height=7,
                     pitch=0.1, roll=-0.2),
@@ -97,17 +99,28 @@ def insert(xml, after, text):
 
 
 # Road 1 places objects from road 0 again: the shed with its own zOffset,
-# orientation and validLength; the row of posts, which moves with the
+# orientation, validLength and validity; the row of posts, which moves with the
 # reference; the house, outlined in its own frame; the fence, outlined in road
 # coordinates, which moves too; and an id that no object has.
 references = [
-    'id="1" s="10" t="-5" zOffset="0.2" orientation="-" validLength="3"',
-    'id="5" s="0" t="-1"',
-    'id="8" s="30" t="8"',
-    'id="9" s="20" t="12"',
-    'id="99" s="40" t="0"',
+    ('id="1" s="10" t="-5" zOffset="0.2" orientation="-" validLength="3"',
+     '<validity fromLane="1" toLane="1"/>'),
+    ('id="5" s="0" t="-1"', ""),
+    ('id="8" s="30" t="8"', ""),
+    ('id="9" s="20" t="12"', ""),
+    ('id="99" s="40" t="0"', ""),
 ]
+
+
+def reference(attrs, children):
+    if not children:
+        return f"\n            <objectReference {attrs}/>"
+    return (f"\n            <objectReference {attrs}>"
+            f"\n                {children}"
+            "\n            </objectReference>")
+
+
 xml = out.read_text()
 xml = insert(xml, "</lanes>", "\n        <objects>" + "".join(
-    f"\n            <objectReference {r}/>" for r in references) + "\n        </objects>")
+    reference(*r) for r in references) + "\n        </objects>")
 out.write_text(xml)

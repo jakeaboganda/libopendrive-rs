@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <OpenDRIVE>
-    <header name="objects" revMajor="1" revMinor="5" date="2026-09-25 20:19:51.214688" north="0.0" south="0.0" east="0.0" west="0.0"/>
+    <header name="objects" revMajor="1" revMinor="5" date="2026-09-25 21:00:01.820783" north="0.0" south="0.0" east="0.0" west="0.0"/>
     <road rule="RHT" id="0" junction="-1" length="100.0">
         <link/>
         <planView>
@@ -36,7 +36,9 @@
             </laneSection>
         </lanes>
         <objects>
-            <object id="1" s="40" t="-6" subtype="garage" dynamic="no" zOffset="0.5" pitch="0" roll="0" width="4" height="3" name="Shed" type="building" orientation="+" validLength="8" hdg="0.3" length="8"/>
+            <object id="1" s="40" t="-6" subtype="garage" dynamic="no" zOffset="0.5" pitch="0" roll="0" width="4" height="3" name="Shed" type="building" orientation="+" validLength="8" hdg="0.3" length="8">
+                <validity fromLane="-1" toLane="-1"/>
+            </object>
             <object id="2" s="60" t="5" subtype="None" dynamic="no" zOffset="0" pitch="0.1" roll="-0.2" height="7" type="tree" orientation="none" hdg="0" radius="1.5"/>
             <object id="3" s="10" t="0" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" type="none" orientation="none" hdg="0"/>
             <object id="4" s="20" t="4" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" height="1.2" type="guide-post" orientation="none" hdg="0"/>
@@ -104,7 +106,9 @@
             </laneSection>
         </lanes>
         <objects>
-            <objectReference id="1" s="10" t="-5" zOffset="0.2" orientation="-" validLength="3"/>
+            <objectReference id="1" s="10" t="-5" zOffset="0.2" orientation="-" validLength="3">
+                <validity fromLane="1" toLane="1"/>
+            </objectReference>
             <objectReference id="5" s="0" t="-1"/>
             <objectReference id="8" s="30" t="8"/>
             <objectReference id="9" s="20" t="12"/>

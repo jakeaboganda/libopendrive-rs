@@ -492,6 +492,40 @@ fn a_referenced_outline_moves_with_the_reference() {
     }
 }
 
+/// The `(road, <lane id>)` of each lane `object` applies to.
+fn lanes_of(object: &Object) -> Vec<(String, i32)> {
+    let (_, prov) = load_file_with_provenance(OBJECTS).expect("objects.xodr loads");
+    object
+        .lanes
+        .iter()
+        .map(|id| {
+            let p = prov.lanes.iter().find(|p| p.lane == *id).expect("lane");
+            (p.road_id.clone(), p.od_id)
+        })
+        .collect()
+}
+
+#[test]
+fn validity_narrows_the_lanes_an_object_applies_to() {
+    let road = |ids: &[i32], road: &str| {
+        ids.iter()
+            .map(|&id| (road.to_string(), id))
+            .collect::<Vec<_>>()
+    };
+    let objects = objects();
+    // The shed is valid for lane -1 only.
+    assert_eq!(lanes_of(&objects[0]), road(&[-1], "0"));
+    // The tree gives no <validity>, so it applies to both lanes.
+    assert_eq!(lanes_of(&objects[1]), road(&[1, -1], "0"));
+
+    // The shed's reference gives its own validity, on road 1's lanes.
+    let referenced = on("1");
+    assert_eq!(lanes_of(&referenced[0]), road(&[1], "1"));
+    // A reference that gives none applies to every lane on its road, not
+    // the <object>'s, which are on road 0.
+    assert_eq!(lanes_of(&referenced[1]), road(&[1, -1], "1"));
+}
+
 #[test]
 fn a_reference_to_no_object_is_skipped() {
     let (_, prov) = load_file_with_provenance(OBJECTS).expect("objects.xodr loads");

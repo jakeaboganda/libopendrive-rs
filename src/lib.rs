@@ -66,6 +66,7 @@
 //! | `<laneLink>` | `from`, `to` |
 //! | `<objects><object>` | `id`, `type`, `subtype`, `name`, `dynamic`, `orientation`, `validLength`, `s`, `t`, `zOffset`, `hdg`, `pitch`, `roll`, `length`, `width`, `height`, `radius` |
 //! | `<objects><objectReference>` | `id`, `s`, `t`, `zOffset`, `orientation`, `validLength` |
+//! | `<object><validity>`, `<objectReference><validity>` | `fromLane`, `toLane` |
 //! | `<object><repeat>` | `s`, `length`, `distance`, and the `Start`/`End` pair of `t`, `zOffset`, `length`, `width`, `height`, `radius` |
 //! | `<outlines><outline>` | `closed` |
 //! | `<cornerRoad>` | `s`, `t`, `dz`, `height` |
@@ -105,6 +106,12 @@
 //! reference's `zOffset`. What the object gives in road coordinates, its
 //! repeats and `<cornerRoad>`s, moves by the same distance along and across
 //! the road. A reference to an id no `<object>` has is skipped.
+//!
+//! [`Object::lanes`] is the lanes alongside the stretch of road an object
+//! spans, the lane sections it stands in or sweeps across, narrowed to the
+//! `fromLane`-`toLane` ranges of its `<validity>`s if it has any. A
+//! reference's own `<validity>`s apply, not its `<object>`'s, whose lane ids
+//! are on another road.
 //!
 //! An [`Object`] keeps what describes the thing itself: its `subtype`, and
 //! whether it is `dynamic`. What ties it to an OpenDRIVE road, its road id,

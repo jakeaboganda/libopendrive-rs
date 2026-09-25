@@ -129,7 +129,7 @@ fn buffers(mesh: &Mesh) -> Value {
 }
 
 /// One object's viewer record: its identity, OpenDRIVE provenance, and
-/// shape. `referencedFrom` is the road of the `<object>` an
+/// shape. `lanes` is the `LaneId`s it applies to. `referencedFrom` is the road of the `<object>` an
 /// `<objectReference>` placed again, and null otherwise. A `solid`
 /// carries a pose, angles in radians applied yaw, then pitch, then roll, and
 /// an `extent` that is null for an object the map gives no size. An
@@ -189,6 +189,7 @@ fn object_entry(object: &Object, prov: Option<&ObjectProvenance>) -> Value {
         "subtype": object.subtype,
         "name": object.name,
         "dynamic": object.dynamic,
+        "lanes": object.lanes.iter().map(|l| l.0).collect::<Vec<_>>(),
         "roadId": prov.map(|p| p.road_id.as_str()),
         "odId": prov.map(|p| p.od_id.as_str()),
         "s": prov.map(|p| p.s),

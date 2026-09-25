@@ -554,13 +554,91 @@ fn parse_road(
     let superelevations = child(road, "lateralProfile")
         .map(|n| cubics_in(n, "superelevation", "s"))
         .unwrap_or_default();
+    let sections = bake_lanes(
+        road,
+        &road_id,
+        length,
+        &geoms,
+        &elevations,
+        &superelevations,
+        out,
+        topo,
+    );
     if let Some(objects_node) = child(road, "objects") {
-        let surface = |s, t| surface_at(&geoms, &elevations, &superelevations, s, t);
-        place_objects(objects_node, index, &road_id, length, surface, objects);
+        let road = BakedRoad {
+            id: &road_id,
+            length,
+            sections: &sections,
+            surface: &|s, t| surface_at(&geoms, &elevations, &superelevations, s, t),
+        };
+        place_objects(objects_node, index, &road, objects);
+    }
+}
+
+/// One lane section of a road as baked: the stretch of road it covers, and
+/// the lanes in it by their `<lane id>`.
+struct BakedSection {
+    start: f64,
+    end: f64,
+    lanes: Vec<(i32, LaneId)>,
+}
+
+/// What placing an object needs to know about the road it is on.
+struct BakedRoad<'a> {
+    id: &'a str,
+    length: f64,
+    sections: &'a [BakedSection],
+    /// The road surface at a station `(s, t)`, and the reference line's
+    /// heading there.
+    surface: &'a dyn Fn(f64, f64) -> (Point, f64),
+}
+
+impl BakedRoad<'_> {
+    fn on_road(&self, s: f64) -> bool {
+        (0.0..=self.length).contains(&s)
     }
 
+    /// The lanes alongside the stretch `[from, to]` whose `<lane id>` is in
+    /// one of the `validity` ranges, or all of them if there are no ranges.
+    /// A section starting exactly at `to` counts only if the stretch is a
+    /// single station, so a station on a section boundary is in the section
+    /// that starts there.
+    fn lanes(&self, (from, to): (f64, f64), validity: &[(i32, i32)]) -> Vec<LaneId> {
+        let last = self.sections.len().saturating_sub(1);
+        let valid = |od_id: i32| {
+            validity.is_empty()
+                || validity
+                    .iter()
+                    .any(|&(a, b)| (a.min(b)..=a.max(b)).contains(&od_id))
+        };
+        self.sections
+            .iter()
+            .enumerate()
+            .filter(|(i, sec)| {
+                sec.start <= to && (from < sec.end || (*i == last && from <= sec.end))
+            })
+            .flat_map(|(_, sec)| &sec.lanes)
+            .filter(|(od_id, _)| valid(*od_id))
+            .map(|(_, id)| *id)
+            .collect()
+    }
+}
+
+/// Bakes one `<road>`'s lanes into `out`, and returns its lane sections. None
+/// for a road with no `<lanes>`.
+#[allow(clippy::too_many_arguments)]
+fn bake_lanes(
+    road: roxmltree::Node,
+    road_id: &str,
+    length: f64,
+    geoms: &[GeomRec],
+    elevations: &[Cubic],
+    superelevations: &[Cubic],
+    out: &mut Vec<Lane>,
+    topo: &mut Topology,
+) -> Vec<BakedSection> {
     let Some(lanes_node) = child(road, "lanes") else {
-        return;
+        return Vec::new();
     };
     // laneOffset shifts the whole lane cross-section laterally off lane 0 (lane
     // widening, merges, a centerline that isn't the road reference). It adds to
@@ -574,7 +652,7 @@ fn parse_road(
         .filter(|n| n.has_tag_name("laneSection"))
         .collect();
     if sections.is_empty() {
-        return;
+        return Vec::new();
     }
     sections.sort_by(|a, b| {
         attr_f64(*a, "s")
@@ -585,7 +663,7 @@ fn parse_road(
     // Record the road's link targets + section count for connectivity.
     let (predecessor, successor) = links::road_link(road);
     topo.roads.insert(
-        road_id.clone(),
+        road_id.to_string(),
         RoadInfo {
             sections: sections.len(),
             predecessor,
@@ -593,6 +671,7 @@ fn parse_road(
         },
     );
 
+    let mut baked = Vec::new();
     for (i, section) in sections.iter().enumerate() {
         let s_start = attr_f64(*section, "s").unwrap_or(0.0);
         let s_end = sections
@@ -603,20 +682,30 @@ fn parse_road(
         if s_end - s_start < 1e-3 {
             continue; // zero-length section
         }
+        let first = topo.metas.len();
         emit_section(
             *section,
             s_start,
             s_end,
-            &geoms,
-            &elevations,
-            &superelevations,
+            geoms,
+            elevations,
+            superelevations,
             &lane_offsets,
             out,
             topo,
-            &road_id,
+            road_id,
             i,
         );
+        baked.push(BakedSection {
+            start: s_start,
+            end: s_end,
+            lanes: topo.metas[first..]
+                .iter()
+                .map(|m| (m.od_id, m.id))
+                .collect(),
+        });
     }
+    baked
 }
 
 /// Append each lane of one section as a `Lane` spanning `[s_start, s_end]`.
@@ -1014,6 +1103,10 @@ struct Placement<'a> {
     shift: (f64, f64),
     /// For a reference, the road the `<object>` is on.
     referenced_from: Option<&'a str>,
+    /// The `<validity>` lane ranges, `fromLane` and `toLane`, of the
+    /// `<object>` or the `<objectReference>`. A reference does not take the
+    /// `<object>`'s, which name lanes on the `<object>`'s road.
+    validity: Vec<(i32, i32)>,
 }
 
 impl<'a> Placement<'a> {
@@ -1028,6 +1121,7 @@ impl<'a> Placement<'a> {
             valid_length: attr_f64(object, "validLength"),
             shift: (0.0, 0.0),
             referenced_from: None,
+            validity: validity(object),
         })
     }
 
@@ -1048,8 +1142,19 @@ impl<'a> Placement<'a> {
             valid_length: attr_f64(reference, "validLength"),
             shift: (s - from("s"), t - from("t")),
             referenced_from: Some(road),
+            validity: validity(reference),
         })
     }
+}
+
+/// The `fromLane`-`toLane` range of each `<validity>` under `node`. One
+/// missing either is skipped.
+fn validity(node: roxmltree::Node) -> Vec<(i32, i32)> {
+    let lane = |v: roxmltree::Node, name| v.attribute(name)?.parse::<i32>().ok();
+    node.children()
+        .filter(|n| n.has_tag_name("validity"))
+        .filter_map(|v| Some((lane(v, "fromLane")?, lane(v, "toLane")?)))
+        .collect()
 }
 
 /// Which direction of the road an `<object>` or `<objectReference>` applies
@@ -1064,17 +1169,13 @@ fn orientation(node: roxmltree::Node) -> Orientation {
 
 /// Bake every `<object>` and `<objectReference>` under one road's
 /// `<objects>` into `out`. `index` finds the `<object>` a reference names.
-/// `surface` maps a road station `(s, t)` to the road surface there and the
-/// reference line's heading.
 ///
 /// A reference to an id no `<object>` has is skipped, as is one missing `s`
 /// or `t`.
 fn place_objects(
     objects_node: roxmltree::Node,
     index: &ObjectIndex,
-    road_id: &str,
-    road_length: f64,
-    surface: impl Fn(f64, f64) -> (Point, f64),
+    road: &BakedRoad,
     out: &mut Objects,
 ) {
     for node in objects_node.children() {
@@ -1090,12 +1191,12 @@ fn place_objects(
             None
         };
         if let Some((object, at)) = placed {
-            place_object(object, &at, road_id, road_length, &surface, out);
+            place_object(object, &at, road, out);
         }
     }
 }
 
-/// Bake one `<object>` into `out`, placed on road `road_id` as `at` says.
+/// Bake one `<object>` into `out`, placed on `road` as `at` says.
 ///
 /// Each object sits on the road surface, so it rides the elevation and
 /// superelevation profiles like a lane does. One `<object>` can bake to
@@ -1109,15 +1210,10 @@ fn place_objects(
 ///
 /// Any part of it that falls off the ends of the road is skipped: a solid, a
 /// whole outline with a corner there, or the length of a sweep past the end.
-fn place_object(
-    node: roxmltree::Node,
-    at: &Placement,
-    road_id: &str,
-    road_length: f64,
-    surface: &impl Fn(f64, f64) -> (Point, f64),
-    out: &mut Objects,
-) {
-    let on_road = |s: f64| (0.0..=road_length).contains(&s);
+///
+/// Each baked object applies to the lanes alongside the stretch of road it
+/// spans, narrowed by `at`'s validity.
+fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &mut Objects) {
     let base = Station {
         s: at.s,
         t: at.t,
@@ -1131,7 +1227,7 @@ fn place_object(
     let pitch = attr_f64(node, "pitch").unwrap_or(0.0);
     let roll = attr_f64(node, "roll").unwrap_or(0.0);
     let frame = |st: &Station| {
-        let (mut origin, road_hdg) = surface(st.s, st.t);
+        let (mut origin, road_hdg) = (road.surface)(st.s, st.t);
         origin.z += st.z_offset as f32;
         Frame {
             origin,
@@ -1158,9 +1254,10 @@ fn place_object(
         .filter_map(|n| Repeat::parse(n, at.shift))
         .collect();
     let outlines = outline_nodes(node);
-    // Each shape with the road station it is anchored at.
-    if repeats.is_empty() && outlines.is_empty() && on_road(base.s) {
-        shapes.push((solid(&base), base.s, base.t));
+    // Each shape with the road station it is anchored at, and the stretch
+    // of road it spans.
+    if repeats.is_empty() && outlines.is_empty() && road.on_road(base.s) {
+        shapes.push((solid(&base), base.s, base.t, (base.s, base.s)));
     }
     for repeat in &repeats {
         if repeat.distance > 0.0 {
@@ -1168,23 +1265,25 @@ fn place_object(
             shapes.extend(
                 stations
                     .iter()
-                    .filter(|st| on_road(st.s))
-                    .map(|st| (solid(st), st.s, st.t)),
+                    .filter(|st| road.on_road(st.s))
+                    .map(|st| (solid(st), st.s, st.t, (st.s, st.s))),
             );
-        } else if let Some((sections, start)) = sweep(repeat, &base, road_length, surface) {
-            shapes.push((Shape::Sweep { sections }, start.s, start.t));
+        } else if let Some((sections, start, end)) = sweep(repeat, &base, road) {
+            shapes.push((Shape::Sweep { sections }, start.s, start.t, (start.s, end)));
         }
     }
-    let origin = on_road(base.s).then(|| frame(&base));
+    let origin = road.on_road(base.s).then(|| frame(&base));
     for outline_node in outlines {
-        if let Some(shape) = outline(outline_node, origin.as_ref(), at.shift, surface, on_road) {
-            shapes.push((shape, base.s, base.t));
+        if let Some((shape, stretch)) =
+            outline(outline_node, origin.as_ref(), base.s, at.shift, road)
+        {
+            shapes.push((shape, base.s, base.t, stretch));
         }
     }
 
     let kind = object_type(node.attribute("type"));
     let text = |name| node.attribute(name).unwrap_or_default().to_string();
-    for (shape, s, t) in shapes {
+    for (shape, s, t, stretch) in shapes {
         let id = ObjectId(out.baked.len());
         out.baked.push(Object {
             id,
@@ -1192,11 +1291,12 @@ fn place_object(
             subtype: text("subtype"),
             name: text("name"),
             dynamic: node.attribute("dynamic") == Some("yes"),
+            lanes: road.lanes(stretch, &at.validity),
             shape,
         });
         out.provenance.push(ObjectProvenance {
             object: id,
-            road_id: road_id.to_string(),
+            road_id: road.id.to_string(),
             od_id: text("id"),
             s,
             t,
@@ -1278,16 +1378,15 @@ impl<'a> Repeat<'a> {
 /// A continuous repeat's cross-section at every sample station along the part
 /// of it on the road: `width` wide about its `t`, `height` tall from its
 /// `zOffset`. A missing width is 0, a wall with no thickness, as libOpenDRIVE
-/// has it. Also returns the station the sections start at. `None` if less
-/// than a millimetre of it is on the road.
+/// has it. Also returns the station the sections start at, and the `s` they
+/// end at. `None` if less than a millimetre of it is on the road.
 fn sweep(
     repeat: &Repeat,
     base: &Station,
-    road_length: f64,
-    surface: &impl Fn(f64, f64) -> (Point, f64),
-) -> Option<(Vec<Section>, Station)> {
+    road: &BakedRoad,
+) -> Option<(Vec<Section>, Station, f64)> {
     let start = repeat.start.max(0.0);
-    let end = (repeat.start + repeat.length).min(road_length);
+    let end = (repeat.start + repeat.length).min(road.length);
     if end - start < 1e-3 {
         return None;
     }
@@ -1298,7 +1397,7 @@ fn sweep(
             let half = st.width.unwrap_or(0.0) / 2.0;
             let height = st.height.unwrap_or(0.0) as f32;
             let corner = |t| {
-                let (mut base, _) = surface(s, t);
+                let (mut base, _) = (road.surface)(s, t);
                 base.z += st.z_offset as f32;
                 Corner {
                     base,
@@ -1314,6 +1413,7 @@ fn sweep(
     Some((
         sections,
         repeat.at(base, (start - repeat.start) / repeat.length),
+        end,
     ))
 }
 
@@ -1336,21 +1436,28 @@ fn outline_nodes<'a>(object: roxmltree::Node<'a, 'a>) -> Vec<roxmltree::Node<'a,
 /// base, up in the frame the corner is given in. An outline with a corner
 /// that cannot be placed is dropped whole, because the polygon without it is
 /// a different shape. So is one with fewer than two corners.
+///
+/// Also returns the stretch of road the outline spans: from its first
+/// `<cornerRoad>` station to its last, taking in `s`, the object's own
+/// station, if it has a `<cornerLocal>`.
 fn outline(
     node: roxmltree::Node,
     frame: Option<&Frame>,
+    s: f64,
     (shift_s, shift_t): (f64, f64),
-    surface: &impl Fn(f64, f64) -> (Point, f64),
-    on_road: impl Fn(f64) -> bool,
-) -> Option<Shape> {
+    road: &BakedRoad,
+) -> Option<(Shape, (f64, f64))> {
+    let mut stretch = (f64::INFINITY, f64::NEG_INFINITY);
+    let mut spans = |s: f64| stretch = (stretch.0.min(s), stretch.1.max(s));
     let corner = |c: roxmltree::Node| -> Option<Corner> {
         let height = attr_f64(c, "height").unwrap_or(0.0);
         if c.has_tag_name("cornerRoad") {
             let (s, t) = (attr_f64(c, "s")? + shift_s, attr_f64(c, "t")? + shift_t);
-            if !on_road(s) {
+            if !road.on_road(s) {
                 return None;
             }
-            let (mut base, _) = surface(s, t);
+            spans(s);
+            let (mut base, _) = (road.surface)(s, t);
             base.z += attr_f64(c, "dz").unwrap_or(0.0) as f32;
             Some(Corner {
                 base,
@@ -1358,6 +1465,7 @@ fn outline(
             })
         } else {
             let frame = frame?;
+            spans(s);
             let (u, v) = (attr_f64(c, "u")?, attr_f64(c, "v")?);
             let z = attr_f64(c, "z").unwrap_or(0.0);
             Some(Corner {
@@ -1376,7 +1484,7 @@ fn outline(
     }
     // Closed unless the file says otherwise, as libOpenDRIVE reads it.
     let closed = node.attribute("closed") != Some("false");
-    Some(Shape::Outline { corners, closed })
+    Some((Shape::Outline { corners, closed }, stretch))
 }
 
 /// The volume a solid occupies: a cylinder if it has a radius, a box if it
@@ -2682,6 +2790,102 @@ mod tests {
   </road>
 </OpenDRIVE>"#
         )
+    }
+
+    /// A road of two lane sections, split at s = 10, each with lanes 1, -1
+    /// and -2.
+    fn two_section_road_with(objects: &str) -> String {
+        let section = |s| {
+            format!(
+                r#"<laneSection s="{s}">
+        <left><lane id="1" type="driving"><width sOffset="0.0" a="3"/></lane></left>
+        <right>
+          <lane id="-1" type="driving"><width sOffset="0.0" a="3"/></lane>
+          <lane id="-2" type="sidewalk"><width sOffset="0.0" a="2"/></lane>
+        </right>
+      </laneSection>"#
+            )
+        };
+        format!(
+            r#"<OpenDRIVE>
+  <road name="o" length="20.0" id="1" junction="-1">
+    <planView>
+      <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="20.0"><line/></geometry>
+    </planView>
+    <lanes>{}{}</lanes>
+    <objects>{objects}</objects>
+  </road>
+</OpenDRIVE>"#,
+            section("0.0"),
+            section("10.0")
+        )
+    }
+
+    /// The `(section, <lane id>)` of each lane each object applies to.
+    fn object_lanes(xml: &str) -> Vec<Vec<(usize, i32)>> {
+        let (net, prov) = load_str_with_provenance(xml).expect("import");
+        net.objects()
+            .iter()
+            .map(|o| {
+                o.lanes
+                    .iter()
+                    .map(|id| {
+                        let p = prov.lanes.iter().find(|p| p.lane == *id).unwrap();
+                        (p.section, p.od_id)
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn an_object_applies_to_the_lanes_of_the_sections_it_spans() {
+        let xml = two_section_road_with(
+            r#"<object id="a" s="5" t="0"/>
+               <object id="b" s="10" t="0">
+                 <validity fromLane="-2" toLane="-1"/>
+               </object>
+               <object id="c" s="0" t="0">
+                 <repeat s="2" length="16" distance="0" height="1"/>
+                 <validity fromLane="1" toLane="1"/>
+               </object>
+               <object id="d" s="20" t="0">
+                 <validity fromLane="1" toLane="1"/>
+                 <validity fromLane="-2" toLane="-2"/>
+               </object>"#,
+        );
+        assert_eq!(
+            object_lanes(&xml),
+            [
+                // No validity: every lane of the section it stands in.
+                vec![(0, 1), (0, -1), (0, -2)],
+                // On the boundary, it is in the section that starts there.
+                // The range runs either way round.
+                vec![(1, -1), (1, -2)],
+                // A sweep across the boundary is in both.
+                vec![(0, 1), (1, 1)],
+                // Each <validity> adds its range. At the very end of the road
+                // it is in the last section.
+                vec![(1, 1), (1, -2)],
+            ]
+        );
+    }
+
+    #[test]
+    fn an_object_on_a_road_without_lanes_applies_to_none() {
+        let xml = r#"<OpenDRIVE>
+  <road length="20.0" id="1">
+    <planView><geometry s="0" x="0" y="0" hdg="0" length="20"><line/></geometry></planView>
+    <objects><object id="a" s="5" t="0"/></objects>
+  </road>
+  <road length="20.0" id="2">
+    <planView><geometry s="0" x="0" y="9" hdg="0" length="20"><line/></geometry></planView>
+    <lanes><laneSection s="0"><right><lane id="-1" type="driving"><width sOffset="0" a="3"/></lane></right></laneSection></lanes>
+  </road>
+</OpenDRIVE>"#;
+        let net = load_str(xml).expect("import");
+        assert_eq!(net.objects().len(), 1);
+        assert!(net.objects()[0].lanes.is_empty());
     }
 
     fn objects_of(xml: &str) -> Vec<Object> {

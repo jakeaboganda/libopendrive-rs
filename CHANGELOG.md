@@ -37,6 +37,11 @@ outlines move with it. The provenance carries the reference's `orientation`
 and `validLength`, and `referenced_from` names the road the original is on. A
 reference to an id no object has is skipped.
 
+`Object::lanes` is the lanes an object applies to: those alongside the
+stretch of road it spans, narrowed by its `<validity>` `fromLane`-`toLane`
+ranges, or all of them if it has none. A reference takes its own
+`<validity>`, not its object's.
+
 These placements follow libOpenDRIVE. Not imported yet: `<tunnel>`,
 `<bridge>`, and an outline's `outer` flag, so a hole bakes as a solid.
 
