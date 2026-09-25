@@ -13,8 +13,9 @@ use std::collections::HashMap;
 use crate::coords::{Point, Vector};
 use crate::object::orient;
 use crate::{
-    Border, Corner, Direction, Extent, Lane, LaneId, LaneType, Marking, Material, Object, ObjectId,
-    ObjectType, ParkingSpace, Polyline, RoadNetwork, Section, Shape, UserData,
+    Border, Corner, Coverage, Direction, Extent, Lane, LaneId, LaneType, Marking, Material, Object,
+    ObjectId, ObjectType, ParkingSpace, Polyline, RoadNetwork, Section, Shape, Structure,
+    StructureId, StructureKind, UserData,
 };
 
 mod links;
@@ -117,6 +118,26 @@ pub enum Orientation {
     Both,
 }
 
+/// The OpenDRIVE identity of one baked tunnel or bridge: which road and
+/// `<tunnel>` or `<bridge>` it came from, and the stretch of road it spans.
+///
+/// Kept apart from [`Structure`] as [`ObjectProvenance`] is from [`Object`].
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct StructureProvenance {
+    /// The baked structure this record describes.
+    pub structure: StructureId,
+    /// The `<road id>` it is on.
+    pub road_id: String,
+    /// The `<tunnel id>` or `<bridge id>` it came from. Empty if the file
+    /// gives none.
+    pub od_id: String,
+    /// Where it starts, in metres along the road's reference line.
+    pub s: f64,
+    /// How far along the road it runs from `s`, in metres.
+    pub length: f64,
+}
+
 /// The OpenDRIVE identity of everything a load baked, from
 /// [`load_str_with_provenance`] or [`load_file_with_provenance`].
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -126,6 +147,8 @@ pub struct Provenance {
     pub lanes: Vec<LaneProvenance>,
     /// One per baked object, in baked-object order.
     pub objects: Vec<ObjectProvenance>,
+    /// One per baked tunnel or bridge, in baked-structure order.
+    pub structures: Vec<StructureProvenance>,
 }
 
 /// Load an OpenDRIVE file from disk and bake it into a `RoadNetwork`.
@@ -139,7 +162,7 @@ pub fn load_str(xml: &str) -> Result<RoadNetwork, ImportError> {
 }
 
 /// Like [`load_file`], but also returns the OpenDRIVE [`Provenance`] of
-/// every baked lane and object, for a viewer or editor that must name the
+/// every baked lane, object and structure, for a viewer or editor that must name the
 /// road and original id each one came from.
 pub fn load_file_with_provenance(
     path: impl AsRef<std::path::Path>,
@@ -150,18 +173,26 @@ pub fn load_file_with_provenance(
 }
 
 /// Like [`load_str`], but also returns the OpenDRIVE [`Provenance`] of
-/// every baked lane and object. Each record carries the [`LaneId`] or
-/// [`ObjectId`] it describes.
+/// every baked lane, object and structure. Each record carries the
+/// [`LaneId`], [`ObjectId`] or [`StructureId`] it describes.
 pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), ImportError> {
     let cleaned = sanitize(xml);
     let doc = roxmltree::Document::parse(cleaned.as_ref())?;
     let root = doc.root_element();
     let mut lanes = Vec::new();
     let mut objects = Objects::default();
+    let mut structures = Structures::default();
     let mut topo = Topology::default();
     let index = object_index(root);
     for road in root.children().filter(|n| n.has_tag_name("road")) {
-        parse_road(road, &index, &mut lanes, &mut objects, &mut topo);
+        parse_road(
+            road,
+            &index,
+            &mut lanes,
+            &mut objects,
+            &mut structures,
+            &mut topo,
+        );
     }
     if lanes.is_empty() {
         return Err(ImportError::Malformed("no lanes found".into()));
@@ -183,9 +214,12 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             })
             .collect(),
         objects: objects.provenance,
+        structures: structures.provenance,
     };
     Ok((
-        RoadNetwork::new(lanes).with_objects(objects.baked),
+        RoadNetwork::new(lanes)
+            .with_objects(objects.baked)
+            .with_structures(structures.baked),
         provenance,
     ))
 }
@@ -447,8 +481,9 @@ fn attr_f64(node: roxmltree::Node, name: &str) -> Option<f64> {
         .filter(|v| v.is_finite())
 }
 
-/// Bakes one `<road>`'s lanes into `out`, and places its objects in `objects`,
-/// looking up what its `<objectReference>`s name in `index`.
+/// Bakes one `<road>`'s lanes into `out`, places its objects in `objects`,
+/// looking up what its `<objectReference>`s name in `index`, and puts its
+/// tunnels and bridges over its lanes in `structures`.
 ///
 /// A road the importer cannot interpret is *skipped*, not fatal. That covers
 /// no length, no `<planView>`, no supported geometry, and no `<lanes>`. Real
@@ -461,6 +496,7 @@ fn parse_road(
     index: &ObjectIndex,
     out: &mut Vec<Lane>,
     objects: &mut Objects,
+    structures: &mut Structures,
     topo: &mut Topology,
 ) {
     let road_id = road.attribute("id").unwrap_or_default().to_string();
@@ -573,15 +609,33 @@ fn parse_road(
             surface: &|s, t| surface_at(&geoms, &elevations, &superelevations, s, t),
         };
         place_objects(objects_node, index, &road, objects);
+        place_structures(objects_node, &road, out, structures);
     }
 }
 
 /// One lane section of a road as baked: the stretch of road it covers, and
-/// the lanes in it by their `<lane id>`.
+/// the lanes in it.
 struct BakedSection {
     start: f64,
     end: f64,
-    lanes: Vec<(i32, LaneId)>,
+    lanes: Vec<BakedLane>,
+}
+
+/// One baked lane of a [`BakedSection`].
+struct BakedLane {
+    od_id: i32,
+    id: LaneId,
+    /// Its position in the lane list.
+    index: usize,
+}
+
+/// Whether the lane `od_id` is in one of the `validity` ranges, or there are
+/// none.
+fn is_valid(od_id: i32, validity: &[(i32, i32)]) -> bool {
+    validity.is_empty()
+        || validity
+            .iter()
+            .any(|&(a, b)| (a.min(b)..=a.max(b)).contains(&od_id))
 }
 
 /// What placing an object needs to know about the road it is on.
@@ -606,12 +660,6 @@ impl BakedRoad<'_> {
     /// that starts there.
     fn lanes(&self, (from, to): (f64, f64), validity: &[(i32, i32)]) -> Vec<LaneId> {
         let last = self.sections.len().saturating_sub(1);
-        let valid = |od_id: i32| {
-            validity.is_empty()
-                || validity
-                    .iter()
-                    .any(|&(a, b)| (a.min(b)..=a.max(b)).contains(&od_id))
-        };
         self.sections
             .iter()
             .enumerate()
@@ -619,8 +667,8 @@ impl BakedRoad<'_> {
                 sec.start <= to && (from < sec.end || (*i == last && from <= sec.end))
             })
             .flat_map(|(_, sec)| &sec.lanes)
-            .filter(|(od_id, _)| valid(*od_id))
-            .map(|(_, id)| *id)
+            .filter(|l| is_valid(l.od_id, validity))
+            .map(|l| l.id)
             .collect()
     }
 }
@@ -683,7 +731,7 @@ fn bake_lanes(
         if s_end - s_start < 1e-3 {
             continue; // zero-length section
         }
-        let first = topo.metas.len();
+        let (first, first_lane) = (topo.metas.len(), out.len());
         emit_section(
             *section,
             s_start,
@@ -697,12 +745,19 @@ fn bake_lanes(
             road_id,
             i,
         );
+        // emit_section records a lane's meta as it pushes the lane, so the
+        // new metas and the new lanes are in step.
         baked.push(BakedSection {
             start: s_start,
             end: s_end,
             lanes: topo.metas[first..]
                 .iter()
-                .map(|m| (m.od_id, m.id))
+                .enumerate()
+                .map(|(k, m)| BakedLane {
+                    od_id: m.od_id,
+                    id: m.id,
+                    index: first_lane + k,
+                })
                 .collect(),
         });
     }
@@ -1063,6 +1118,96 @@ impl Frame {
         let [u, v, z] = orient(self.yaw, self.pitch, self.roll, local);
         self.origin + Vector::new(u as f32, v as f32, z as f32)
     }
+}
+
+/// The structures baked so far, and the provenance of each, in step.
+#[derive(Default)]
+struct Structures {
+    baked: Vec<Structure>,
+    provenance: Vec<StructureProvenance>,
+}
+
+/// Bake every `<tunnel>` and `<bridge>` under one road's `<objects>` into
+/// `out`, as the part of each of the road's `lanes` it covers.
+///
+/// A structure covers `length` metres of road from `s`, across every lane
+/// there, or across those in its `<validity>` ranges if it has any. It has no
+/// geometry: OpenDRIVE describes neither a tunnel's tube nor a bridge's deck.
+/// One missing `s` or `length`, or with a negative length, is skipped.
+fn place_structures(
+    objects_node: roxmltree::Node,
+    road: &BakedRoad,
+    lanes: &[Lane],
+    out: &mut Structures,
+) {
+    for node in objects_node.children() {
+        let text = |name| node.attribute(name).unwrap_or_default().to_string();
+        let kind = if node.has_tag_name("tunnel") {
+            StructureKind::Tunnel {
+                kind: text("type"),
+                lighting: attr_f64(node, "lighting").map(|v| v as f32),
+                daylight: attr_f64(node, "daylight").map(|v| v as f32),
+            }
+        } else if node.has_tag_name("bridge") {
+            StructureKind::Bridge { kind: text("type") }
+        } else {
+            continue;
+        };
+        let (Some(s), Some(length)) = (attr_f64(node, "s"), attr_f64(node, "length")) else {
+            continue;
+        };
+        if length < 0.0 {
+            continue;
+        }
+        let validity = validity(node);
+        let mut covered = Vec::new();
+        for sec in road.sections {
+            let (from, to) = (s.max(sec.start), (s + length).min(sec.end));
+            if to - from < 1e-6 {
+                continue;
+            }
+            let stations = sample_positions(sec.start, sec.end);
+            for lane in sec.lanes.iter().filter(|l| is_valid(l.od_id, &validity)) {
+                let center = &lanes[lane.index].center;
+                covered.push(Coverage {
+                    lane: lane.id,
+                    from: along(center.points(), &stations, from),
+                    to: along(center.points(), &stations, to),
+                });
+            }
+        }
+        let id = StructureId(out.baked.len());
+        out.baked.push(Structure {
+            id,
+            kind,
+            name: text("name"),
+            lanes: covered,
+        });
+        out.provenance.push(StructureProvenance {
+            structure: id,
+            road_id: road.id.to_string(),
+            od_id: text("id"),
+            s,
+            length,
+        });
+    }
+}
+
+/// How far along a lane road station `s` is, in metres from its first
+/// point. `points` are the lane's centerline, sampled at the road
+/// `stations`, one each.
+fn along(points: &[Point], stations: &[f64], s: f64) -> f32 {
+    debug_assert_eq!(points.len(), stations.len());
+    let i = stations
+        .partition_point(|&x| x <= s)
+        .saturating_sub(1)
+        .min(stations.len().saturating_sub(2));
+    let before: f32 = points[..=i]
+        .windows(2)
+        .map(|w| w[0].distance_to(w[1]))
+        .sum();
+    let f = ((s - stations[i]) / (stations[i + 1] - stations[i])).clamp(0.0, 1.0);
+    before + points[i].distance_to(points[i + 1]) * f as f32
 }
 
 /// Every `<object>` in the document by its id, with the road it is on, for
@@ -3178,6 +3323,43 @@ mod tests {
         // on both, and the one naming an outline that is not there on none.
         assert_eq!(pieces(&objects[0]), [3]);
         assert_eq!(pieces(&objects[1]), [3, 3]);
+    }
+
+    #[test]
+    fn a_structure_covers_each_section_it_spans_as_far_along_each_lane() {
+        let xml = two_section_road_with(
+            r#"<tunnel s="5" length="10" name="t"/>
+               <bridge s="12" length="3" name="b"><validity fromLane="-2" toLane="-2"/></bridge>
+               <tunnel s="5" name="no length"/>
+               <bridge s="5" length="-1" name="negative"/>"#,
+        );
+        let (net, prov) = load_str_with_provenance(&xml).expect("import");
+        let section_of = |id: LaneId| {
+            let p = prov.lanes.iter().find(|p| p.lane == id).unwrap();
+            (p.section, p.od_id)
+        };
+        let covered = |i: usize| {
+            net.structures()[i]
+                .lanes
+                .iter()
+                .map(|c| (section_of(c.lane), c.from, c.to))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(net.structures().len(), 2);
+        // The road is straight and flat, so a lane is as long as its section.
+        // Section 1 starts at s = 10, and its lanes at 0.
+        assert_eq!(
+            covered(0),
+            [
+                ((0, 1), 5.0, 10.0),
+                ((0, -1), 5.0, 10.0),
+                ((0, -2), 5.0, 10.0),
+                ((1, 1), 0.0, 5.0),
+                ((1, -1), 0.0, 5.0),
+                ((1, -2), 0.0, 5.0),
+            ]
+        );
+        assert_eq!(covered(1), [((1, -2), 2.0, 5.0)]);
     }
 
     fn objects_of(xml: &str) -> Vec<Object> {

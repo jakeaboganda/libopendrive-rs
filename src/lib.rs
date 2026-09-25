@@ -66,7 +66,9 @@
 //! | `<laneLink>` | `from`, `to` |
 //! | `<objects><object>` | `id`, `type`, `subtype`, `name`, `dynamic`, `orientation`, `validLength`, `s`, `t`, `zOffset`, `hdg`, `pitch`, `roll`, `length`, `width`, `height`, `radius` |
 //! | `<objects><objectReference>` | `id`, `s`, `t`, `zOffset`, `orientation`, `validLength` |
-//! | `<object><validity>`, `<objectReference><validity>` | `fromLane`, `toLane` |
+//! | `<objects><tunnel>` | `id`, `name`, `type`, `s`, `length`, `lighting`, `daylight` |
+//! | `<objects><bridge>` | `id`, `name`, `type`, `s`, `length` |
+//! | `<validity>`, under `<object>`, `<objectReference>`, `<tunnel>` and `<bridge>` | `fromLane`, `toLane` |
 //! | `<object><parkingSpace>` | `access`, `restrictions` |
 //! | `<object><material>` | `surface`, `friction`, `roughness` |
 //! | `<object><userData>` | `code`, `value` |
@@ -141,15 +143,24 @@
 //! [`ObjectProvenance`], from [`load_str_with_provenance`] or
 //! [`load_file_with_provenance`], the same way [`LaneProvenance`] names a
 //! lane's road. For a referenced object, those are the reference's, and
-//! [`ObjectProvenance::referenced_from`] names the road the original is on. [`RoadNetwork::object_mesh`] tessellates them all.
+//! [`ObjectProvenance::referenced_from`] names the road the original is on.
+//! [`RoadNetwork::object_mesh`] tessellates them all.
+//!
+//! Each `<tunnel>` and `<bridge>` bakes to a [`Structure`] with no geometry,
+//! since OpenDRIVE describes neither a tube nor a deck. It covers the lanes
+//! alongside its `length` metres of road from `s`, or those its
+//! `<validity>`s name, and a [`Coverage`] says how far along each lane.
+//! [`RoadNetwork::structures_over`] answers whether a lane runs through a
+//! tunnel or over a bridge. The road id, id, `s` and `length` are in its
+//! [`StructureProvenance`].
 //!
 //! # What the importer ignores
 //!
 //! Everything else in the file, silently. That includes `<geoReference>`,
 //! `<signals>`, `<roadMark>`, `<controller>`, `<junctionGroup>`,
 //! `<station>`, and road `<type>` with its `<speed>`. Among objects, that
-//! means `<tunnel>`, `<bridge>`, and an outline's `outer`, so an outline
-//! meant as a hole bakes as a solid.
+//! means an outline's `outer`, so an outline meant as a hole bakes as a
+//! solid.
 //!
 //! Three omissions change the road you get back, rather than only dropping
 //! detail around it:
@@ -215,6 +226,7 @@ mod object;
 mod object_mesh;
 mod parse;
 mod route;
+mod structure;
 
 #[cfg(test)]
 mod fixtures;
@@ -231,5 +243,6 @@ pub use object::{
 pub use object_mesh::ObjectSpan;
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ImportError,
-    LaneProvenance, ObjectProvenance, Orientation, Provenance,
+    LaneProvenance, ObjectProvenance, Orientation, Provenance, StructureProvenance,
 };
+pub use structure::{Coverage, Structure, StructureId, StructureKind};

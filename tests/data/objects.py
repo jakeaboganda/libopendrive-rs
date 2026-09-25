@@ -7,8 +7,8 @@ Road 0 is a 100 m left arc of radius 200 m starting at the origin heading +X,
 climbing at 2 %. Road 1 is a flat 60 m straight from (0, -40) heading +X. So
 every placement has a closed form to check against.
 
-scenariogeneration has no `<objectReference>` and no `<borders>`, so those
-are added to its output afterwards, as text.
+scenariogeneration has no `<objectReference>`, `<borders>` or `<bridge>`, so
+those are added to its output afterwards, as text.
 """
 
 from pathlib import Path
@@ -123,6 +123,10 @@ for id, s, access, restrictions in [("13", 26, xodr.Access.handicapped, None),
     bay.add_parking_space(xodr.ParkingSpace(access, restrictions))
     road.add_object(bay)
 
+# A tunnel over the last 25 m of the arc, both lanes.
+road.add_tunnel(xodr.Tunnel(s=75, length=25, id="20", name="Hill",
+                            tunnel_type=xodr.TunnelType.standard, daylight=0.1, lighting=0.8))
+
 straight = xodr.create_road(xodr.Line(60), id=1, left_lanes=1, right_lanes=1)
 straight.planview.set_start_point(0, -40, 0)
 
@@ -175,6 +179,11 @@ def reference(attrs, children):
             "\n            </objectReference>")
 
 
+# And a bridge carries road 1's lane -1 over s = 40..55.
+bridge = """
+            <bridge s="40" length="15" name="Creek" id="21" type="concrete">
+                <validity fromLane="-1" toLane="-1"/>
+            </bridge>"""
 xml = insert(xml, '<road rule="RHT" id="1"', "</lanes>", "\n        <objects>" + "".join(
-    reference(*r) for r in references) + "\n        </objects>")
+    reference(*r) for r in references) + bridge + "\n        </objects>")
 out.write_text(xml)

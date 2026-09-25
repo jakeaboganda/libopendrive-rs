@@ -60,18 +60,32 @@ one `Material` per `<material>`: its `surface`, `friction` and `roughness`.
 `Object::user_data` keeps each `<userData>` as a `UserData` of its `code`
 and `value` text.
 
-These placements follow libOpenDRIVE. Not imported yet: `<tunnel>`,
-`<bridge>`, and an outline's `outer` flag, so a hole bakes as a solid.
+These placements follow libOpenDRIVE. Not imported yet: an outline's `outer`
+flag, so a hole bakes as a solid.
 
-- The `serde` form of `RoadNetwork` is now `{ "lanes": [...], "objects": [...] }`
-  rather than a bare lane array. JSON written by 0.1.1 does not load.
+- The `serde` form of `RoadNetwork` is now
+  `{ "lanes": [...], "objects": [...], "structures": [...] }` rather than a
+  bare lane array. JSON written by 0.1.1 does not load.
 - `From<RoadNetwork> for Vec<Lane>` is gone, since it would drop the objects.
   Read `lanes()` instead.
 - `Mesh` has a new `objects` field, so a `Mesh` literal needs it or
   `..Default::default()`.
 - `load_str_with_provenance` and `load_file_with_provenance` return a
-  `Provenance`, with the lane records in `lanes` and the object records in
-  `objects`, instead of a `Vec<LaneProvenance>`.
+  `Provenance`, with the lane records in `lanes`, the object records in
+  `objects` and the structure records in `structures`, instead of a
+  `Vec<LaneProvenance>`.
+
+### Tunnels and bridges
+
+Each `<tunnel>` and `<bridge>` bakes to a `Structure` on
+`RoadNetwork::structures`, with a `StructureId`, its name, and a
+`StructureKind`: a tunnel with its type, lighting and daylight, or a bridge
+with its type. It has no geometry, since OpenDRIVE describes neither a tube
+nor a deck. Instead it lists the lanes it covers, alongside its stretch of
+road or narrowed by its `<validity>`, each as a `Coverage` of how far along
+the lane it starts and ends. `RoadNetwork::structures_over` gives the
+structures over one lane. The road id, id, `s` and `length` are in a
+`StructureProvenance`.
 
 ## 0.1.1 - 2026-09-23
 

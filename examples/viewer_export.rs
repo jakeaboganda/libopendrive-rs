@@ -15,7 +15,8 @@
 //! would). Each object entry is its type, name, and shape: a pose and extent
 //! for a solid, or world-space corners for an outline or a sweep. The object
 //! mesh from [`RoadNetwork::object_mesh`] comes too, in the same flat buffers
-//! with each object's slice of it.
+//! with each object's slice of it. A structure table lists the tunnels and
+//! bridges, each with the stretch of every lane it covers.
 //!
 //! Lane boundaries are not exported. They are already in the mesh: a lane's
 //! vertex range alternates left and right rib, which is what the viewer draws
@@ -27,7 +28,8 @@ use std::process::ExitCode;
 
 use libopendrive::{
     load_file_with_provenance, Corner, Direction, Extent, LaneProvenance, LaneSpan, Marking, Mesh,
-    Object, ObjectProvenance, Orientation, Point, Provenance, RoadNetwork, Shape,
+    Object, ObjectProvenance, Orientation, Point, Provenance, RoadNetwork, Shape, Structure,
+    StructureKind, StructureProvenance,
 };
 use serde_json::{json, Map, Value};
 
@@ -97,6 +99,17 @@ fn build_scene(
         .map(|o| object_entry(o, provenance.objects.iter().find(|p| p.object == o.id)))
         .collect();
 
+    let structures: Vec<Value> = net
+        .structures()
+        .iter()
+        .map(|s| {
+            structure_entry(
+                s,
+                provenance.structures.iter().find(|p| p.structure == s.id),
+            )
+        })
+        .collect();
+
     let mut object_buffers = buffers(object_mesh);
     object_buffers["spans"] = object_mesh
         .objects
@@ -116,6 +129,7 @@ fn build_scene(
         "lanes": lanes,
         "objects": objects,
         "objectMesh": object_buffers,
+        "structures": structures,
     })
 }
 
@@ -221,6 +235,37 @@ fn object_entry(object: &Object, prov: Option<&ObjectProvenance>) -> Value {
         "validLength": prov.and_then(|p| p.valid_length),
         "referencedFrom": prov.and_then(|p| p.referenced_from.as_deref()),
         "shape": shape,
+    })
+}
+
+/// One tunnel's or bridge's viewer record: what it is, its OpenDRIVE
+/// provenance, and the part of each lane it covers, in metres along the
+/// lane's centerline.
+fn structure_entry(s: &Structure, prov: Option<&StructureProvenance>) -> Value {
+    let (kind, type_, lighting, daylight) = match &s.kind {
+        StructureKind::Tunnel {
+            kind,
+            lighting,
+            daylight,
+        } => ("tunnel", kind, *lighting, *daylight),
+        StructureKind::Bridge { kind } => ("bridge", kind, None, None),
+    };
+    json!({
+        "structureId": s.id.0,
+        "kind": kind,
+        "name": s.name,
+        "type": type_,
+        "lighting": lighting,
+        "daylight": daylight,
+        "roadId": prov.map(|p| p.road_id.as_str()),
+        "odId": prov.map(|p| p.od_id.as_str()),
+        "s": prov.map(|p| p.s),
+        "length": prov.map(|p| p.length),
+        "lanes": s
+            .lanes
+            .iter()
+            .map(|c| json!({ "laneId": c.lane.0, "from": c.from, "to": c.to }))
+            .collect::<Vec<_>>(),
     })
 }
 

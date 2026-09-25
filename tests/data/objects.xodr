@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <OpenDRIVE>
-    <header name="objects" revMajor="1" revMinor="5" date="2026-09-25 22:55:28.532938" north="0.0" south="0.0" east="0.0" west="0.0"/>
+    <header name="objects" revMajor="1" revMinor="5" date="2026-09-25 23:08:31.182775" north="0.0" south="0.0" east="0.0" west="0.0"/>
     <road rule="RHT" id="0" junction="-1" length="100.0">
         <link/>
         <planView>
@@ -119,6 +119,7 @@
             <object id="14" s="32" t="-9" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" width="2.5" height="0" type="parkingSpace" orientation="none" hdg="1.5708" length="5.5">
                 <parkingSpace access="all" restrictions="2 hours"/>
             </object>
+            <tunnel s="75" length="25" id="20" name="Hill" type="standard" daylight="0.1" lighting="0.8"/>
         </objects>
     </road>
     <road rule="RHT" id="1" junction="-1" length="60">
@@ -161,6 +162,9 @@
             <objectReference id="8" s="30" t="8"/>
             <objectReference id="9" s="20" t="12"/>
             <objectReference id="99" s="40" t="0"/>
+            <bridge s="40" length="15" name="Creek" id="21" type="concrete">
+                <validity fromLane="-1" toLane="-1"/>
+            </bridge>
         </objects>
     </road>
 </OpenDRIVE>

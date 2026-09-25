@@ -5,6 +5,7 @@ use crate::coords::Point;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
 use crate::object::{Object, ObjectId};
+use crate::structure::{Coverage, Structure, StructureId};
 
 /// An opaque lane identifier. **Not** a vector index into `RoadNetwork.lanes`.
 /// An importer may assign arbitrary ids, such as OpenDRIVE lane keys, so look
@@ -228,7 +229,7 @@ pub struct Lane {
 /// to go stale. A map that changed under its own index would answer
 /// `nearest_lane` with a lane that is no longer there.
 ///
-/// Serializes as its lanes and objects; the index is rebuilt on the way back
+/// Serializes as its lanes, objects and structures; the index is rebuilt on the way back
 /// in, so a network that crossed a process boundary is indistinguishable from
 /// one that was just imported.
 #[derive(Debug, Clone, Default)]
@@ -240,17 +241,20 @@ pub struct Lane {
 pub struct RoadNetwork {
     lanes: Vec<Lane>,
     objects: Vec<Object>,
+    structures: Vec<Structure>,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
     /// [`Self::nearest_lane`]. Derived from `lanes`, so it takes no part in
     /// equality.
     index: LaneIndex,
 }
 
-/// Two networks are equal when their lanes and objects are; the index is a
-/// function of the lanes.
+/// Two networks are equal when their lanes, objects and structures are; the
+/// index is a function of the lanes.
 impl PartialEq for RoadNetwork {
     fn eq(&self, other: &Self) -> bool {
-        self.lanes == other.lanes && self.objects == other.objects
+        self.lanes == other.lanes
+            && self.objects == other.objects
+            && self.structures == other.structures
     }
 }
 
@@ -260,12 +264,15 @@ impl PartialEq for RoadNetwork {
 struct NetworkData {
     lanes: Vec<Lane>,
     objects: Vec<Object>,
+    structures: Vec<Structure>,
 }
 
 #[cfg(feature = "serde")]
 impl From<NetworkData> for RoadNetwork {
     fn from(data: NetworkData) -> Self {
-        Self::new(data.lanes).with_objects(data.objects)
+        Self::new(data.lanes)
+            .with_objects(data.objects)
+            .with_structures(data.structures)
     }
 }
 
@@ -275,6 +282,7 @@ impl From<RoadNetwork> for NetworkData {
         Self {
             lanes: net.lanes,
             objects: net.objects,
+            structures: net.structures,
         }
     }
 }
@@ -371,6 +379,7 @@ impl RoadNetwork {
         Self {
             lanes,
             objects: Vec::new(),
+            structures: Vec::new(),
             index,
         }
     }
@@ -379,6 +388,37 @@ impl RoadNetwork {
     pub fn with_objects(mut self, objects: Vec<Object>) -> Self {
         self.objects = objects;
         self
+    }
+
+    /// This network with `structures` over its lanes, replacing any it had.
+    pub fn with_structures(mut self, structures: Vec<Structure>) -> Self {
+        self.structures = structures;
+        self
+    }
+
+    /// Every tunnel and bridge, in the order the importer emitted them.
+    pub fn structures(&self) -> &[Structure] {
+        &self.structures
+    }
+
+    /// The structure with this id, by identity (not position), the same way
+    /// as [`Self::lane`].
+    pub fn structure(&self, id: StructureId) -> Option<&Structure> {
+        match self.structures.get(id.0) {
+            Some(structure) if structure.id == id => Some(structure),
+            _ => self.structures.iter().find(|s| s.id == id),
+        }
+    }
+
+    /// Every structure over `lane`, with the part of the lane it covers:
+    /// whether a lane runs through a tunnel or over a bridge, and where.
+    pub fn structures_over(&self, lane: LaneId) -> impl Iterator<Item = (&Structure, &Coverage)> {
+        self.structures.iter().flat_map(move |s| {
+            s.lanes
+                .iter()
+                .filter(move |c| c.lane == lane)
+                .map(move |c| (s, c))
+        })
     }
 
     /// Every lane, in the order the importer emitted them. Positions are not
