@@ -69,6 +69,7 @@
 //! | `<object><validity>`, `<objectReference><validity>` | `fromLane`, `toLane` |
 //! | `<object><parkingSpace>` | `access`, `restrictions` |
 //! | `<object><material>` | `surface`, `friction`, `roughness` |
+//! | `<object><userData>` | `code`, `value` |
 //! | `<object><repeat>` | `s`, `length`, `distance`, and the `Start`/`End` pair of `t`, `zOffset`, `length`, `width`, `height`, `radius` |
 //! | `<outlines><outline>` | `id`, `closed` |
 //! | `<cornerRoad>` | `id`, `s`, `t`, `dz`, `height` |
@@ -125,7 +126,9 @@
 //! on a side of an object's box, is skipped.
 //!
 //! An object's `<parkingSpace>` becomes its [`ParkingSpace`], and each
-//! `<material>` one of its [`Material`]s.
+//! `<material>` one of its [`Material`]s. Each `<userData>` is a
+//! [`UserData`] of its `code` and `value`. Any XML nested inside one is not
+//! kept.
 //!
 //! A `<border>` becomes a [`Border`] on the outline its `outlineId` names, or
 //! on each that fits it if it names none: a band `width` across, centred on
@@ -223,7 +226,7 @@ pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};
 pub use network::{Direction, Lane, LaneId, LaneType, RoadNetwork};
 pub use object::{
     Border, Corner, Extent, Marking, Material, Object, ObjectId, ObjectType, ParkingSpace, Section,
-    Shape,
+    Shape, UserData,
 };
 pub use object_mesh::ObjectSpan;
 pub use parse::{

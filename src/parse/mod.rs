@@ -14,7 +14,7 @@ use crate::coords::{Point, Vector};
 use crate::object::orient;
 use crate::{
     Border, Corner, Direction, Extent, Lane, LaneId, LaneType, Marking, Material, Object, ObjectId,
-    ObjectType, ParkingSpace, Polyline, RoadNetwork, Section, Shape,
+    ObjectType, ParkingSpace, Polyline, RoadNetwork, Section, Shape, UserData,
 };
 
 mod links;
@@ -1299,6 +1299,17 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
             roughness: attr_f64(m, "roughness").map(|v| v as f32),
         })
         .collect();
+    let user_data: Vec<UserData> = node
+        .children()
+        .filter(|n| n.has_tag_name("userData"))
+        .map(|u| {
+            let text = |name| u.attribute(name).unwrap_or_default().to_string();
+            UserData {
+                code: text("code"),
+                value: text("value"),
+            }
+        })
+        .collect();
     for part in parts {
         let id = ObjectId(out.baked.len());
         out.baked.push(Object {
@@ -1312,6 +1323,7 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
             borders: part.borders,
             parking_space: parking_space.clone(),
             materials: materials.clone(),
+            user_data: user_data.clone(),
             shape: part.shape,
         });
         out.provenance.push(ObjectProvenance {

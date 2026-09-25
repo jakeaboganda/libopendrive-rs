@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <OpenDRIVE>
-    <header name="objects" revMajor="1" revMinor="5" date="2026-09-25 22:47:56.003294" north="0.0" south="0.0" east="0.0" west="0.0"/>
+    <header name="objects" revMajor="1" revMinor="5" date="2026-09-25 22:55:28.532938" north="0.0" south="0.0" east="0.0" west="0.0"/>
     <road rule="RHT" id="0" junction="-1" length="100.0">
         <link/>
         <planView>
@@ -94,6 +94,8 @@
                 <material friction="0.6" surface="asphalt"/>
             </object>
             <object id="12" s="67" t="0" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" name="Island" type="trafficIsland" orientation="none" hdg="0">
+                <userData code="builder" value="county roads"/>
+                <userData code="inspected" value="2026-04"/>
                 <outlines>
                     <outline closed="true" id="0">
                         <cornerRoad s="64" t="-1" dz="0" height="0.15" id="0"/>

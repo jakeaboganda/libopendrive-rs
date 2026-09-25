@@ -57,6 +57,8 @@ name otherwise.
 `Object::parking_space` is set from a `<parkingSpace>`: its `access`, such
 as `handicapped`, and its free-text `restrictions`. `Object::materials` has
 one `Material` per `<material>`: its `surface`, `friction` and `roughness`.
+`Object::user_data` keeps each `<userData>` as a `UserData` of its `code`
+and `value` text.
 
 These placements follow libOpenDRIVE. Not imported yet: `<tunnel>`,
 `<bridge>`, and an outline's `outer` flag, so a hole bakes as a solid.

@@ -9,7 +9,7 @@
 
 use libopendrive::{
     load_file, load_file_with_provenance, Corner, Extent, Marking, Material, Object, ObjectId,
-    ObjectType, Orientation, ParkingSpace, Point, Section, Shape, Vector,
+    ObjectType, Orientation, ParkingSpace, Point, Section, Shape, UserData, Vector,
 };
 
 const OBJECTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/objects.xodr");
@@ -697,6 +697,26 @@ fn an_object_keeps_what_its_surface_is_made_of() {
         }]
     );
     assert_eq!(of(ObjectType::Tree), []);
+}
+
+#[test]
+fn an_object_keeps_its_user_data_as_text() {
+    let island = objects()
+        .into_iter()
+        .find(|o| o.kind == ObjectType::TrafficIsland)
+        .expect("the island");
+    let pair = |code: &str, value: &str| UserData {
+        code: code.into(),
+        value: value.into(),
+    };
+    assert_eq!(
+        island.user_data,
+        [
+            pair("builder", "county roads"),
+            pair("inspected", "2026-04")
+        ]
+    );
+    assert!(objects()[0].user_data.is_empty());
 }
 
 #[test]

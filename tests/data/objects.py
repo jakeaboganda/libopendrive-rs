@@ -110,6 +110,8 @@ for id, (s, t) in enumerate([(64, -1), (70, -1), (70, 1), (64, 1)]):
     kerb.add_corner(xodr.CornerRoad(s, t, 0, 0.15, id=id))
 island.add_outline(kerb)
 island.add_material(surface="concrete", friction=0.7, roughness=0.02)
+island.add_userdata(xodr.UserData("builder", "county roads"))
+island.add_userdata(xodr.UserData("inspected", "2026-04"))
 road.add_object(island)
 
 # Two flat parking bays beside the road, one kept for disabled drivers and

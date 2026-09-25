@@ -254,6 +254,16 @@ pub struct Material {
     pub roughness: Option<f32>,
 }
 
+/// One piece of vendor data a map attaches to an object, kept as text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct UserData {
+    /// What the data is, in the vendor's own terms.
+    pub code: String,
+    /// The data. Empty if the map gives no value.
+    pub value: String,
+}
+
 /// One object in the world.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -286,6 +296,8 @@ pub struct Object {
     /// What its surface is made of, in the order the map gives them. Usually
     /// one, or none.
     pub materials: Vec<Material>,
+    /// Vendor data the map attaches to the object, in the order it gives it.
+    pub user_data: Vec<UserData>,
     /// Where it is and what it fills.
     pub shape: Shape,
 }

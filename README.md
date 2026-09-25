@@ -63,7 +63,7 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   stripes, arrives as painted pieces along the edges it names, and a
   `<border>`, such as a kerb, as a band along them. A parking space says
   who may park there, and a `<material>` what an object's surface is made
-  of. Each object
+  of. `<userData>` pairs are kept as text. Each object
   has a subtype, whether it moves, the lanes it applies to from its
   `<validity>`, and an id to look it up by. Its road, OpenDRIVE id, `(s, t)`, orientation and valid
   length come from `load_*_with_provenance`, as a lane's road and id do.

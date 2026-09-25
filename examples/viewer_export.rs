@@ -131,7 +131,8 @@ fn buffers(mesh: &Mesh) -> Value {
 /// One object's viewer record: its identity, OpenDRIVE provenance, and
 /// shape. `lanes` is the `LaneId`s it applies to, `markings` its paint, and
 /// `borders` the bands along its edges. `parkingSpace` is null unless the
-/// object is one. `materials` lists what its surface is made of. `referencedFrom` is the road of the `<object>` an
+/// object is one. `materials` lists what its surface is made of, and
+/// `userData` its vendor data. `referencedFrom` is the road of the `<object>` an
 /// `<objectReference>` placed again, and null otherwise. A `solid`
 /// carries a pose, angles in radians applied yaw, then pitch, then roll, and
 /// an `extent` that is null for an object the map gives no size. An
@@ -201,6 +202,11 @@ fn object_entry(object: &Object, prov: Option<&ObjectProvenance>) -> Value {
             .materials
             .iter()
             .map(|m| json!({ "surface": m.surface, "friction": m.friction, "roughness": m.roughness }))
+            .collect::<Vec<_>>(),
+        "userData": object
+            .user_data
+            .iter()
+            .map(|u| json!({ "code": u.code, "value": u.value }))
             .collect::<Vec<_>>(),
         "borders": object
             .borders
