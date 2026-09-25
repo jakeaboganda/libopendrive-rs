@@ -1,7 +1,8 @@
 # OpenDRIVE viewer
 
-A three.js viewer for a map baked by `libopendrive`. Hover a lane to read its
-coordinates, browse roads and lanes in the sidebar, and filter them by id.
+A three.js viewer for a map baked by `libopendrive`. Hover a lane or an object
+to read its coordinates, browse roads and lanes in the sidebar, and filter them
+by id.
 
 It has two parts: a Rust exporter (`examples/viewer_export.rs`) that bakes an
 `.xodr` into `web/scene.json`, and a static page (`web/index.html`) that renders
@@ -22,6 +23,8 @@ cd viewer/web && python3 -m http.server 8000
 ```
 
 Load a different scene without renaming it: `?scene=e6mini.json`.
+`tests/data/objects.xodr` is a small map that shows every kind of object the
+viewer draws.
 
 ## What you get
 
@@ -32,9 +35,14 @@ Load a different scene without renaming it: `?scene=e6mini.json`.
 - **Overlays**, each its own toggle: lane **centerlines** in green, lane
   **boundaries** in cream, and **normals** as a hair at every mesh vertex.
   `[n]` toggles normals, `[w]` cycles the wireframe.
+- **Objects** drawn where the crate places them, coloured by type: a box or a
+  cylinder when the map gives the object a size, and a small diamond marker
+  when it does not. Hover one for its type, name, position, heading, pitch,
+  roll, and size. `[o]` toggles them.
 - **Lane-type colour** on the surface itself, with a legend of the types this
-  map contains. A type the crate knows but this page has no colour for shows
-  up magenta, so it is obvious rather than silently drawn as a driving lane.
+  map contains, and of the object types beside it. A lane type the crate knows
+  but this page has no colour for shows up magenta, so it is obvious rather
+  than silently drawn as a driving lane. An unknown object type is cyan.
 - **Sidebar** lists every baked lane grouped by road, with its type. Click one
   to highlight and frame it.
 - **Search** filters the list by road id, lane id, or lane type.

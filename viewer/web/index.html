@@ -31,6 +31,7 @@
   #legend { padding: 8px 12px; border-top: 1px solid #2a2f3a; display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: #8fa1b3; }
   #legend span { display: flex; align-items: center; gap: 4px; }
   .swatch { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  #legend .heading { flex-basis: 100%; color: #7c8595; margin-top: 2px; }
   #tools label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
   #tools select { background: #1b1f27; color: inherit; border: 1px solid #2a2f3a; border-radius: 4px; padding: 2px 4px; }
   #flagcount { color: #e88; font-variant-numeric: tabular-nums; }
@@ -62,9 +63,10 @@
       <label><input type="checkbox" id="centerlines"> centerlines</label>
       <label><input type="checkbox" id="boundaries"> boundaries</label>
       <label><input type="checkbox" id="normals"> normals</label>
+      <label><input type="checkbox" id="objects" checked> objects</label>
       <label><input type="checkbox" id="flag"> flag bad tris <span id="flagcount"></span></label>
     </div>
-    <div id="hint">drag: orbit · scroll: zoom · right-drag: pan · [w] cycles wireframe · [n] toggles normals · hover a lane for coordinates</div>
+    <div id="hint">drag: orbit · scroll: zoom · right-drag: pan · [w] cycles wireframe · [n] toggles normals · [o] toggles objects · hover a lane or object for coordinates</div>
     <div id="err"></div>
   </div>
 </div>
@@ -108,6 +110,24 @@ const LANE_COLORS = {
 };
 const FALLBACK_COLOR = 0xc026d3;
 
+// Object colour per type, keyed by the crate's `ObjectType::as_str`. Brighter
+// and more saturated than the lanes, so an object stands out from the road it
+// sits on. `unknown` falls through to OBJECT_FALLBACK_COLOR, which is where
+// vendor types such as esmini's guide posts land.
+const OBJECT_COLORS = {
+  'none': 0xb0b4bc, 'obstacle': 0xff8c42, 'pole': 0xe0e0e0, 'tree': 0x3fbf5f,
+  'vegetation': 0x6fd08c, 'barrier': 0xd9d9a0, 'building': 0xc9a27e, 'parking-space': 0x5b8cff,
+  'patch': 0x8a6f5a, 'railing': 0xcfd8dc, 'traffic-island': 0x9ccc65, 'crosswalk': 0xffffff,
+  'street-lamp': 0xffe066, 'gantry': 0x90a4ae, 'sound-barrier': 0xa1887f, 'road-mark': 0xfff59d,
+};
+const OBJECT_FALLBACK_COLOR = 0x22d3ee;
+
+// Size in metres of the marker drawn for an object with no extent, and the
+// least height a drawn box or cylinder gets. A flat footprint such as a
+// parking bay has a height of 0, and at 0 it would z-fight with the road.
+const MARKER_SIZE = 0.4;
+const MIN_OBJECT_HEIGHT = 0.02;
+
 // Length in metres of a drawn normal hair. Road scale, so it reads against a
 // lane without burying it.
 const NORMAL_LENGTH = 0.6;
@@ -115,6 +135,9 @@ const NORMAL_LENGTH = 0.6;
 let scene, camera, renderer, controls, raycaster;
 let roadMesh, wireMesh, badMesh, highlight, highlightLine;
 let centerlineMesh, boundaryMesh, normalMesh;
+let objectMeshes = [];       // one InstancedMesh per shape; userData.objects[instanceId] is the record
+let objectOutline;           // edges of the hovered object
+let objects = [];
 let lanes = [];              // enriched lane records
 let spanIndex = [];          // {start,end,lane} sorted by index-range start, for picking
 let laneById = new Map();
@@ -155,12 +178,13 @@ async function init() {
   buildMesh(data);
   buildLanes(data);
   buildOverlays(data);
+  buildObjects(data);
   buildSidebar();
   buildLegend();
   frameOn(roadMesh);
 
   applyMode();
-  for (const id of ['mode', 'flag', 'centerlines', 'boundaries', 'normals']) {
+  for (const id of ['mode', 'flag', 'centerlines', 'boundaries', 'normals', 'objects']) {
     document.getElementById(id).addEventListener('change', applyMode);
   }
 
@@ -175,8 +199,8 @@ async function init() {
       const order = ['solid', 'wire', 'both'];
       sel.value = order[(order.indexOf(sel.value) + 1) % order.length];
       applyMode();
-    } else if (e.key === 'n') {
-      const box = document.getElementById('normals');
+    } else if (e.key === 'n' || e.key === 'o') {
+      const box = document.getElementById(e.key === 'n' ? 'normals' : 'objects');
       box.checked = !box.checked;
       applyMode();
     }
@@ -345,6 +369,8 @@ function applyMode() {
   centerlineMesh.visible = on('centerlines');
   boundaryMesh.visible = on('boundaries');
   normalMesh.visible = on('normals');
+  for (const m of objectMeshes) m.visible = on('objects');
+  if (!on('objects')) objectOutline.visible = false;
   badMesh.visible = on('flag');
   const n = badMesh.userData.count;
   document.getElementById('flagcount').textContent = on('flag') ? `(${n})` : '';
@@ -366,6 +392,54 @@ function buildLanes(data) {
     .sort((a, b) => a.start - b.start);
 }
 
+// --- Objects -----------------------------------------------------------------
+
+// Every object as an instance of one of three unit shapes: a box, an upright
+// cylinder, or a marker for an object with no extent. Three draw calls
+// however many objects, so a highway lined with posts stays cheap. Each unit
+// shape stands on its origin, which is where the crate puts an object's base.
+function buildObjects(data) {
+  objects = data.objects ?? [];
+  const box = new THREE.BoxGeometry(1, 1, 1).translate(0, 0, 0.5);
+  const cylinder = new THREE.CylinderGeometry(1, 1, 1, 16).rotateX(Math.PI / 2).translate(0, 0, 0.5);
+  const marker = new THREE.OctahedronGeometry(MARKER_SIZE / 2).translate(0, 0, MARKER_SIZE / 2);
+  const shapes = { box: [], cylinder: [], marker: [] };
+  for (const o of objects) shapes[o.extent ? o.extent.shape : 'marker'].push(o);
+
+  const geometries = { box, cylinder, marker };
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color();
+  // Yaw about Z, then pitch about the turned Y, then roll about the turned X.
+  const euler = new THREE.Euler(0, 0, 0, 'ZYX');
+  const pos = new THREE.Vector3(), scale = new THREE.Vector3();
+  for (const [shape, list] of Object.entries(shapes)) {
+    if (!list.length) continue;
+    const mesh = new THREE.InstancedMesh(geometries[shape],
+      new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.0 }), list.length);
+    list.forEach((o, i) => {
+      const e = o.extent;
+      const h = e ? Math.max(e.height, MIN_OBJECT_HEIGHT) : 1;
+      if (shape === 'box') scale.set(e.length, e.width, h);
+      else if (shape === 'cylinder') scale.set(e.radius, e.radius, h);
+      else scale.set(1, 1, 1);
+      euler.set(o.roll, o.pitch, o.heading);
+      m.compose(pos.fromArray(o.position), q.setFromEuler(euler), scale);
+      mesh.setMatrixAt(i, m);
+      mesh.setColorAt(i, c.setHex(OBJECT_COLORS[o.objectType] ?? OBJECT_FALLBACK_COLOR));
+    });
+    mesh.computeBoundingSphere();
+    mesh.userData = { objects: list, edges: new THREE.EdgesGeometry(geometries[shape]) };
+    scene.add(mesh);
+    objectMeshes.push(mesh);
+  }
+
+  objectOutline = new THREE.LineSegments(new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ color: 0xffd24a, depthTest: false }));
+  objectOutline.matrixAutoUpdate = false;
+  objectOutline.renderOrder = 4;
+  objectOutline.visible = false;
+  scene.add(objectOutline);
+}
+
 // --- Sidebar -----------------------------------------------------------------
 
 function buildSidebar() { renderSidebar(); }
@@ -373,14 +447,22 @@ function buildSidebar() { renderSidebar(); }
 // Swatches for the lane types this map actually contains, so the legend names
 // what is on screen rather than every type the crate knows about.
 function buildLegend() {
-  const present = [...new Set(lanes.map(l => l.laneType))].sort();
   const frag = document.createDocumentFragment();
-  for (const type of present) {
-    const hex = (LANE_COLORS[type] ?? FALLBACK_COLOR).toString(16).padStart(6, '0');
-    const el = document.createElement('span');
-    el.innerHTML = `<i class="swatch" style="background:#${hex}"></i>${type}`;
-    frag.appendChild(el);
-  }
+  const group = (heading, types, colors, fallback) => {
+    if (!types.length) return;
+    const h = document.createElement('span');
+    h.className = 'heading';
+    h.textContent = heading;
+    frag.appendChild(h);
+    for (const type of [...new Set(types)].sort()) {
+      const hex = (colors[type] ?? fallback).toString(16).padStart(6, '0');
+      const el = document.createElement('span');
+      el.innerHTML = `<i class="swatch" style="background:#${hex}"></i>${type}`;
+      frag.appendChild(el);
+    }
+  };
+  group('lanes', lanes.map(l => l.laneType), LANE_COLORS, FALLBACK_COLOR);
+  group('objects', objects.map(o => o.objectType), OBJECT_COLORS, OBJECT_FALLBACK_COLOR);
   document.getElementById('legend').replaceChildren(frag);
 }
 
@@ -399,7 +481,7 @@ function renderSidebar() {
     if (!byRoad.has(l.roadId)) byRoad.set(l.roadId, []);
     byRoad.get(l.roadId).push(l);
   }
-  countEl.textContent = `${shown} / ${lanes.length} lanes · ${byRoad.size} roads`;
+  countEl.textContent = `${shown} / ${lanes.length} lanes · ${byRoad.size} roads · ${objects.length} objects`;
 
   const frag = document.createDocumentFragment();
   for (const [road, group] of byRoad) {
@@ -428,8 +510,14 @@ function onHover(ev) {
     ((ev.clientX - rect.left) / rect.width) * 2 - 1,
     -((ev.clientY - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
-  const hit = raycaster.intersectObject(roadMesh, false)[0];
+  const pickable = [roadMesh, ...objectMeshes.filter(m => m.visible)];
+  const hit = raycaster.intersectObjects(pickable, false)[0];
+  objectOutline.visible = false;
   if (!hit) { hideTip(); if (!activeLane) clearHighlight(); return; }
+  if (hit.object !== roadMesh) {
+    if (!activeLane) clearHighlight();
+    return showObjectTip(ev, rect, hit);
+  }
 
   const lane = laneForFace(hit.faceIndex);
   if (!lane) { hideTip(); return; }
@@ -453,6 +541,37 @@ function onHover(ev) {
   tip.style.left = (ev.clientX - rect.left + 14) + 'px';
   tip.style.top = (ev.clientY - rect.top + 14) + 'px';
   tip.innerHTML = rows.join('\n');
+}
+
+// The readout for a hovered object, and an outline around it.
+function showObjectTip(ev, rect, hit) {
+  const mesh = hit.object, o = mesh.userData.objects[hit.instanceId];
+  const m = new THREE.Matrix4();
+  mesh.getMatrixAt(hit.instanceId, m);
+  objectOutline.geometry = mesh.userData.edges;
+  objectOutline.matrix.copy(m);
+  objectOutline.visible = true;
+
+  const deg = r => (r * 180 / Math.PI).toFixed(1) + '°';
+  const [x, y, z] = o.position;
+  const e = o.extent;
+  const size = !e ? 'no extent'
+    : e.shape === 'box' ? `box ${e.length.toFixed(2)} × ${e.width.toFixed(2)} × ${e.height.toFixed(2)} m`
+    : `cylinder r ${e.radius.toFixed(2)} h ${e.height.toFixed(2)} m`;
+  const rows = [
+    `<b>${o.objectType}</b>${o.name ? '  ' + escapeHtml(o.name) : ''}`,
+    `x ${x.toFixed(2)}   y ${y.toFixed(2)}   z ${z.toFixed(2)}`,
+    `heading ${deg(o.heading)}   pitch ${deg(o.pitch)}   roll ${deg(o.roll)}`,
+    size,
+  ];
+  tip.style.display = 'block';
+  tip.style.left = (ev.clientX - rect.left + 14) + 'px';
+  tip.style.top = (ev.clientY - rect.top + 14) + 'px';
+  tip.innerHTML = rows.join('\n');
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 }
 
 function vec3(v) {

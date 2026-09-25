@@ -6,12 +6,14 @@
 //! ```
 //!
 //! The output is one object: a merged surface mesh (flat position/normal/index
-//! buffers, ready for a three.js `BufferGeometry`) and a per-lane table. Each
+//! buffers, ready for a three.js `BufferGeometry`), a per-lane table, and an
+//! object table. Each
 //! lane entry names the OpenDRIVE road, section, and lane id it came from, what
 //! the lane is for, the mesh slice it owns (so a picked triangle resolves to a
 //! lane), and its centerline with the heading at each point (so the viewer can
 //! project the cursor to `(s, t)` and read out the same heading the crate
-//! would).
+//! would). Each object entry is its type, name, world position, orientation,
+//! and extent, which is all the viewer needs to place a box or a cylinder.
 //!
 //! Lane boundaries are not exported. They are already in the mesh: a lane's
 //! vertex range alternates left and right rib, which is what the viewer draws
@@ -22,7 +24,8 @@ use std::fs;
 use std::process::ExitCode;
 
 use libopendrive::{
-    load_file_with_provenance, Direction, LaneProvenance, LaneSpan, Mesh, RoadNetwork,
+    load_file_with_provenance, Direction, Extent, LaneProvenance, LaneSpan, Mesh, Object,
+    RoadNetwork,
 };
 use serde_json::{json, Map, Value};
 
@@ -56,8 +59,9 @@ fn main() -> ExitCode {
     }
 
     eprintln!(
-        "wrote {output}: {} lanes, {} vertices, {} triangles ({} KiB)",
+        "wrote {output}: {} lanes, {} objects, {} vertices, {} triangles ({} KiB)",
         mesh.lanes.len(),
+        net.objects().len(),
         mesh.vertices.len(),
         mesh.indices.len() / 3,
         bytes.len() / 1024,
@@ -65,7 +69,8 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Assemble the viewer scene: bounds, flat mesh buffers, and the lane table.
+/// Assemble the viewer scene: flat mesh buffers, the lane table, and the
+/// object table.
 fn build_scene(net: &RoadNetwork, mesh: &Mesh, provenance: &[LaneProvenance]) -> Value {
     // Flatten positions and normals into the [x,y,z, x,y,z, ...] layout a
     // three.js Float32BufferAttribute takes directly.
@@ -83,11 +88,38 @@ fn build_scene(net: &RoadNetwork, mesh: &Mesh, provenance: &[LaneProvenance]) ->
         .iter()
         .map(|span| lane_entry(net, provenance, span))
         .collect();
+    let objects: Vec<Value> = net.objects().iter().map(object_entry).collect();
 
     json!({
         "meta": { "generator": "libopendrive viewer_export", "frame": "OpenDRIVE Z-up metres" },
         "mesh": { "positions": positions, "normals": normals, "indices": mesh.indices },
         "lanes": lanes,
+        "objects": objects,
+    })
+}
+
+/// One object's viewer record. Angles are radians, applied yaw, then pitch,
+/// then roll. `extent` is null for an object the map gives no size.
+fn object_entry(object: &Object) -> Value {
+    let extent = match object.extent {
+        Some(Extent::Box {
+            length,
+            width,
+            height,
+        }) => json!({ "shape": "box", "length": length, "width": width, "height": height }),
+        Some(Extent::Cylinder { radius, height }) => {
+            json!({ "shape": "cylinder", "radius": radius, "height": height })
+        }
+        None => Value::Null,
+    };
+    json!({
+        "objectType": object.kind.as_str(),
+        "name": object.name,
+        "position": object.position.to_array(),
+        "heading": object.heading,
+        "pitch": object.pitch,
+        "roll": object.roll,
+        "extent": extent,
     })
 }
 
