@@ -110,6 +110,15 @@ for id, (s, t) in enumerate([(64, -1), (70, -1), (70, 1), (64, 1)]):
 island.add_outline(kerb)
 road.add_object(island)
 
+# Two flat parking bays beside the road, one kept for disabled drivers and
+# one for anyone for two hours.
+for id, s, access, restrictions in [("13", 26, xodr.Access.handicapped, None),
+                                    ("14", 32, xodr.Access.all, "2 hours")]:
+    bay = xodr.Object(s=s, t=-9, Type=xodr.ObjectType.parkingSpace, id=id, length=5.5,
+                      width=2.5, height=0, hdg=1.5708)
+    bay.add_parking_space(xodr.ParkingSpace(access, restrictions))
+    road.add_object(bay)
+
 straight = xodr.create_road(xodr.Line(60), id=1, left_lanes=1, right_lanes=1)
 straight.planview.set_start_point(0, -40, 0)
 

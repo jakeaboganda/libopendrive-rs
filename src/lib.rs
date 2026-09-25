@@ -67,6 +67,7 @@
 //! | `<objects><object>` | `id`, `type`, `subtype`, `name`, `dynamic`, `orientation`, `validLength`, `s`, `t`, `zOffset`, `hdg`, `pitch`, `roll`, `length`, `width`, `height`, `radius` |
 //! | `<objects><objectReference>` | `id`, `s`, `t`, `zOffset`, `orientation`, `validLength` |
 //! | `<object><validity>`, `<objectReference><validity>` | `fromLane`, `toLane` |
+//! | `<object><parkingSpace>` | `access`, `restrictions` |
 //! | `<object><repeat>` | `s`, `length`, `distance`, and the `Start`/`End` pair of `t`, `zOffset`, `length`, `width`, `height`, `radius` |
 //! | `<outlines><outline>` | `id`, `closed` |
 //! | `<cornerRoad>` | `id`, `s`, `t`, `dz`, `height` |
@@ -121,6 +122,8 @@
 //! edges through those corners, cut into dashes by `lineLength` and
 //! `spaceLength`. A marking with no corner references, one that places paint
 //! on a side of an object's box, is skipped.
+//!
+//! An object's `<parkingSpace>` becomes its [`ParkingSpace`].
 //!
 //! A `<border>` becomes a [`Border`] on the outline its `outlineId` names, or
 //! on each that fits it if it names none: a band `width` across, centred on
@@ -216,7 +219,9 @@ pub use geometry::TooFewPoints;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
 pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};
 pub use network::{Direction, Lane, LaneId, LaneType, RoadNetwork};
-pub use object::{Border, Corner, Extent, Marking, Object, ObjectId, ObjectType, Section, Shape};
+pub use object::{
+    Border, Corner, Extent, Marking, Object, ObjectId, ObjectType, ParkingSpace, Section, Shape,
+};
 pub use object_mesh::ObjectSpan;
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ImportError,

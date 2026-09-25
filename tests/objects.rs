@@ -9,7 +9,7 @@
 
 use libopendrive::{
     load_file, load_file_with_provenance, Corner, Extent, Marking, Object, ObjectId, ObjectType,
-    Orientation, Point, Section, Shape, Vector,
+    Orientation, ParkingSpace, Point, Section, Shape, Vector,
 };
 
 const OBJECTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/objects.xodr");
@@ -359,9 +359,10 @@ fn an_outlined_object_has_no_solid_of_its_own() {
         .count();
     // Shed, tree, marker, guide post, gate, nine poles. The outlined house
     // and fence, and the swept railing and barrier, add no solid.
-    assert_eq!(solids, 5 + 9);
     // Plus two sweeps, and the house, fence, crosswalk and island outlines.
-    assert_eq!(objects().len(), 5 + 9 + 2 + 4);
+    // The two parking bays are solids too.
+    assert_eq!(solids, 5 + 9 + 2);
+    assert_eq!(objects().len(), 5 + 9 + 2 + 4 + 2);
 }
 
 #[test]
@@ -641,6 +642,32 @@ fn only_an_outline_carries_markings() {
         .iter()
         .filter(|o| o.kind != ObjectType::Crosswalk)
         .all(|o| o.markings.is_empty()));
+}
+
+#[test]
+fn a_parking_space_says_who_may_park_there() {
+    let bays: Vec<_> = objects()
+        .into_iter()
+        .filter(|o| o.kind == ObjectType::ParkingSpace)
+        .map(|o| o.parking_space.expect("a parking space"))
+        .collect();
+    assert_eq!(
+        bays,
+        [
+            ParkingSpace {
+                access: "handicapped".into(),
+                restrictions: "".into()
+            },
+            ParkingSpace {
+                access: "all".into(),
+                restrictions: "2 hours".into()
+            },
+        ]
+    );
+    assert!(objects()
+        .iter()
+        .filter(|o| o.kind != ObjectType::ParkingSpace)
+        .all(|o| o.parking_space.is_none()));
 }
 
 #[test]

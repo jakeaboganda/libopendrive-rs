@@ -42,7 +42,9 @@ viewer draws, and on its second road, objects placed by reference.
   crosswalk's stripes, are painted on in their own colour, dashed where the
   crate cut them into dashes. Borders, such as the kerb round a traffic
   island, are bands along the outline, coloured by type. Hover one for its
-  type and width. Hover an object for its type,
+  type and width. A parking space is coloured by who may park there, its
+  `access`, with its own legend group, and its readout adds its access and
+  restrictions. Hover an object for its type,
   subtype and name, its road, OpenDRIVE id, `s` and `t`, orientation, and
   valid length. The lanes it applies to light up, and the readout lists
   them by lane section and OpenDRIVE lane id. An object an `<objectReference>` placed draws the same as the

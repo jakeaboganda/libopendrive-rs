@@ -122,6 +122,21 @@ const OBJECT_COLORS = {
 };
 const OBJECT_FALLBACK_COLOR = 0x22d3ee;
 
+// Parking-space colour per `access`, which takes the place of the object
+// type's colour, so who may park where reads at a glance. An unlisted access
+// keeps the parking-space colour.
+const PARKING_COLORS = {
+  'all': 0x5b8cff, 'car': 0x90caf9, 'handicapped': 0x2962ff, 'electric': 0x00c853,
+  'bus': 0xffab00, 'truck': 0x8d6e63, 'residents': 0xab47bc, 'women': 0xf06292,
+};
+
+// An object's colour: its parking access if it is a parking space, else its
+// type.
+function objectColor(o) {
+  return (o.parkingSpace && PARKING_COLORS[o.parkingSpace.access])
+    ?? OBJECT_COLORS[o.objectType] ?? OBJECT_FALLBACK_COLOR;
+}
+
 // Paint colour per marking colour name, as the map spells it. `standard` is
 // the usual road-marking colour, which is white. An unlisted name falls
 // through to MARKING_FALLBACK_COLOR.
@@ -456,7 +471,7 @@ function buildSolids(solids) {
       euler.set(o.roll, o.pitch, o.heading);
       m.compose(pos.fromArray(o.position), q.setFromEuler(euler), scale);
       mesh.setMatrixAt(i, m);
-      mesh.setColorAt(i, c.setHex(OBJECT_COLORS[o.objectType] ?? OBJECT_FALLBACK_COLOR));
+      mesh.setColorAt(i, c.setHex(objectColor(o)));
     });
     mesh.computeBoundingSphere();
     const edges = new THREE.EdgesGeometry(geometries[shape]);
@@ -483,7 +498,7 @@ function buildShapes(data) {
   for (const span of om.spans) {
     const o = byId.get(span.objectId);
     if (!o || o.kind === 'solid') continue;
-    c.setHex(OBJECT_COLORS[o.objectType] ?? OBJECT_FALLBACK_COLOR);
+    c.setHex(objectColor(o));
     o.triangles = [owner.length, (span.indices[1] - span.indices[0]) / 3];
     for (let i = span.indices[0]; i < span.indices[1]; i++) {
       const v = om.indices[i] * 3;
@@ -611,12 +626,14 @@ function buildLegend() {
     for (const type of [...new Set(types)].sort()) {
       const hex = (colors[type] ?? fallback).toString(16).padStart(6, '0');
       const el = document.createElement('span');
-      el.innerHTML = `<i class="swatch" style="background:#${hex}"></i>${type}`;
+      el.innerHTML = `<i class="swatch" style="background:#${hex}"></i>${escapeHtml(type)}`;
       frag.appendChild(el);
     }
   };
   group('lanes', lanes.map(l => l.laneType), LANE_COLORS, FALLBACK_COLOR);
   group('objects', objects.map(o => o.objectType), OBJECT_COLORS, OBJECT_FALLBACK_COLOR);
+  group('parking access', objects.filter(o => o.parkingSpace).map(o => o.parkingSpace.access),
+    PARKING_COLORS, OBJECT_COLORS['parking-space']);
   document.getElementById('legend').replaceChildren(frag);
 }
 
@@ -716,6 +733,11 @@ function showObjectTip(ev, rect, hit) {
     }
   }
   rows.push(laneList(applies));
+  if (o.parkingSpace) {
+    const { access, restrictions } = o.parkingSpace;
+    rows.push(`parking ${escapeHtml(access || 'no access given')}` +
+      (restrictions ? `, ${escapeHtml(restrictions)}` : ''));
+  }
   if (border) {
     rows.push(`<b>border</b> ${escapeHtml(border.type || 'no type')}, ${border.width.toFixed(2)} m wide`);
   } else if (o.borders?.length) {

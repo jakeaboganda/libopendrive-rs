@@ -130,7 +130,8 @@ fn buffers(mesh: &Mesh) -> Value {
 
 /// One object's viewer record: its identity, OpenDRIVE provenance, and
 /// shape. `lanes` is the `LaneId`s it applies to, `markings` its paint, and
-/// `borders` the bands along its edges. `referencedFrom` is the road of the `<object>` an
+/// `borders` the bands along its edges. `parkingSpace` is null unless the
+/// object is one. `referencedFrom` is the road of the `<object>` an
 /// `<objectReference>` placed again, and null otherwise. A `solid`
 /// carries a pose, angles in radians applied yaw, then pitch, then roll, and
 /// an `extent` that is null for an object the map gives no size. An
@@ -192,6 +193,10 @@ fn object_entry(object: &Object, prov: Option<&ObjectProvenance>) -> Value {
         "dynamic": object.dynamic,
         "lanes": object.lanes.iter().map(|l| l.0).collect::<Vec<_>>(),
         "markings": object.markings.iter().map(marking_entry).collect::<Vec<_>>(),
+        "parkingSpace": object
+            .parking_space
+            .as_ref()
+            .map(|p| json!({ "access": p.access, "restrictions": p.restrictions })),
         "borders": object
             .borders
             .iter()

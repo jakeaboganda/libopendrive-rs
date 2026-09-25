@@ -54,6 +54,9 @@ type and width, and one quad per edge in world coordinates, along the whole
 outline with `useCompleteOutline` or along the edges its `<cornerReference>`s
 name otherwise.
 
+`Object::parking_space` is set from a `<parkingSpace>`: its `access`, such
+as `handicapped`, and its free-text `restrictions`.
+
 These placements follow libOpenDRIVE. Not imported yet: `<tunnel>`,
 `<bridge>`, and an outline's `outer` flag, so a hole bakes as a solid.
 

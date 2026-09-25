@@ -14,7 +14,7 @@ use crate::coords::{Point, Vector};
 use crate::object::orient;
 use crate::{
     Border, Corner, Direction, Extent, Lane, LaneId, LaneType, Marking, Object, ObjectId,
-    ObjectType, Polyline, RoadNetwork, Section, Shape,
+    ObjectType, ParkingSpace, Polyline, RoadNetwork, Section, Shape,
 };
 
 mod links;
@@ -1283,6 +1283,13 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
 
     let kind = object_type(node.attribute("type"));
     let text = |name| node.attribute(name).unwrap_or_default().to_string();
+    let parking_space = child(node, "parkingSpace").map(|p| {
+        let text = |name| p.attribute(name).unwrap_or_default().to_string();
+        ParkingSpace {
+            access: text("access"),
+            restrictions: text("restrictions"),
+        }
+    });
     for part in parts {
         let id = ObjectId(out.baked.len());
         out.baked.push(Object {
@@ -1294,6 +1301,7 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
             lanes: road.lanes(part.stretch, &at.validity),
             markings: part.markings,
             borders: part.borders,
+            parking_space: parking_space.clone(),
             shape: part.shape,
         });
         out.provenance.push(ObjectProvenance {

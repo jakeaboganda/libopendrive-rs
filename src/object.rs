@@ -229,6 +229,18 @@ pub struct Border {
     pub pieces: Vec<[Point; 4]>,
 }
 
+/// Who may use a parking space, and on what terms.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ParkingSpace {
+    /// Who may park there, such as `all`, `handicapped` or `electric`. Free
+    /// text, and empty if the map gives none.
+    pub access: String,
+    /// Any further terms, such as a time limit. Free text, and empty if the
+    /// map gives none.
+    pub restrictions: String,
+}
+
 /// One object in the world.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -255,6 +267,9 @@ pub struct Object {
     /// The borders along the object's edges. Only an [`Shape::Outline`] has
     /// any.
     pub borders: Vec<Border>,
+    /// Who may park there, if the map describes the object as a parking
+    /// space.
+    pub parking_space: Option<ParkingSpace>,
     /// Where it is and what it fills.
     pub shape: Shape,
 }
