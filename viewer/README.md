@@ -54,13 +54,19 @@ viewer draws, and on its second road, objects placed by reference.
   solid adds its position, heading, pitch, roll, and size.
   An outline or a sweep adds the point under the cursor and its corner or
   section count. `[o]` toggles them.
+- **Tunnels and bridges** tint the part of each lane they cover, each kind
+  its own colour with its own toggle and legend entry. Hovering a covered
+  lane adds the tunnel's or bridge's name, type and `s` range to the
+  readout.
 - **Lane-type colour** on the surface itself, with a legend of the types this
   map contains, and of the object types beside it. A lane type the crate knows
   but this page has no colour for shows up magenta, so it is obvious rather
   than silently drawn as a driving lane. An unknown object type is cyan.
-- **Sidebar** lists every baked lane grouped by road, with its type. Click one
-  to highlight and frame it.
-- **Search** filters the list by road id, lane id, or lane type.
+- **Sidebar** lists the tunnels and bridges, then every baked lane grouped
+  by road, with its type. Click a lane to highlight and frame it, or a
+  tunnel or bridge to highlight its lanes and frame the stretch it covers.
+- **Search** filters the list by road id, lane id, or lane type, and the
+  tunnels and bridges by name, kind or road.
 
 ## Coordinates
 
