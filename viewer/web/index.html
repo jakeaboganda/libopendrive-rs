@@ -137,7 +137,7 @@ const NORMAL_LENGTH = 0.6;
 let scene, camera, renderer, controls, raycaster;
 let roadMesh, wireMesh, badMesh, highlight, highlightLine;
 let centerlineMesh, boundaryMesh, normalMesh;
-let objectMeshes = [];       // one InstancedMesh per shape; userData.objects[instanceId] is the record
+let objectMeshes = [];       // the object meshes; userData.pick(hit) is the hovered record
 let objectOutline;           // edges of the hovered object
 let objects = [];
 let lanes = [];              // enriched lane records
@@ -396,20 +396,29 @@ function buildLanes(data) {
 
 // --- Objects -----------------------------------------------------------------
 
-// Every object as an instance of one of three unit shapes: a box, an upright
+function buildObjects(data) {
+  objects = (data.objects ?? []).map(o => ({ objectType: o.objectType, name: o.name, ...o.shape }));
+  buildSolids(objects.filter(o => o.kind === 'solid'));
+  buildShapes(objects.filter(o => o.kind !== 'solid'));
+
+  objectOutline = new THREE.LineSegments(new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ color: 0xffd24a, depthTest: false }));
+  objectOutline.matrixAutoUpdate = false;
+  objectOutline.renderOrder = 4;
+  objectOutline.visible = false;
+  scene.add(objectOutline);
+}
+
+// Every solid as an instance of one of three unit shapes: a box, an upright
 // cylinder, or a marker for an object with no extent. Three draw calls
 // however many objects, so a highway lined with posts stays cheap. Each unit
 // shape stands on its origin, which is where the crate puts an object's base.
-function buildObjects(data) {
-  // Solids only for now; outlines and sweeps are exported but not drawn yet.
-  objects = (data.objects ?? [])
-    .filter(o => o.shape.kind === 'solid')
-    .map(o => ({ objectType: o.objectType, name: o.name, ...o.shape }));
+function buildSolids(solids) {
   const box = new THREE.BoxGeometry(1, 1, 1).translate(0, 0, 0.5);
   const cylinder = new THREE.CylinderGeometry(1, 1, 1, 16).rotateX(Math.PI / 2).translate(0, 0, 0.5);
   const marker = new THREE.OctahedronGeometry(MARKER_SIZE / 2).translate(0, 0, MARKER_SIZE / 2);
   const shapes = { box: [], cylinder: [], marker: [] };
-  for (const o of objects) shapes[o.extent ? o.extent.shape : 'marker'].push(o);
+  for (const o of solids) shapes[o.extent ? o.extent.shape : 'marker'].push(o);
 
   const geometries = { box, cylinder, marker };
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color();
@@ -433,17 +442,91 @@ function buildObjects(data) {
       mesh.setColorAt(i, c.setHex(OBJECT_COLORS[o.objectType] ?? OBJECT_FALLBACK_COLOR));
     });
     mesh.computeBoundingSphere();
-    mesh.userData = { objects: list, edges: new THREE.EdgesGeometry(geometries[shape]) };
+    const edges = new THREE.EdgesGeometry(geometries[shape]);
+    mesh.userData.pick = hit => {
+      const matrix = new THREE.Matrix4();
+      mesh.getMatrixAt(hit.instanceId, matrix);
+      return { record: list[hit.instanceId], edges, matrix };
+    };
     scene.add(mesh);
     objectMeshes.push(mesh);
   }
+}
 
-  objectOutline = new THREE.LineSegments(new THREE.BufferGeometry(),
-    new THREE.LineBasicMaterial({ color: 0xffd24a, depthTest: false }));
-  objectOutline.matrixAutoUpdate = false;
-  objectOutline.renderOrder = 4;
-  objectOutline.visible = false;
-  scene.add(objectOutline);
+// Every outline and sweep in one mesh. Their corners are already in world
+// coordinates, so each is built straight into a shared triangle soup, and
+// `owner` maps a triangle back to its record for picking.
+function buildShapes(shaped) {
+  if (!shaped.length) return;
+  const positions = [], colors = [], owner = [];
+  const c = new THREE.Color();
+  for (const o of shaped) {
+    c.setHex(OBJECT_COLORS[o.objectType] ?? OBJECT_FALLBACK_COLOR);
+    const tri = (a, b, d) => {
+      positions.push(...a, ...b, ...d);
+      for (let k = 0; k < 3; k++) colors.push(c.r, c.g, c.b);
+      owner.push(o);
+    };
+    const quad = (a, b, d, e) => { tri(a, b, d); tri(a, d, e); };
+    for (const [a, b, d, e] of shapeQuads(o)) quad(a, b, d, e);
+    if (o.kind === 'outline' && o.closed) {
+      const top = o.corners.map(liftedTop);
+      const flat = top.map(p => new THREE.Vector2(p[0], p[1]));
+      for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(flat, [])) tri(top[i], top[j], top[k]);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  g.computeVertexNormals();
+  g.computeBoundingSphere();
+  const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+    vertexColors: true, roughness: 0.7, metalness: 0.0, side: THREE.DoubleSide,
+  }));
+  mesh.userData.pick = hit => {
+    const record = owner[hit.faceIndex];
+    record.edges ??= shapeEdges(record);
+    return { record, edges: record.edges, matrix: new THREE.Matrix4() };
+  };
+  scene.add(mesh);
+  objectMeshes.push(mesh);
+}
+
+// A corner's top, raised to at least MIN_OBJECT_HEIGHT over its base so a
+// flat outline such as a crosswalk does not z-fight with the road.
+function liftedTop([base, top]) {
+  return [top[0], top[1], Math.max(top[2], base[2] + MIN_OBJECT_HEIGHT)];
+}
+
+// The wall quads of an outline or a sweep, each four points in order around.
+// An outline has one wall per edge. A sweep has its two sides, its top, and
+// a cap at each end; one with no width is a single wall, drawn once.
+function shapeQuads(o) {
+  const quads = [];
+  const wall = (p, q) => quads.push([p[0], q[0], liftedTop(q), liftedTop(p)]);
+  if (o.kind === 'outline') {
+    const n = o.corners.length;
+    for (let i = 0; i < (o.closed ? n : n - 1); i++) wall(o.corners[i], o.corners[(i + 1) % n]);
+    return quads;
+  }
+  const secs = o.sections;
+  const thin = s => dist3(s.left[0], s.right[0]) < 1e-6 && dist3(s.left[1], s.right[1]) < 1e-6;
+  for (let i = 0; i + 1 < secs.length; i++) {
+    const a = secs[i], b = secs[i + 1];
+    wall(a.left, b.left);
+    if (thin(a) && thin(b)) continue;
+    wall(b.right, a.right);
+    quads.push([liftedTop(a.left), liftedTop(b.left), liftedTop(b.right), liftedTop(a.right)]);
+  }
+  for (const s of [secs[0], secs[secs.length - 1]]) if (!thin(s)) wall(s.right, s.left);
+  return quads;
+}
+
+// The hover outline of an outline or a sweep: every wall's four edges.
+function shapeEdges(o) {
+  const pts = [];
+  for (const q of shapeQuads(o)) for (let i = 0; i < 4; i++) pts.push(...q[i], ...q[(i + 1) % 4]);
+  return new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
 }
 
 // --- Sidebar -----------------------------------------------------------------
@@ -551,29 +634,39 @@ function onHover(ev) {
 
 // The readout for a hovered object, and an outline around it.
 function showObjectTip(ev, rect, hit) {
-  const mesh = hit.object, o = mesh.userData.objects[hit.instanceId];
-  const m = new THREE.Matrix4();
-  mesh.getMatrixAt(hit.instanceId, m);
-  objectOutline.geometry = mesh.userData.edges;
-  objectOutline.matrix.copy(m);
+  const { record: o, edges, matrix } = hit.object.userData.pick(hit);
+  objectOutline.geometry = edges;
+  objectOutline.matrix.copy(matrix);
   objectOutline.visible = true;
 
+  const rows = [`<b>${o.objectType}</b>${o.name ? '  ' + escapeHtml(o.name) : ''}`];
+  if (o.kind === 'solid') rows.push(...solidRows(o));
+  else {
+    const p = hit.point;
+    rows.push(`x ${p.x.toFixed(2)}   y ${p.y.toFixed(2)}   z ${p.z.toFixed(2)}`);
+    rows.push(o.kind === 'outline'
+      ? `outline, ${o.corners.length} corners, ${o.closed ? 'closed' : 'open'}`
+      : `sweep, ${o.sections.length} sections`);
+  }
+  tip.style.display = 'block';
+  tip.style.left = (ev.clientX - rect.left + 14) + 'px';
+  tip.style.top = (ev.clientY - rect.top + 14) + 'px';
+  tip.innerHTML = rows.join('\n');
+}
+
+// A solid's pose and size.
+function solidRows(o) {
   const deg = r => (r * 180 / Math.PI).toFixed(1) + '°';
   const [x, y, z] = o.position;
   const e = o.extent;
   const size = !e ? 'no extent'
     : e.shape === 'box' ? `box ${e.length.toFixed(2)} × ${e.width.toFixed(2)} × ${e.height.toFixed(2)} m`
     : `cylinder r ${e.radius.toFixed(2)} h ${e.height.toFixed(2)} m`;
-  const rows = [
-    `<b>${o.objectType}</b>${o.name ? '  ' + escapeHtml(o.name) : ''}`,
+  return [
     `x ${x.toFixed(2)}   y ${y.toFixed(2)}   z ${z.toFixed(2)}`,
     `heading ${deg(o.heading)}   pitch ${deg(o.pitch)}   roll ${deg(o.roll)}`,
     size,
   ];
-  tip.style.display = 'block';
-  tip.style.left = (ev.clientX - rect.left + 14) + 'px';
-  tip.style.top = (ev.clientY - rect.top + 14) + 'px';
-  tip.innerHTML = rows.join('\n');
 }
 
 function escapeHtml(s) {

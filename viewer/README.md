@@ -37,8 +37,12 @@ viewer draws.
   `[n]` toggles normals, `[w]` cycles the wireframe.
 - **Objects** drawn where the crate places them, coloured by type: a box or a
   cylinder when the map gives the object a size, and a small diamond marker
-  when it does not. Hover one for its type, name, position, heading, pitch,
-  roll, and size. `[o]` toggles them.
+  when it does not. Outlines are walled from each corner's base to its top,
+  with a lid when closed. Sweeps, such as guard rails, run along the road as
+  walls, or as a solid bar where they have a width. Hover a solid for its
+  type, name, position, heading, pitch, roll, and size, or an outline or a
+  sweep for its type, name, the point under the cursor, and its corner or
+  section count. `[o]` toggles them.
 - **Lane-type colour** on the surface itself, with a legend of the types this
   map contains, and of the object types beside it. A lane type the crate knows
   but this page has no colour for shows up magenta, so it is obvious rather
