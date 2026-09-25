@@ -52,24 +52,29 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   point is drawn as the wedge it is.
 - Road/lane `<link>`s and `<junction>`s, resolved into a drive-direction lane
   graph.
-- `<object>`s, in world coordinates on the road surface, from
-  `RoadNetwork::objects`. A plain object is a box or cylinder placed with its
-  heading, pitch and roll. A `<repeat>` with a `distance` expands into one
-  object per step, so a row of posts arrives as posts. A continuous
-  `<repeat>`, such as a guard rail, is swept along the road. `<outline>`s,
-  in road or local coordinates, arrive as footprint polygons with a height at
-  every corner. An `<objectReference>` places the object it names again, at
-  its own station. A `<marking>` on an outline, such as a crosswalk's
-  stripes, arrives as painted pieces along the edges it names, and a
-  `<border>`, such as a kerb, as a band along them. A parking space says
-  who may park there, and a `<material>` what an object's surface is made
-  of. `<userData>` pairs are kept as text.
-- `<tunnel>`s and `<bridge>`s, as the stretch of each lane they cover, from
-  `RoadNetwork::structures`. `structures_over(lane)` says whether a lane runs
-  through a tunnel or over a bridge, and where. Each object
-  has a subtype, whether it moves, the lanes it applies to from its
-  `<validity>`, and an id to look it up by. Its road, OpenDRIVE id, `(s, t)`, orientation and valid
-  length come from `load_*_with_provenance`, as a lane's road and id do.
+- `<object>`s, from `RoadNetwork::objects`, in world coordinates on the road
+  surface.
+  - A plain object is a box or a cylinder with a heading, pitch and roll.
+  - A `<repeat>` with a `distance` becomes one object per step, so a row of
+    posts arrives as posts. A `<repeat>` with a `distance` of 0, such as a
+    guard rail, becomes one shape swept along the road.
+  - An `<outline>`, in road or local coordinates, becomes a footprint polygon
+    with a height at every corner.
+  - An `<objectReference>` places the object it names again, at the
+    reference's own station.
+  - A `<marking>`, such as a crosswalk's stripes, becomes painted quads along
+    the outline edges it names. A `<border>`, such as a kerb, becomes a band
+    along them.
+  - `<validity>` picks the lanes an object applies to.
+  - `<parkingSpace>`, `<material>` and `<userData>` are kept on the object as
+    data.
+
+  Each object has an id to look it up by, a subtype, and whether it moves.
+  `load_*_with_provenance` gives its road, OpenDRIVE id, `(s, t)`,
+  orientation and valid length, as it does a lane's road and id.
+- `<tunnel>`s and `<bridge>`s, from `RoadNetwork::structures`, as the stretch
+  of each lane they cover. Call `structures_over(lane)` to find out whether a
+  lane runs through a tunnel or over a bridge, and where.
 
 For the exact element and attribute list, see
 [the crate docs](https://docs.rs/libopendrive).
@@ -80,10 +85,9 @@ Geometry is cross-checked against the reference C++
 ## What it ignores
 
 Everything else in the file, silently, including `<signals>`, `<roadMark>`,
-and `<geoReference>`. Among objects, an outline's `outer` flag is not read, so
-an outline meant as a hole bakes as a solid. Three
-omissions change the road you get back rather than only dropping detail around
-it:
+and `<geoReference>`. The importer doesn't read an outline's `outer` flag, so
+an outline meant as a hole bakes as a solid. Three omissions change the road
+you get back, not only the detail around it:
 
 - `<shape>`, the other lateralProfile child, so a crowned or cambered
   cross-section imports flat across its width.
@@ -108,15 +112,16 @@ positive-id lanes against it.
 A road the importer cannot interpret is skipped, not fatal. Losing a city map
 to one junk road is the worse failure. `load_str` still errors if the document
 yields no lanes at all. The parser rejects non-finite attribute values as it
-reads them: Rust's float parser accepts `NaN` and turns `1e400` into infinity,
-and one such value poisons every point derived from it.
+reads them. Rust's float parser accepts `NaN` and turns `1e400` into
+infinity, and one such value poisons every point derived from it.
 
 ## Visualization
 
-Rendering is not part of the crate, but [`viewer/`](viewer/README.md) has a
-three.js page that renders a baked map: hover a lane for its coordinates and
-type, browse roads and lanes in a sidebar, and toggle centerline, boundary,
-and normal overlays.
+The crate doesn't render anything. [`viewer/`](viewer/README.md) has a
+three.js page that draws a baked map with its objects, tunnels and bridges.
+Hover anything to read what the crate knows about it.
+
+![A traffic island's details in the viewer](viewer/objects.png)
 
 `surface_mesh()` returns plain position, normal, and index buffers with no
 engine types in them, and a `LaneSpan` per lane saying which slice of those
@@ -130,9 +135,9 @@ per object.
 
 The optional `serde` feature serializes the network and its mesh. The example
 at `examples/viewer_export.rs` uses it to bake a map straight to the JSON the
-viewer reads; the same feature works for caching an import. A `RoadNetwork`
-sends its lanes and objects and rebuilds its index on arrival, so what arrives
-behaves like a freshly imported map.
+viewer reads. You can also use it to cache an import. A `RoadNetwork`
+serializes its lanes, objects and structures, and rebuilds its index when
+deserialized, so the result behaves like a freshly imported map.
 
 ```toml
 libopendrive = { version = "0.1", features = ["serde"] }
@@ -142,10 +147,9 @@ libopendrive = { version = "0.1", features = ["serde"] }
 
 A position is a `Point` and a direction is a `Vector`. They are separate types
 with the arithmetic that relates them, so `point - point` is a `Vector`,
-`point + vector` is a `Point`, and adding two positions does not compile. One
-three-float type used for everything would let `nearest_lane(sample.up)`
-compile, though passing a direction where a position belongs is not a valid
-call.
+`point + vector` is a `Point`, and adding two positions does not compile.
+Neither does `nearest_lane(sample.up)`, which passes a direction where a
+position belongs. With one three-float type for both, it would compile.
 
 Both are `#[repr(C)]` structs of three public `f32` fields, so handing one to
 another math library is one call:

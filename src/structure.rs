@@ -1,6 +1,7 @@
-//! Tunnels and bridges: stretches of lanes that run through or over
-//! something. Format-agnostic, like the lanes. A structure names the lanes it
-//! covers and how far along each, and has no geometry of its own.
+//! Tunnels and bridges, as the stretches of lanes that run through or over
+//! them. Like lanes, they don't depend on the file format. A structure names
+//! the lanes it covers and how far along each, and has no geometry of its
+//! own.
 
 use crate::LaneId;
 
@@ -35,9 +36,9 @@ pub enum StructureKind {
     },
 }
 
-/// The part of one lane a structure covers: from `from` to `to` metres along
-/// the lane's centerline, measured from its first point, as
-/// [`Polyline::point_at`](crate::Polyline::point_at) measures.
+/// The part of one lane a structure covers, from `from` to `to` metres along
+/// the lane's centerline. Distances start at the lane's first point, as in
+/// [`Polyline::point_at`](crate::Polyline::point_at).
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Coverage {

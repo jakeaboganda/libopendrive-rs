@@ -121,16 +121,16 @@
 //! reference's own `<validity>`s apply, not its `<object>`'s, whose lane ids
 //! are on another road.
 //!
-//! A `<marking>` becomes a [`Marking`] on the outline holding every corner
-//! its `<cornerReference>`s name: a strip `width` across, centred on the
-//! edges through those corners, cut into dashes by `lineLength` and
-//! `spaceLength`. A marking with no corner references, one that places paint
-//! on a side of an object's box, is skipped.
+//! A `<marking>` becomes a [`Marking`] on the outline that has every corner
+//! its `<cornerReference>`s name. The marking is a strip `width` across,
+//! centred on the edges through those corners, and cut into dashes by
+//! `lineLength` and `spaceLength`. The importer skips a marking with no
+//! corner references, which paints a side of an object's box.
 //!
 //! A `<border>` becomes a [`Border`] on the outline its `outlineId` names, or
-//! on each that fits it if it names none: a band `width` across, centred on
-//! every edge with `useCompleteOutline`, or on the edges through its
-//! `<cornerReference>`s otherwise.
+//! on every outline it fits if it names none. The border is a band `width`
+//! across, centred on every edge with `useCompleteOutline`, and on the edges
+//! through its `<cornerReference>`s otherwise.
 //!
 //! An object's `<parkingSpace>` becomes its [`ParkingSpace`], and each
 //! `<material>` one of its [`Material`]s. Each `<userData>` is a
@@ -150,11 +150,11 @@
 //!
 //! Each `<tunnel>` and `<bridge>` bakes to a [`Structure`] with no geometry,
 //! since OpenDRIVE describes neither a tube nor a deck. It covers the lanes
-//! alongside its `length` metres of road from `s`, or those its
-//! `<validity>`s name, and a [`Coverage`] says how far along each lane.
-//! [`RoadNetwork::structures_over`] answers whether a lane runs through a
-//! tunnel or over a bridge. The road id, id, `s` and `length` are in its
-//! [`StructureProvenance`].
+//! alongside its `length` metres of road from `s`, narrowed by its
+//! `<validity>`s. A [`Coverage`] says where it starts and ends along each
+//! lane. [`RoadNetwork::structures_over`] tells you whether a lane runs
+//! through a tunnel or over a bridge. Its road id, id, `s` and `length` are
+//! in its [`StructureProvenance`].
 //!
 //! # What the importer ignores
 //!

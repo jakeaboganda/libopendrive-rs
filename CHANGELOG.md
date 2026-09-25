@@ -33,35 +33,35 @@ anchoring `(s, t)`, `orientation` and `validLength` are in an
 
 An `<objectReference>` bakes the `<object>` it names, from any road, at the
 reference's `s`, `t` and `zOffset`. The object's repeats and `cornerRoad`
-outlines move with it. The provenance carries the reference's `orientation`
-and `validLength`, and `referenced_from` names the road the original is on. A
-reference to an id no object has is skipped.
+outlines move with it. Its provenance has the reference's `orientation` and
+`validLength`, and `referenced_from` names the road the original is on. The
+importer skips a reference to an id no object has.
 
-`Object::lanes` is the lanes an object applies to: those alongside the
-stretch of road it spans, narrowed by its `<validity>` `fromLane`-`toLane`
-ranges, or all of them if it has none. A reference takes its own
-`<validity>`, not its object's.
+`Object::lanes` lists the lanes an object applies to. These are the lanes
+alongside the stretch of road it spans, narrowed to the `fromLane`-`toLane`
+range of each `<validity>` it has. A reference uses its own `<validity>`, not
+its object's.
 
-`Object::markings` is the paint on an outline, one `Marking` per
-`<marking>` whose `<cornerReference>`s all name its corners. It carries the
-marking's side, colour, width, line length and space length, and the painted
-pieces: quads in world coordinates along the referenced edges, dashed where
-the marking is. A marking with no corner references is skipped.
+`Object::markings` has one `Marking` per `<marking>` on an outline. Each one
+has the marking's side, colour, width, line length and space length. Its
+pieces are world-space quads along the edges its `<cornerReference>`s name,
+cut into dashes if the marking is dashed. The importer skips a marking with
+no corner references.
 
-`Object::borders` is the bands along an outline's edges, one `Border` per
-`<border>`, such as the kerb of a traffic island. It carries the border's
-type and width, and one quad per edge in world coordinates, along the whole
-outline with `useCompleteOutline` or along the edges its `<cornerReference>`s
-name otherwise.
+`Object::borders` has one `Border` per `<border>`, such as a traffic island's
+kerb. Each one has the border's type and width, and one world-space quad per
+edge. With `useCompleteOutline` the band runs along every edge of the
+outline. Otherwise it follows the `<cornerReference>`s.
 
-`Object::parking_space` is set from a `<parkingSpace>`: its `access`, such
-as `handicapped`, and its free-text `restrictions`. `Object::materials` has
-one `Material` per `<material>`: its `surface`, `friction` and `roughness`.
-`Object::user_data` keeps each `<userData>` as a `UserData` of its `code`
-and `value` text.
+`Object::parking_space` holds a `<parkingSpace>`'s `access`, such as
+`handicapped`, and its free-text `restrictions`. `Object::materials` has one
+`Material` per `<material>`, with its `surface`, `friction` and `roughness`.
+`Object::user_data` keeps each `<userData>` `code` and `value` as text.
 
-These placements follow libOpenDRIVE. Not imported yet: an outline's `outer`
-flag, so a hole bakes as a solid.
+These placements follow libOpenDRIVE. The importer doesn't read an outline's
+`outer` flag yet, so a hole bakes as a solid.
+
+Breaking changes:
 
 - The `serde` form of `RoadNetwork` is now
   `{ "lanes": [...], "objects": [...], "structures": [...] }` rather than a
@@ -78,14 +78,18 @@ flag, so a hole bakes as a solid.
 ### Tunnels and bridges
 
 Each `<tunnel>` and `<bridge>` bakes to a `Structure` on
-`RoadNetwork::structures`, with a `StructureId`, its name, and a
-`StructureKind`: a tunnel with its type, lighting and daylight, or a bridge
-with its type. It has no geometry, since OpenDRIVE describes neither a tube
-nor a deck. Instead it lists the lanes it covers, alongside its stretch of
-road or narrowed by its `<validity>`, each as a `Coverage` of how far along
-the lane it starts and ends. `RoadNetwork::structures_over` gives the
-structures over one lane. The road id, id, `s` and `length` are in a
-`StructureProvenance`.
+`RoadNetwork::structures`. A `Structure` has a `StructureId`, a name and a
+`StructureKind`. A tunnel's kind has its type, lighting and daylight, and a
+bridge's has its type.
+
+OpenDRIVE describes neither a tube nor a deck, so a structure has no
+geometry. It lists the lanes it covers instead. Each `Coverage` says where
+along one lane the structure starts and ends, in metres along that lane. On
+a bend that differs from the road's `s`. `<validity>` narrows the lanes.
+
+`RoadNetwork::structures_over(lane)` returns the structures over one lane.
+`StructureProvenance` has each structure's road id, OpenDRIVE id, `s` and
+`length`.
 
 ## 0.1.1 - 2026-09-23
 

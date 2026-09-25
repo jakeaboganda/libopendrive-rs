@@ -410,8 +410,9 @@ impl RoadNetwork {
         }
     }
 
-    /// Every structure over `lane`, with the part of the lane it covers:
-    /// whether a lane runs through a tunnel or over a bridge, and where.
+    /// Every structure over `lane`, with the part of the lane it covers. Use
+    /// it to find whether a lane runs through a tunnel or over a bridge, and
+    /// where.
     pub fn structures_over(&self, lane: LaneId) -> impl Iterator<Item = (&Structure, &Coverage)> {
         self.structures.iter().flat_map(move |s| {
             s.lanes
