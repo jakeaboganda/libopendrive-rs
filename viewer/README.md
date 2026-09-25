@@ -24,7 +24,7 @@ cd viewer/web && python3 -m http.server 8000
 
 Load a different scene without renaming it: `?scene=e6mini.json`.
 `tests/data/objects.xodr` is a small map that shows every kind of object the
-viewer draws.
+viewer draws, and on its second road, objects placed by reference.
 
 ## What you get
 
@@ -40,7 +40,9 @@ viewer draws.
   when it does not. Outlines and sweeps, such as buildings and guard rails,
   are drawn from the crate's `object_mesh()`. Hover an object for its type,
   subtype and name, its road, OpenDRIVE id, `s` and `t`, orientation, and
-  valid length. A solid adds its position, heading, pitch, roll, and size.
+  valid length. An object an `<objectReference>` placed draws the same as the
+  one it points to, and its readout names the road and id of the original. A
+  solid adds its position, heading, pitch, roll, and size.
   An outline or a sweep adds the point under the cursor and its corner or
   section count. `[o]` toggles them.
 - **Lane-type colour** on the surface itself, with a legend of the types this

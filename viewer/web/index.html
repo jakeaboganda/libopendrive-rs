@@ -620,6 +620,9 @@ function showObjectTip(ev, rect, hit) {
       `s ${o.s.toFixed(2)} m   t ${o.t.toFixed(2)} m`);
     const valid = o.validLength != null ? `   valid ${o.validLength.toFixed(2)} m` : '';
     rows.push(`orientation ${o.orientation}${valid}   objectId ${o.objectId}`);
+    if (o.referencedFrom != null) {
+      rows.push(`<b>reference</b> to road ${escapeHtml(o.referencedFrom)}  object ${escapeHtml(o.odId)}`);
+    }
   }
   if (o.kind === 'solid') rows.push(...solidRows(o));
   else {
