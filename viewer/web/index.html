@@ -122,6 +122,15 @@ const OBJECT_COLORS = {
 };
 const OBJECT_FALLBACK_COLOR = 0x22d3ee;
 
+// Paint colour per marking colour name, as the map spells it. `standard` is
+// the usual road-marking colour, which is white. An unlisted name falls
+// through to MARKING_FALLBACK_COLOR.
+const MARKING_COLORS = {
+  'standard': 0xf2f2f2, 'white': 0xffffff, 'yellow': 0xffd23f, 'red': 0xe53935,
+  'green': 0x43a047, 'blue': 0x1e88e5, 'orange': 0xfb8c00, 'violet': 0x8e24aa, 'black': 0x111111,
+};
+const MARKING_FALLBACK_COLOR = 0xff66cc;
+
 // Size in metres of the marker drawn for an object with no extent, and the
 // least size a drawn box or cylinder gets. A flat footprint such as a parking
 // bay has a height of 0, and at 0 it would z-fight with the road. A post
@@ -139,6 +148,7 @@ let roadMesh, wireMesh, badMesh, highlight, highlightLine;
 let centerlineMesh, boundaryMesh, normalMesh;
 let objectMeshes = [];       // the object meshes; userData.pick(hit) is the hovered record
 let objectOutline;           // edges of the hovered object
+let markingMesh;             // every marking's paint, drawn but not picked
 let objects = [];
 let lanes = [];              // enriched lane records
 let spanIndex = [];          // {start,end,lane} sorted by index-range start, for picking
@@ -372,6 +382,7 @@ function applyMode() {
   boundaryMesh.visible = on('boundaries');
   normalMesh.visible = on('normals');
   for (const m of objectMeshes) m.visible = on('objects');
+  if (markingMesh) markingMesh.visible = on('objects');
   if (!on('objects')) objectOutline.visible = false;
   badMesh.visible = on('flag');
   const n = badMesh.userData.count;
@@ -400,6 +411,7 @@ function buildObjects(data) {
   objects = (data.objects ?? []).map(({ shape, ...rest }) => ({ ...rest, ...shape }));
   buildSolids(objects.filter(o => o.kind === 'solid'));
   buildShapes(data);
+  buildMarkings();
 
   objectOutline = new THREE.LineSegments(new THREE.BufferGeometry(),
     new THREE.LineBasicMaterial({ color: 0xffd24a, depthTest: false }));
@@ -500,6 +512,37 @@ function buildShapes(data) {
   };
   scene.add(mesh);
   objectMeshes.push(mesh);
+}
+
+// Every marking's pieces as one flat mesh, two triangles a piece, in the
+// marking's colour. The crate has already cut them into dashes and raised
+// them off the outline, and the polygon offset keeps them in front of the
+// surface they are painted on. Not pickable, so hovering paint picks the
+// object under it.
+function buildMarkings() {
+  const positions = [], colors = [];
+  const c = new THREE.Color();
+  for (const o of objects) {
+    for (const m of o.markings ?? []) {
+      c.setHex(MARKING_COLORS[m.color] ?? MARKING_FALLBACK_COLOR);
+      for (const [a, b, cc, d] of m.pieces) {
+        for (const p of [a, b, cc, a, cc, d]) {
+          positions.push(...p);
+          colors.push(c.r, c.g, c.b);
+        }
+      }
+    }
+  }
+  if (!positions.length) return;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  markingMesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    vertexColors: true, side: THREE.DoubleSide,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8,
+  }));
+  markingMesh.renderOrder = 1;
+  scene.add(markingMesh);
 }
 
 // --- Sidebar -----------------------------------------------------------------

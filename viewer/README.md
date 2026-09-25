@@ -38,7 +38,9 @@ viewer draws, and on its second road, objects placed by reference.
 - **Objects** drawn where the crate places them, coloured by type: a box or a
   cylinder when the map gives the object a size, and a small diamond marker
   when it does not. Outlines and sweeps, such as buildings and guard rails,
-  are drawn from the crate's `object_mesh()`. Hover an object for its type,
+  are drawn from the crate's `object_mesh()`. Markings, such as a
+  crosswalk's stripes, are painted on in their own colour, dashed where the
+  crate cut them into dashes. Hover an object for its type,
   subtype and name, its road, OpenDRIVE id, `s` and `t`, orientation, and
   valid length. The lanes it applies to light up, and the readout lists
   them by lane section and OpenDRIVE lane id. An object an `<objectReference>` placed draws the same as the
