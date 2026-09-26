@@ -195,7 +195,7 @@ fn object_entry(object: &Object, prov: Option<&ObjectProvenance>) -> Value {
                 .map(|h| h.iter().map(corner).collect::<Vec<_>>())
                 .collect::<Vec<_>>(),
         }),
-        Shape::Sweep { sections } => json!({
+        Shape::Sweep { sections, .. } => json!({
             "kind": "sweep",
             "sections": sections
                 .iter()

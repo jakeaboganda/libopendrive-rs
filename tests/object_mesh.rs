@@ -113,6 +113,18 @@ fn closed_shapes_enclose_their_volume() {
         "tree",
     );
 
+    // A 16-sided tube along 40 m of s, 16 m right of a reference line
+    // curving left at radius 200, its radius growing from 0.3 m to 0.5 m.
+    // Its cross-section's area grows as the square of the radius.
+    let per_r2 = 8.0 * (std::f32::consts::TAU / 16.0).sin();
+    let mean_r2 = (0.3_f32 * 0.3 + 0.3 * 0.5 + 0.5 * 0.5) / 3.0;
+    let want = per_r2 * mean_r2 * 40.0 * (1.0 + 16.0 / 200.0);
+    let got = volume(&mesh, named(&net, &mesh, "Pipe").unwrap());
+    assert!(
+        (got - want).abs() < want * 0.01,
+        "pipe: {got} m³, expected about {want}"
+    );
+
     // The barrier widens from 0.5 m to 0.875 m over the 30 m of it on the
     // road, 1 m tall. It runs 8.5 m right of a reference line curving left at
     // radius 200, so it is longer than its 30 m of s by a factor of about

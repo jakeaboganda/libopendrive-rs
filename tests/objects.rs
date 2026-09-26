@@ -252,10 +252,30 @@ fn a_repeat_becomes_one_object_per_step_with_its_values_interpolated() {
 }
 
 fn sections(object: &Object) -> &[Section] {
-    let Shape::Sweep { sections } = &object.shape else {
+    let Shape::Sweep { sections, round } = &object.shape else {
         panic!("{} is not a sweep: {:?}", object.kind, object.shape);
     };
+    assert_eq!(*round, object.name == "Pipe", "{} round", object.name);
     sections
+}
+
+#[test]
+fn a_continuous_repeat_with_a_radius_is_a_pipe() {
+    let pipe = objects()
+        .into_iter()
+        .find(|o| o.name == "Pipe")
+        .expect("the pipe");
+    let sections = sections(&pipe);
+    // s = 5, 7, ..., 45, each the square round the pipe there. The radius
+    // makes it round, and the height given plays no part.
+    assert_eq!(sections.len(), 21);
+    for (k, section) in sections.iter().enumerate() {
+        let s = 5.0 + 2.0 * k as f64;
+        let r = 0.3 + 0.2 * (s - 5.0) / 40.0;
+        let height = 2.0 * r as f32;
+        assert_corner(&section.left, raised(s, -16.0 + r, 0.0), height, "left");
+        assert_corner(&section.right, raised(s, -16.0 - r, 0.0), height, "right");
+    }
 }
 
 #[test]
@@ -424,9 +444,10 @@ fn an_outlined_object_has_no_solid_of_its_own() {
     // Shed, tree, marker, guide post, gate, nine poles. The outlined house
     // and fence, and the swept railing and barrier, add no solid.
     // Plus two sweeps, and the house, fence, crosswalk and island outlines.
-    // The two parking bays are solids too, and the courtyard an outline.
+    // The two parking bays are solids too, the courtyard an outline and the
+    // pipe a sweep.
     assert_eq!(solids, 5 + 9 + 2);
-    assert_eq!(objects().len(), 5 + 9 + 2 + 4 + 2 + 1);
+    assert_eq!(objects().len(), 5 + 9 + 2 + 4 + 2 + 1 + 1);
 }
 
 #[test]

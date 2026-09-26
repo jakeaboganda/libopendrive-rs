@@ -42,6 +42,7 @@ impl RoadNetwork {
     ///   height, a floor under its bases. Each hole is cut out of both and
     ///   walled facing into it.
     /// - A sweep is a wall up each side, a top, a floor and a cap at each end.
+    ///   A round one is a 16-sided tube with a cap at each end.
     ///
     /// A face with no area is left out, so an object with no volume has no
     /// span: a solid with no extent, or a post given a height and no
@@ -91,7 +92,14 @@ impl RoadNetwork {
                     closed,
                     holes,
                 } => outline(&mut mesh, corners, *closed, holes),
-                Shape::Sweep { sections } => sweep(&mut mesh, sections),
+                Shape::Sweep {
+                    sections,
+                    round: false,
+                } => sweep(&mut mesh, sections),
+                Shape::Sweep {
+                    sections,
+                    round: true,
+                } => round_sweep(&mut mesh, sections),
             }
             if mesh.indices.len() as u32 > indices {
                 mesh.objects.push(ObjectSpan {
@@ -253,6 +261,41 @@ fn sweep(mesh: &mut Mesh, sections: &[Section]) {
             out,
         );
     }
+}
+
+/// A tube through the ellipse inscribed in each section, a prism of
+/// [`CYLINDER_SEGMENTS`] sides between consecutive ones, capped at each end.
+fn round_sweep(mesh: &mut Mesh, sections: &[Section]) {
+    let rings: Vec<(Point, Vec<Point>)> = sections
+        .iter()
+        .map(|s| {
+            let (l, r) = (s.left, s.right);
+            let centre = l.base.lerp(r.top, 0.5);
+            let across = l.base.lerp(l.top, 0.5) - centre;
+            let up = l.top.lerp(r.top, 0.5) - centre;
+            let ring = (0..CYLINDER_SEGMENTS)
+                .map(|k| {
+                    let angle = k as f32 * std::f32::consts::TAU / CYLINDER_SEGMENTS as f32;
+                    centre + across * angle.cos() + up * angle.sin()
+                })
+                .collect();
+            (centre, ring)
+        })
+        .collect();
+    for pair in rings.windows(2) {
+        let ((ca, a), (cb, b)) = (&pair[0], &pair[1]);
+        for k in 0..CYLINDER_SEGMENTS {
+            let j = (k + 1) % CYLINDER_SEGMENTS;
+            let out = (a[k] - *ca) + (a[j] - *ca) + (b[k] - *cb) + (b[j] - *cb);
+            face(mesh, &[a[k], a[j], b[j], b[k]], &fan(4), out);
+        }
+    }
+    let (Some((first, ring_first)), Some((last, ring_last))) = (rings.first(), rings.last()) else {
+        return;
+    };
+    let along = *last - *first;
+    face(mesh, ring_first, &fan(CYLINDER_SEGMENTS), -along);
+    face(mesh, ring_last, &fan(CYLINDER_SEGMENTS), along);
 }
 
 /// The triangles of a convex polygon of `n` corners, fanned from the first.

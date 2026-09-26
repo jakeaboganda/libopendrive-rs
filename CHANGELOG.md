@@ -16,7 +16,8 @@
   `t`, `zOffset` and the dimensions interpolated along it. On esmini's
   e6mini that turns four objects into 794 posts.
 - `Shape::Sweep`: a `<repeat>` with a `distance` of 0, a cross-section swept
-  along the road, such as a guard rail or a wall.
+  along the road, such as a guard rail or a wall. With a radius the sweep is
+  `round`, a pipe, and the mesh is a 16-sided tube.
 - `Shape::Outline`: one per `<outline>`, a polygon of `cornerRoad` or
   `cornerLocal` corners, each with a base and a top. An object with outlines
   gets no solid of its own. The 1.4 layout, `<outline>` straight under

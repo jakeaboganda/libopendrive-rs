@@ -105,6 +105,8 @@
 //! - A `<repeat>` with a `distance` is one [`Shape::Solid`] every `distance`
 //!   metres. One with a `distance` of 0 is a [`Shape::Sweep`], its
 //!   cross-section swept continuously along the road, such as a guard rail.
+//!   A `radius` makes the sweep round, a pipe resting on its `zOffset`, and
+//!   its `width` and `height` play no part.
 //! - Each `<outline>` is a [`Shape::Outline`], and an object with outlines
 //!   has no solid of its own. `<outline>` is read under `<outlines>`, and
 //!   straight under `<object>` as OpenDRIVE 1.4 writes it.

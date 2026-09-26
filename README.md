@@ -57,7 +57,8 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   - A plain object is a box or a cylinder with a heading, pitch and roll.
   - A `<repeat>` with a `distance` becomes one object per step, so a row of
     posts arrives as posts. A `<repeat>` with a `distance` of 0, such as a
-    guard rail, becomes one shape swept along the road.
+    guard rail, becomes one shape swept along the road. With a radius it is
+    a round pipe.
   - An `<outline>`, in road or local coordinates, becomes a footprint polygon
     with a height at every corner. An `outer="false"` outline is a hole cut
     out of the outline round it.

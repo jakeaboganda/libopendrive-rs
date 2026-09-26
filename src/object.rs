@@ -183,12 +183,16 @@ pub enum Shape {
         /// for an open one.
         holes: Vec<Vec<Corner>>,
     },
-    /// A rectangular cross-section swept along a road, such as a guard rail
-    /// or a wall. Already in the network's frame. Consecutive sections are
+    /// A cross-section swept along a road, such as a guard rail, a wall or
+    /// a pipe. Already in the network's frame. Consecutive sections are
     /// joined by straight walls.
     Sweep {
         /// The cross-sections in order along the road. At least two.
         sections: Vec<Section>,
+        /// Whether the cross-section is the ellipse inscribed in each
+        /// section, rather than the section itself. A pipe's sections are
+        /// squares round it.
+        round: bool,
     },
 }
 

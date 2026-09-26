@@ -142,6 +142,14 @@ for id, outer, corners in [(0, True, [(0, 0), (10, 0), (10, 8), (0, 8)]),
     courtyard.add_outline(ring)
 road.add_object(courtyard)
 
+# A pipe lying along the road, its radius growing from 0.3 m to 0.5 m. A
+# round sweep has no use for the height.
+pipe = xodr.Object(s=0, t=0, Type=xodr.ObjectType.obstacle, id="16", name="Pipe")
+pipe.repeat(repeatLength=40, repeatDistance=0, sStart=5, tStart=-16, tEnd=-16,
+            radiusStart=0.3, radiusEnd=0.5, heightStart=1, heightEnd=1,
+            zOffsetStart=0, zOffsetEnd=0)
+road.add_object(pipe)
+
 # A tunnel over the last 25 m of the arc, both lanes.
 road.add_tunnel(xodr.Tunnel(s=75, length=25, id="20", name="Hill",
                             tunnel_type=xodr.TunnelType.standard, daylight=0.1, lighting=0.8))

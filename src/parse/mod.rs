@@ -1412,8 +1412,8 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
         if repeat.distance > 0.0 {
             let stations = repeat.stations(&base);
             parts.extend(stations.iter().filter(|st| road.on_road(st.s)).map(point));
-        } else if let Some((sections, start, end)) = sweep(repeat, &base, road) {
-            parts.push(Part::new(Shape::Sweep { sections }, &start, (start.s, end)));
+        } else if let Some((shape, start, end)) = sweep(repeat, &base, road) {
+            parts.push(Part::new(shape, &start, (start.s, end)));
         }
     }
     let origin = road.on_road(base.s).then(|| frame(&base));
@@ -1614,27 +1614,32 @@ impl<'a> Repeat<'a> {
     }
 }
 
-/// A continuous repeat's cross-section at every sample station along the part
-/// of it on the road: `width` wide about its `t`, `height` tall from its
-/// `zOffset`. A missing width is 0, a wall with no thickness, as libOpenDRIVE
-/// has it. Also returns the station the sections start at, and the `s` they
+/// A continuous repeat as a [`Shape::Sweep`], with a cross-section at every
+/// sample station along the part of it on the road: `width` wide about its
+/// `t`, `height` tall from its `zOffset`. A missing width is 0, a wall with no
+/// thickness, as libOpenDRIVE has it. With a `radius`, the sweep is round
+/// instead, a pipe resting on `zOffset`, and `width` and `height` play no
+/// part. Also returns the station the sections start at, and the `s` they
 /// end at. `None` if less than a millimetre of it is on the road.
-fn sweep(
-    repeat: &Repeat,
-    base: &Station,
-    road: &BakedRoad,
-) -> Option<(Vec<Section>, Station, f64)> {
+fn sweep(repeat: &Repeat, base: &Station, road: &BakedRoad) -> Option<(Shape, Station, f64)> {
     let start = repeat.start.max(0.0);
     let end = (repeat.start + repeat.length).min(road.length);
     if end - start < 1e-3 {
         return None;
     }
+    let first = repeat.at(base, (start - repeat.start) / repeat.length);
+    let round = first.radius.is_some();
     let sections = sample_positions(start, end)
         .into_iter()
         .map(|s| {
             let st = repeat.at(base, (s - repeat.start) / repeat.length);
-            let half = st.width.unwrap_or(0.0) / 2.0;
-            let height = st.height.unwrap_or(0.0) as f32;
+            let (half, height) = match st.radius {
+                Some(r) => (r, 2.0 * r as f32),
+                None => (
+                    st.width.unwrap_or(0.0) / 2.0,
+                    st.height.unwrap_or(0.0) as f32,
+                ),
+            };
             let corner = |t| {
                 let (mut base, _) = (road.surface)(s, t);
                 base.z += st.z_offset as f32;
@@ -1649,11 +1654,7 @@ fn sweep(
             }
         })
         .collect();
-    Some((
-        sections,
-        repeat.at(base, (start - repeat.start) / repeat.length),
-        end,
-    ))
+    Some((Shape::Sweep { sections, round }, first, end))
 }
 
 /// An object's `<outline>`s: under `<outlines>` since OpenDRIVE 1.5, and
@@ -3602,7 +3603,7 @@ mod tests {
                          heightStart="2" zOffsetStart="0.5"/>
                </object>"#,
         ));
-        let Shape::Sweep { sections } = &objects[0].shape else {
+        let Shape::Sweep { sections, .. } = &objects[0].shape else {
             panic!("not a sweep: {:?}", objects[0].shape);
         };
         assert_eq!(sections.len(), 11, "every 2 m over 20 m");
