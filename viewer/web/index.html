@@ -546,17 +546,19 @@ function buildShapes(data) {
 // Every marking's pieces as one flat mesh, two triangles a piece, in the
 // marking's colour. The crate has already cut them into dashes and raised
 // them off the outline, and the polygon offset keeps them in front of the
-// surface they are painted on. Not pickable, so hovering paint picks the
+// surface they are painted on. Paint on a flat solid is lifted as far as
+// the solid is, onto its drawn lid. Not pickable, so hovering paint picks the
 // object under it.
 function buildMarkings() {
   const positions = [], colors = [];
   const c = new THREE.Color();
   for (const o of objects) {
+    const lift = o.extent ? Math.max(MIN_OBJECT_HEIGHT - o.extent.height, 0) : 0;
     for (const m of o.markings ?? []) {
       c.setHex(MARKING_COLORS[m.color] ?? MARKING_FALLBACK_COLOR);
       for (const [a, b, cc, d] of m.pieces) {
-        for (const p of [a, b, cc, a, cc, d]) {
-          positions.push(...p);
+        for (const [x, y, z] of [a, b, cc, a, cc, d]) {
+          positions.push(x, y, z + lift);
           colors.push(c.r, c.g, c.b);
         }
       }
@@ -842,6 +844,10 @@ function showObjectTip(ev, rect, hit) {
   }
   for (const u of o.userData ?? []) {
     rows.push(`userData ${escapeHtml(u.code)}${u.value ? ' = ' + escapeHtml(u.value) : ''}`);
+  }
+  if (o.markings?.length) {
+    rows.push('markings ' + o.markings.map(m => [m.color || 'no colour', m.side,
+      m.lineLength && m.spaceLength ? 'dashed' : ''].filter(Boolean).map(escapeHtml).join(' ')).join(', '));
   }
   if (border) {
     rows.push(`<b>border</b> ${escapeHtml(border.type || 'no type')}, ${border.width.toFixed(2)} m wide`);

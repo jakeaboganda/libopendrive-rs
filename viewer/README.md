@@ -82,8 +82,8 @@ readout shows:
 - its type, subtype and name
 - its road, OpenDRIVE id, `s`, `t`, orientation and valid length
 - the lanes it applies to, by lane section and OpenDRIVE lane id
-- its parking access and restrictions, materials, `<userData>` pairs and
-  border types, if it has them
+- its parking access and restrictions, materials, `<userData>` pairs,
+  markings and border types, if it has them
 - for a solid, its position, heading, pitch, roll and size
 - for an outline or a sweep, the point under the cursor and how many corners
   or sections it has, and how many holes an outline has
