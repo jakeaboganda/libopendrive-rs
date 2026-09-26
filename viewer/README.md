@@ -70,11 +70,12 @@ instead of passing for a driving lane.
 
 ## Objects
 
-Each object is drawn where the crate places it, coloured by type. A solid
-with a size is a box or a cylinder, and one with no size is a small diamond.
-Outlines and sweeps, such as buildings and guard rails, come from the crate's
-`object_mesh()`, so a hole in an outline shows as a gap. An object type the
-page has no colour for is cyan.
+Each object is drawn where the crate places it, coloured by type. Anything
+with an area comes from the crate's `object_mesh()`: boxes, cylinders,
+outlines and sweeps. So a hole in an outline shows as a gap. The mesh leaves
+out a post given only a height, which is drawn as a thin post, and a solid
+with no size, which is a small diamond. An object type the page has no
+colour for is cyan.
 
 Hover an object to outline it and light up the lanes it applies to. The
 readout shows:

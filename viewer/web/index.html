@@ -156,9 +156,8 @@ const STRUCTURE_COLORS = { 'tunnel': 0xb388ff, 'bridge': 0x4dd0e1 };
 const BORDER_COLORS = { 'curb': 0xd8d2c4, 'concrete': 0x9e9e9e, 'paint': 0xf5f5f5 };
 
 // Size in metres of the marker drawn for an object with no extent, and the
-// least size a drawn box or cylinder gets. A flat footprint such as a parking
-// bay has a height of 0, and at 0 it would z-fight with the road. A post
-// given only a height has no footprint, and at 0 it would not draw at all.
+// least size an instanced box or cylinder gets. A post given only a height
+// has no footprint, and at 0 it would not draw at all.
 const MARKER_SIZE = 0.4;
 const MIN_OBJECT_HEIGHT = 0.02;
 const MIN_OBJECT_FOOTPRINT = 0.1;
@@ -437,7 +436,8 @@ function buildLanes(data) {
 
 function buildObjects(data) {
   objects = (data.objects ?? []).map(({ shape, ...rest }) => ({ ...rest, ...shape }));
-  buildSolids(objects.filter(o => o.kind === 'solid'));
+  const meshed = new Set((data.objectMesh?.spans ?? []).map(s => s.objectId));
+  buildSolids(objects.filter(o => o.kind === 'solid' && !meshed.has(o.objectId)));
   buildShapes(data);
   buildMarkings();
   buildBorders();
@@ -450,10 +450,11 @@ function buildObjects(data) {
   scene.add(objectOutline);
 }
 
-// Every solid as an instance of one of three unit shapes: a box, an upright
-// cylinder, or a marker for an object with no extent. Three draw calls
-// however many objects, so a highway lined with posts stays cheap. Each unit
-// shape stands on its origin, which is where the crate puts an object's base.
+// Every solid the object mesh leaves out, as an instance of one of three
+// unit shapes: a box or an upright cylinder for a post given only a height,
+// or a marker for an object with no extent. Three draw calls however many
+// objects, so a highway lined with posts stays cheap. Each unit shape stands
+// on its origin, which is where the crate puts an object's base.
 function buildSolids(solids) {
   const box = new THREE.BoxGeometry(1, 1, 1).translate(0, 0, 0.5);
   const cylinder = new THREE.CylinderGeometry(1, 1, 1, 16).rotateX(Math.PI / 2).translate(0, 0, 0.5);
@@ -494,10 +495,9 @@ function buildSolids(solids) {
   }
 }
 
-// Every outline and sweep, drawn from the crate's object mesh. One mesh for
-// all of them, and `owner` maps a triangle back to its record for picking.
-// Solids are in the object mesh too, but drawn instanced above instead, which
-// also gives the ones with no size something to see.
+// Every object with a span in the crate's object mesh, drawn from it. One
+// mesh for all of them, and `owner` maps a triangle back to its record for
+// picking.
 function buildShapes(data) {
   const om = data.objectMesh;
   if (!om) return;
@@ -506,7 +506,7 @@ function buildShapes(data) {
   const c = new THREE.Color();
   for (const span of om.spans) {
     const o = byId.get(span.objectId);
-    if (!o || o.kind === 'solid') continue;
+    if (!o) continue;
     c.setHex(objectColor(o));
     o.triangles = [owner.length, (span.indices[1] - span.indices[0]) / 3];
     for (let i = span.indices[0]; i < span.indices[1]; i++) {
@@ -523,8 +523,9 @@ function buildShapes(data) {
   g.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   g.computeBoundingSphere();
-  // Double-sided, since a fence or a flat outline is a single sheet. Pulled
-  // toward the camera so a flat outline on the road does not z-fight with it.
+  // Double-sided, since a fence or a flat outline or box is a single sheet.
+  // Pulled toward the camera so a flat one on the road does not z-fight with
+  // it.
   const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
     vertexColors: true, roughness: 0.7, metalness: 0.0, side: THREE.DoubleSide,
     polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
@@ -546,19 +547,17 @@ function buildShapes(data) {
 // Every marking's pieces as one flat mesh, two triangles a piece, in the
 // marking's colour. The crate has already cut them into dashes and raised
 // them off the outline, and the polygon offset keeps them in front of the
-// surface they are painted on. Paint on a flat solid is lifted as far as
-// the solid is, onto its drawn lid. Not pickable, so hovering paint picks the
+// surface they are painted on. Not pickable, so hovering paint picks the
 // object under it.
 function buildMarkings() {
   const positions = [], colors = [];
   const c = new THREE.Color();
   for (const o of objects) {
-    const lift = o.extent ? Math.max(MIN_OBJECT_HEIGHT - o.extent.height, 0) : 0;
     for (const m of o.markings ?? []) {
       c.setHex(MARKING_COLORS[m.color] ?? MARKING_FALLBACK_COLOR);
       for (const [a, b, cc, d] of m.pieces) {
-        for (const [x, y, z] of [a, b, cc, a, cc, d]) {
-          positions.push(x, y, z + lift);
+        for (const p of [a, b, cc, a, cc, d]) {
+          positions.push(...p);
           colors.push(c.r, c.g, c.b);
         }
       }
