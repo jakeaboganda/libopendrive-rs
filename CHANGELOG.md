@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- 0.2.0 sampled a whole lane section every 25 cm if any part of it turned
+  sharply, and probed every section every 25 cm to find out. Only the road
+  near a tight curve is sampled finely now, easing back out to 2 m, and
+  sections are probed every metre. On Town07 that is 14,209 lane samples
+  where 0.2.0 had 19,518 and 0.1.1 had 8,818, and `nearest_lane` and
+  `surface_mesh` are about a quarter faster than in 0.2.0. Import is
+  23% faster on Town07 and 3.9 times faster on the test track. Tight
+  curves are as round as in 0.2.0.
+
 ## 0.2.0 - 2026-09-26
 
 ### Objects

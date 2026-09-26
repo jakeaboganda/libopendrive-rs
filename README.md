@@ -174,11 +174,11 @@ tracks local road density rather than map size. On CARLA's Town07 (234 roads,
 
 | | per call |
 | --- | --- |
-| `nearest_lane` / `sample_near` | ~0.9 us |
-| `route` (across the map) | ~28 us |
+| `nearest_lane` / `sample_near` | ~1.2 us |
+| `route` (across the map) | ~29 us |
 | `MeshSampler::height_at` | ~0.2 us |
 
-Import is ~9 ms for that map, three quarters of it XML parsing.
+Import is ~15 ms for that map.
 
 `cargo bench` reproduces these. `tests/budgets.rs` guards them in CI by racing
 each indexed lookup against the scan it replaced. Racing needs no fixed

@@ -31,6 +31,16 @@ const SAMPLE_STEP: f64 = 2.0;
 const SAMPLE_TURN: f64 = 0.05;
 const SAMPLE_MIN_STEP: f64 = 0.25;
 
+/// The most a lane's sample step may grow or shrink, in metres, per metre of
+/// road. Kept low so each step is well over the fraction of the one before
+/// that the mesh welds away as a stub.
+const SAMPLE_GRADE: f64 = 0.25;
+
+/// How far apart, in metres, a section is probed for how sharply its lanes
+/// turn. Road curvature changes over metres, and probing finer cost more at
+/// import than sampling the lanes did.
+const SAMPLE_PROBE: f64 = 1.0;
+
 /// The furthest apart, in metres, a sweep's sections may be, and the closest
 /// they get where it bends.
 const SWEEP_MAX_STEP: f64 = 10.0;
@@ -845,8 +855,8 @@ fn emit_section(
     left.sort_by_key(|l| l.id); // 1, 2, 3, ...
     right.sort_by_key(|l| -l.id); // -1, -2, -3, ...
 
-    let bend = section_bend(geoms, lane_offsets, [&left, &right], s_start, s_end);
-    let sample_s = sample_positions(s_start, s_end, bend);
+    let bends = section_bends(geoms, lane_offsets, [&left, &right], s_start, s_end);
+    let sample_s = sample_positions(s_start, s_end, &bends);
     // The bank profile is a road-level property (the cross-section's roll about
     // the reference line), identical for every lane in the section, sampled
     // parallel to `sample_s`. Collapse an all-flat profile to empty, the
@@ -1089,73 +1099,132 @@ fn geom_at(geoms: &[GeomRec], s: f64) -> &GeomRec {
 
 /// Arc-length sample positions over `[start, end]`, always including the
 /// exact endpoints. They are [`SAMPLE_STEP`] apart, or closer where lanes
-/// turning `bend` radians a metre would turn more than [`SAMPLE_TURN`] in
-/// that, down to [`SAMPLE_MIN_STEP`]. The whole stretch takes one step, so
-/// neighbouring samples stay evenly spaced, which the mesh's stub welding
-/// relies on.
-fn sample_positions(start: f64, end: f64, bend: f64) -> Vec<f64> {
-    let step = (SAMPLE_TURN / bend).clamp(SAMPLE_MIN_STEP, SAMPLE_STEP);
+/// turning `bends` radians a metre would turn more than [`SAMPLE_TURN`] in
+/// that, down to [`SAMPLE_MIN_STEP`]. `bends` is from [`section_bends`],
+/// evenly spaced over the stretch.
+///
+/// The step eases in and out of a tight spot by at most [`SAMPLE_GRADE`] a
+/// metre, rather than jumping, because the mesh welds a sample much closer
+/// than the one before it away as a stub. So only the road near a tight
+/// curve is sampled finely, not the whole section around it.
+fn sample_positions(start: f64, end: f64, bends: &[f64]) -> Vec<f64> {
+    let n = bends.len().saturating_sub(1).max(1);
+    let h = (end - start) / n as f64;
+    // The step wanted at each probe, graded so it changes no faster than
+    // SAMPLE_GRADE a metre.
+    let mut want: Vec<f64> = bends
+        .iter()
+        .map(|&b| (SAMPLE_TURN / b).clamp(SAMPLE_MIN_STEP, SAMPLE_STEP))
+        .collect();
+    for k in 1..want.len() {
+        want[k] = want[k].min(want[k - 1] + SAMPLE_GRADE * h);
+    }
+    for k in (1..want.len()).rev() {
+        want[k - 1] = want[k - 1].min(want[k] + SAMPLE_GRADE * h);
+    }
+    // The step wanted at `s`, straight between the probes either side, so it
+    // too changes no faster than SAMPLE_GRADE a metre.
+    let last = want.len() - 1;
+    let probe = |s: f64| ((s - start) / h).clamp(0.0, last as f64);
+    let want_at = |s: f64| {
+        let p = probe(s);
+        let k = (p.floor() as usize).min(last.saturating_sub(1));
+        match want.get(k + 1) {
+            Some(&next) => want[k] + (next - want[k]) * (p - k as f64),
+            None => want[k],
+        }
+    };
     let mut ss = Vec::new();
     let mut s = start;
     while s < end - 1e-6 {
         ss.push(s);
-        s += step;
+        // The tightest step wanted anywhere the step would cross, so no
+        // tight spot is stepped over.
+        let reach = want_at(s);
+        let inside = want[probe(s).ceil() as usize..=probe(s + reach).floor() as usize]
+            .iter()
+            .copied();
+        s += inside.fold(reach.min(want_at(s + reach)), f64::min);
     }
     ss.push(end);
     ss
 }
 
-/// The sharpest any lane edge of a section over `[start, end]` turns in plan,
-/// in radians per metre of road. The edges bend with the reference line, and
-/// also as widths and `laneOffset` move them across it. Probed every
-/// [`SAMPLE_MIN_STEP`] or so. `sides` are the section's left and right
-/// lanes, each ordered from the center outward.
-fn section_bend(
+/// How sharply the lane edges of a section over `[start, end]` turn in plan,
+/// in radians per metre of road, at probes every [`SAMPLE_PROBE`] or so:
+/// the sharpest edge at each. The edges bend with the reference line, and
+/// also as widths and `laneOffset` move them across it. `sides` are the
+/// section's left and right lanes, each ordered from the center outward.
+fn section_bends(
     geoms: &[GeomRec],
     lane_offsets: &[Cubic],
     sides: [&[LaneDef]; 2],
     start: f64,
     end: f64,
-) -> f64 {
-    // Each edge's plan position at `s`.
-    let edges = |s: f64| {
-        let (x, y, hdg) = geom_at(geoms, s).pose(s);
+) -> Vec<f64> {
+    let n = ((end - start) / SAMPLE_PROBE).ceil().max(1.0) as usize;
+    let h = (end - start) / n as f64;
+    // The probes run forward, so the geometry record is found by walking on
+    // from the last one rather than scanning the road's list at every probe.
+    let mut geom = 0;
+    // Each edge's plan position at `s`, into `out`.
+    let mut edges = |s: f64, out: &mut Vec<(f64, f64)>| {
+        while geom + 1 < geoms.len() && geoms[geom + 1].s <= s + 1e-9 {
+            geom += 1;
+        }
+        let (x, y, hdg) = geoms[geom].pose(s);
         let (sin, cos) = hdg.sin_cos();
         let base = active(lane_offsets, s).map_or(0.0, |o| o.eval(s));
-        let mut ts = vec![base];
+        out.clear();
+        out.push((x - base * sin, y + base * cos));
         for (side, sign) in sides.into_iter().zip([1.0, -1.0]) {
             let mut t = base;
             for lane in side {
                 t += sign * width_at(lane, s - start);
-                ts.push(t);
+                out.push((x - t * sin, y + t * cos));
             }
         }
-        ts.into_iter()
-            .map(|t| (x - t * sin, y + t * cos))
-            .collect::<Vec<_>>()
     };
-    let n = ((end - start) / SAMPLE_MIN_STEP).ceil().max(1.0) as usize;
-    let h = (end - start) / n as f64;
-    let at: Vec<Vec<(f64, f64)>> = (0..=n).map(|k| edges(start + k as f64 * h)).collect();
-    let headings: Vec<Vec<f64>> = at
-        .windows(2)
-        .map(|w| {
-            w[0].iter()
-                .zip(&w[1])
-                .map(|(a, b)| (b.1 - a.1).atan2(b.0 - a.0))
-                .collect()
+    let (mut prev, mut next) = (Vec::new(), Vec::new());
+    // Each edge's chord over the last probe interval.
+    let mut chords: Vec<(f64, f64)> = Vec::new();
+    let mut bends = vec![0.0; n + 1];
+    edges(start, &mut prev);
+    for k in 1..=n {
+        edges(start + k as f64 * h, &mut next);
+        let mut sharpest = 0.0_f64;
+        for (e, (a, b)) in prev.iter().zip(&next).enumerate() {
+            let chord = (b.0 - a.0, b.1 - a.1);
+            if k > 1 {
+                // The angle between this chord and the last, one atan2.
+                let (u, v) = (chords[e], chord);
+                let turn = (u.0 * v.1 - u.1 * v.0).atan2(u.0 * v.0 + u.1 * v.1);
+                sharpest = sharpest.max(turn.abs() / h);
+                chords[e] = chord;
+            } else {
+                chords.push(chord);
+            }
+        }
+        if k > 1 {
+            bends[k - 1] = sharpest;
+        }
+        std::mem::swap(&mut prev, &mut next);
+    }
+    // The ends have a heading on one side only, so take their neighbour's.
+    if n > 1 {
+        bends[0] = bends[1];
+        bends[n] = bends[n - 1];
+    }
+    // A probe only half sees a curve starting or ending between it and the
+    // next, so each takes the sharpest of itself and its neighbours.
+    (0..=n)
+        .map(|k| {
+            bends[k.saturating_sub(1)..=(k + 1).min(n)]
+                .iter()
+                .copied()
+                .fold(0.0, f64::max)
         })
-        .collect();
-    headings
-        .windows(2)
-        .flat_map(|w| w[0].iter().zip(&w[1]).map(|(a, b)| wrap(b - a).abs() / h))
-        .fold(0.0, f64::max)
-}
-
-/// `angle` wrapped into `[-pi, pi]`.
-fn wrap(angle: f64) -> f64 {
-    use std::f64::consts::{PI, TAU};
-    (angle + PI).rem_euclid(TAU) - PI
+        .collect()
 }
 
 /// Parse every `<item>` child of `parent` as a cubic (elevation, laneOffset),
@@ -3983,8 +4052,11 @@ mod tests {
                 geom,
             }]
         };
-        let bend =
-            |geom, right: &[LaneDef]| section_bend(&road(geom), &[], [&[], right], 0.0, 10.0);
+        let bend = |geom, right: &[LaneDef]| {
+            section_bends(&road(geom), &[], [&[], right], 0.0, 10.0)
+                .into_iter()
+                .fold(0.0, f64::max)
+        };
         let even = [lane(width(3.0, 0.0))];
         // Straight and even, nothing bends. On a 10 m radius every edge turns
         // 0.1 rad a metre, however far out.
@@ -3998,9 +4070,29 @@ mod tests {
 
         // Samples every 2 m with no bend, closer to keep to SAMPLE_TURN, and
         // no closer than SAMPLE_MIN_STEP.
-        assert_eq!(sample_positions(0.0, 6.0, 0.0), [0.0, 2.0, 4.0, 6.0]);
-        assert_eq!(sample_positions(0.0, 1.0, 0.1), [0.0, 0.5, 1.0]);
-        assert_eq!(sample_positions(0.0, 1.0, 10.0).len(), 5);
+        assert_eq!(sample_positions(0.0, 6.0, &[0.0; 25]), [0.0, 2.0, 4.0, 6.0]);
+        assert_eq!(sample_positions(0.0, 1.0, &[0.1; 5]), [0.0, 0.5, 1.0]);
+        assert_eq!(sample_positions(0.0, 1.0, &[10.0; 5]).len(), 5);
+    }
+
+    #[test]
+    fn only_the_road_near_a_tight_spot_is_sampled_finely() {
+        // 100 m of straight with one sharp probe in the middle.
+        let mut bends = vec![0.0; 101];
+        bends[50] = 10.0;
+        let ss = sample_positions(0.0, 100.0, &bends);
+        let steps: Vec<f64> = ss.windows(2).map(|w| w[1] - w[0]).collect();
+        // Fine at the spot, coarse well away from it.
+        let at = |s: f64| steps[ss.iter().rposition(|&x| x <= s).unwrap()];
+        assert!((at(50.0) - SAMPLE_MIN_STEP).abs() < 1e-9, "{}", at(50.0));
+        assert!((at(5.0) - SAMPLE_STEP).abs() < 1e-9, "{}", at(5.0));
+        assert!((at(95.0) - SAMPLE_STEP).abs() < 1e-9, "{}", at(95.0));
+        assert!(ss.len() < 100, "{} samples", ss.len());
+        // Each step is well over what the mesh welds away as a stub, a
+        // quarter of the step before it, bar the remainder at the end.
+        for w in steps[..steps.len() - 1].windows(2) {
+            assert!(w[1] > 0.5 * w[0], "{} after {}", w[1], w[0]);
+        }
     }
 
     #[test]
