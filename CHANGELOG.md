@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Breaking
+
+- The minimum Rust version is 1.85, up from 1.82, for the `opencrg`
+  dependency.
+
 ## 0.2.1 - 2026-09-26
 
 ### Performance

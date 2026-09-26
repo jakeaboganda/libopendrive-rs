@@ -190,7 +190,7 @@ Map fixtures, tests, and benchmarks are excluded from the published crate, so
 run them from a git checkout. See `tests/data/README.md` for fixture
 provenance.
 
-MSRV is 1.82.
+MSRV is 1.85.
 
 ## License
 
