@@ -86,7 +86,8 @@ readout shows:
   markings and border types, if it has them
 - for a solid, its position, heading, pitch, roll and size
 - for an outline or a sweep, the point under the cursor and how many corners
-  or sections it has, and how many holes an outline has
+  or sections it has, how many holes an outline has, and whether a sweep is
+  round
 
 ![Hovering a traffic island](objects.png)
 

@@ -861,7 +861,7 @@ function showObjectTip(ev, rect, hit) {
     const holes = o.holes?.length ? `, ${o.holes.length} hole${o.holes.length > 1 ? 's' : ''}` : '';
     rows.push(o.kind === 'outline'
       ? `outline, ${o.corners.length} corners, ${o.closed ? 'closed' : 'open'}${holes}`
-      : `sweep, ${o.sections.length} sections`);
+      : `sweep, ${o.sections.length} sections${o.round ? ', round' : ''}`);
   }
   tip.style.display = 'block';
   tip.style.left = (ev.clientX - rect.left + 14) + 'px';
