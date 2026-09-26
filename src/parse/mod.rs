@@ -21,8 +21,15 @@ use crate::{
 mod links;
 use links::{LaneMeta, RoadInfo, Topology};
 
-/// Arc-length spacing (meters) at which curved geometry is baked to points.
+/// The furthest apart, in metres, a lane's centerline samples get, on
+/// straight or gently curving road.
 const SAMPLE_STEP: f64 = 2.0;
+
+/// The most a lane may turn, in radians, from one sample to the next, and the
+/// closest together, in metres, its samples get on a tight curve to keep to
+/// it.
+const SAMPLE_TURN: f64 = 0.05;
+const SAMPLE_MIN_STEP: f64 = 0.25;
 
 /// The furthest apart, in metres, a sweep's sections may be, and the closest
 /// they get where it bends.
@@ -634,6 +641,8 @@ fn parse_road(
 struct BakedSection {
     start: f64,
     end: f64,
+    /// The stations its lanes are sampled at, from [`sample_positions`].
+    stations: Vec<f64>,
     lanes: Vec<BakedLane>,
 }
 
@@ -750,7 +759,7 @@ fn bake_lanes(
             continue; // zero-length section
         }
         let (first, first_lane) = (topo.metas.len(), out.len());
-        emit_section(
+        let stations = emit_section(
             *section,
             s_start,
             s_end,
@@ -768,6 +777,7 @@ fn bake_lanes(
         baked.push(BakedSection {
             start: s_start,
             end: s_end,
+            stations,
             lanes: topo.metas[first..]
                 .iter()
                 .enumerate()
@@ -782,7 +792,8 @@ fn bake_lanes(
     baked
 }
 
-/// Append each lane of one section as a `Lane` spanning `[s_start, s_end]`.
+/// Append each lane of one section as a `Lane` spanning `[s_start, s_end]`,
+/// and return the stations they are sampled at, from [`sample_positions`].
 /// Malformed individual lanes are skipped, not fatal (real files).
 ///
 /// Every lane with a width is sampled for the running lateral offset, whatever
@@ -800,7 +811,7 @@ fn emit_section(
     topo: &mut Topology,
     road_id: &str,
     section_idx: usize,
-) {
+) -> Vec<f64> {
     let (mut left, mut right) = (Vec::new(), Vec::new());
     for side in ["left", "right"] {
         let Some(side_node) = child(section, side) else {
@@ -834,7 +845,8 @@ fn emit_section(
     left.sort_by_key(|l| l.id); // 1, 2, 3, ...
     right.sort_by_key(|l| -l.id); // -1, -2, -3, ...
 
-    let sample_s = sample_positions(s_start, s_end);
+    let bend = section_bend(geoms, lane_offsets, [&left, &right], s_start, s_end);
+    let sample_s = sample_positions(s_start, s_end, bend);
     // The bank profile is a road-level property (the cross-section's roll about
     // the reference line), identical for every lane in the section, sampled
     // parallel to `sample_s`. Collapse an all-flat profile to empty, the
@@ -939,6 +951,7 @@ fn emit_section(
             out[emitted[k].1].neighbors = nbrs;
         }
     }
+    sample_s
 }
 
 /// The road's own axes at station `s`, as libOpenDRIVE has them: along the
@@ -1074,17 +1087,75 @@ fn geom_at(geoms: &[GeomRec], s: f64) -> &GeomRec {
         .unwrap_or(&geoms[0])
 }
 
-/// Arc-length sample positions over `[start, end]`, spaced `SAMPLE_STEP`,
-/// always including the exact endpoints.
-fn sample_positions(start: f64, end: f64) -> Vec<f64> {
+/// Arc-length sample positions over `[start, end]`, always including the
+/// exact endpoints. They are [`SAMPLE_STEP`] apart, or closer where lanes
+/// turning `bend` radians a metre would turn more than [`SAMPLE_TURN`] in
+/// that, down to [`SAMPLE_MIN_STEP`]. The whole stretch takes one step, so
+/// neighbouring samples stay evenly spaced, which the mesh's stub welding
+/// relies on.
+fn sample_positions(start: f64, end: f64, bend: f64) -> Vec<f64> {
+    let step = (SAMPLE_TURN / bend).clamp(SAMPLE_MIN_STEP, SAMPLE_STEP);
     let mut ss = Vec::new();
     let mut s = start;
     while s < end - 1e-6 {
         ss.push(s);
-        s += SAMPLE_STEP;
+        s += step;
     }
     ss.push(end);
     ss
+}
+
+/// The sharpest any lane edge of a section over `[start, end]` turns in plan,
+/// in radians per metre of road. The edges bend with the reference line, and
+/// also as widths and `laneOffset` move them across it. Probed every
+/// [`SAMPLE_MIN_STEP`] or so. `sides` are the section's left and right
+/// lanes, each ordered from the center outward.
+fn section_bend(
+    geoms: &[GeomRec],
+    lane_offsets: &[Cubic],
+    sides: [&[LaneDef]; 2],
+    start: f64,
+    end: f64,
+) -> f64 {
+    // Each edge's plan position at `s`.
+    let edges = |s: f64| {
+        let (x, y, hdg) = geom_at(geoms, s).pose(s);
+        let (sin, cos) = hdg.sin_cos();
+        let base = active(lane_offsets, s).map_or(0.0, |o| o.eval(s));
+        let mut ts = vec![base];
+        for (side, sign) in sides.into_iter().zip([1.0, -1.0]) {
+            let mut t = base;
+            for lane in side {
+                t += sign * width_at(lane, s - start);
+                ts.push(t);
+            }
+        }
+        ts.into_iter()
+            .map(|t| (x - t * sin, y + t * cos))
+            .collect::<Vec<_>>()
+    };
+    let n = ((end - start) / SAMPLE_MIN_STEP).ceil().max(1.0) as usize;
+    let h = (end - start) / n as f64;
+    let at: Vec<Vec<(f64, f64)>> = (0..=n).map(|k| edges(start + k as f64 * h)).collect();
+    let headings: Vec<Vec<f64>> = at
+        .windows(2)
+        .map(|w| {
+            w[0].iter()
+                .zip(&w[1])
+                .map(|(a, b)| (b.1 - a.1).atan2(b.0 - a.0))
+                .collect()
+        })
+        .collect();
+    headings
+        .windows(2)
+        .flat_map(|w| w[0].iter().zip(&w[1]).map(|(a, b)| wrap(b - a).abs() / h))
+        .fold(0.0, f64::max)
+}
+
+/// `angle` wrapped into `[-pi, pi]`.
+fn wrap(angle: f64) -> f64 {
+    use std::f64::consts::{PI, TAU};
+    (angle + PI).rem_euclid(TAU) - PI
 }
 
 /// Parse every `<item>` child of `parent` as a cubic (elevation, laneOffset),
@@ -1233,13 +1304,12 @@ fn place_structures(
             if to - from < 1e-6 {
                 continue;
             }
-            let stations = sample_positions(sec.start, sec.end);
             for lane in sec.lanes.iter().filter(|l| is_valid(l.od_id, &validity)) {
                 let center = &lanes[lane.index].center;
                 covered.push(Coverage {
                     lane: lane.id,
-                    from: along(center.points(), &stations, from),
-                    to: along(center.points(), &stations, to),
+                    from: along(center.points(), &sec.stations, from),
+                    to: along(center.points(), &sec.stations, to),
                 });
             }
         }
@@ -3886,6 +3956,51 @@ mod tests {
             |objects: &[Object]| objects.iter().map(|o| o.shape.clone()).collect::<Vec<_>>();
         assert_eq!(shapes(&repeated), shapes(&want));
         assert!(matches!(&want[0].shape, Shape::Outline { holes, .. } if holes.len() == 1));
+    }
+
+    #[test]
+    fn a_section_bends_as_sharply_as_its_sharpest_lane_edge() {
+        let width = |a, c| Cubic {
+            start: 0.0,
+            a,
+            b: 0.0,
+            c,
+            d: 0.0,
+        };
+        let lane = |widths| LaneDef {
+            id: -1,
+            kind: LaneType::Driving,
+            widths: vec![widths],
+            pred_link: None,
+            succ_link: None,
+        };
+        let road = |geom| {
+            [GeomRec {
+                s: 0.0,
+                x: 0.0,
+                y: 0.0,
+                hdg: 0.0,
+                geom,
+            }]
+        };
+        let bend =
+            |geom, right: &[LaneDef]| section_bend(&road(geom), &[], [&[], right], 0.0, 10.0);
+        let even = [lane(width(3.0, 0.0))];
+        // Straight and even, nothing bends. On a 10 m radius every edge turns
+        // 0.1 rad a metre, however far out.
+        assert!(bend(Geom::Line, &even) < 1e-9);
+        let arc = bend(Geom::Arc { curvature: 0.1 }, &even);
+        assert!((arc - 0.1).abs() < 1e-6, "{arc}");
+        // A lane widening as 0.1 s^2 swings its outer edge off a straight
+        // line, turning it 0.2 rad a metre where it starts.
+        let flare = bend(Geom::Line, &[lane(width(3.0, 0.1))]);
+        assert!((flare - 0.2).abs() < 0.01, "{flare}");
+
+        // Samples every 2 m with no bend, closer to keep to SAMPLE_TURN, and
+        // no closer than SAMPLE_MIN_STEP.
+        assert_eq!(sample_positions(0.0, 6.0, 0.0), [0.0, 2.0, 4.0, 6.0]);
+        assert_eq!(sample_positions(0.0, 1.0, 0.1), [0.0, 0.5, 1.0]);
+        assert_eq!(sample_positions(0.0, 1.0, 10.0).len(), 5);
     }
 
     #[test]

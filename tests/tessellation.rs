@@ -6,7 +6,8 @@
 //! than the lane half-width lets the inner offset push past the curve's center.
 
 use libopendrive::{
-    load_file, Direction, Lane, LaneId, LaneType, Point, Polyline, RoadNetwork, Vector,
+    load_file, load_file_with_provenance, Direction, Lane, LaneId, LaneType, Point, Polyline,
+    RoadNetwork, Vector,
 };
 
 const TOWN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/town07.xodr");
@@ -133,4 +134,42 @@ fn evenly_spaced_short_segments_are_all_kept() {
     let pts: Vec<[f32; 3]> = (0..=5).map(|k| [k as f32 * 0.3, 0.0, 0.0]).collect();
     let mesh = lane_of(3.0, &pts).surface_mesh();
     assert_eq!(ribs(&mesh), pts.len(), "no sample should have been welded");
+}
+
+/// The most a lane's centerline turns from one chord to the next, over the
+/// lanes `keep` picks.
+fn worst_turn(net: &RoadNetwork, keep: impl Fn(&Lane) -> bool) -> f32 {
+    let flat = |a: Point, b: Point| Vector::new(b.x - a.x, b.y - a.y, 0.0);
+    let mut worst = 0.0_f32;
+    for lane in net.lanes().iter().filter(|l| keep(l)) {
+        let chords: Vec<Vector> = lane
+            .center
+            .points()
+            .windows(2)
+            .map(|w| flat(w[0], w[1]))
+            .filter(|d| d.length() > 0.1)
+            .map(|d| d.normalize_or(Vector::ZERO))
+            .collect();
+        for w in chords.windows(2) {
+            worst = worst.max(w[0].dot(w[1]).clamp(-1.0, 1.0).acos());
+        }
+    }
+    worst
+}
+
+#[test]
+fn a_tight_curve_is_sampled_finely_enough_to_look_round() {
+    // Road 483 turns on a 3.2 m radius. Sampled every 2 m it turned 0.6 rad
+    // at a sample, which reads as a polygon. Its lanes now turn a few
+    // degrees, and nowhere in the town does a lane turn anything like that.
+    let (net, prov) = load_file_with_provenance(TOWN).expect("load town07");
+    let on_483 = |lane: &Lane| {
+        prov.lanes
+            .iter()
+            .any(|p| p.lane == lane.id && p.road_id == "483")
+    };
+    let tight = worst_turn(&net, on_483);
+    assert!(tight < 0.08, "road 483 turns {tight} rad at a sample");
+    let anywhere = worst_turn(&net, |_| true);
+    assert!(anywhere < 0.3, "a lane turns {anywhere} rad at a sample");
 }

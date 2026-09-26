@@ -149,6 +149,10 @@ starts.
   endpoint but left it holding the stub's width, which opened a seam of half a
   millimetre at some section joints. Welding now selects vertices rather than
   rewriting them, so position, tangent, bank and width cannot drift apart.
+- Lanes were sampled every 2 m however sharply they turned, so a tight
+  junction curve came out as a polygon, turning 35° at a sample. A section's
+  step now keeps every lane edge within 0.05 rad a sample, following the
+  reference line and any widening or narrowing lane, down to 25 cm.
 
 ### Viewer
 
