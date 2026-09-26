@@ -212,8 +212,12 @@
 //! sections there. A junction's CRG applies on every lane of the roads in the
 //! junction, before any CRG of those roads, since the spec says it supersedes
 //! their elevation. A junction's CRG must be `global`. The importer reads no
-//! junction reference line, so it skips the other modes there. A friction CRG
-//! ignores `zOffset` and `zScale`, as the spec says.
+//! junction reference line, so it skips the other modes there.
+//!
+//! A friction CRG ignores `zOffset` and `zScale`, as the spec says, and gives
+//! the grid values as the file has them. For heights, OpenCRG shifts a file
+//! without a `$ROAD_CRG_MODS` block so its reference line starts at 0, as the
+//! C-API does. Friction skips that shift.
 //!
 //! # What the importer ignores
 //!

@@ -12,6 +12,8 @@
   `sample(x, y, hint)`: the height, up-normal, CRG grid height and friction
   under a point, in `f64`. Where no CRG covers the point, it answers from the
   surface mesh. A `SurfaceHint` per moving point keeps each search short.
+- Friction is the grid value as the file gives it. OpenCRG's placement
+  shift applies to heights only.
 - The crate re-exports `opencrg`.
 
 ### Breaking
