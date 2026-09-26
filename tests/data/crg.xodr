@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+  <header revMajor="1" revMinor="9"/>
+  <road id="1" length="80" junction="-1">
+    <planView><geometry s="0" x="0" y="0" hdg="0" length="80"><line/></geometry></planView>
+    <elevationProfile><elevation s="0" a="0" b="0.02" c="0" d="0"/></elevationProfile>
+    <lanes><laneSection s="0">
+      <left><lane id="1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right>
+    </laneSection></lanes>
+    <surface>
+      <CRG file="crg_bumps.crg" sStart="10" sEnd="50" orientation="same" mode="attached" sOffset="10"/>
+      <CRG file="crg_grip.crg" sStart="45" sEnd="75" orientation="same" mode="attached0" purpose="friction" sOffset="45"/>
+    </surface>
+  </road>
+  <road id="2" length="60" junction="-1">
+    <planView><geometry s="0" x="100" y="0" hdg="0" length="60"><arc curvature="0.0166667"/></geometry></planView>
+    <lateralProfile><superelevation s="0" a="0.06" b="0" c="0" d="0"/></lateralProfile>
+    <lanes><laneSection s="0">
+      <left><lane id="1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right>
+    </laneSection></lanes>
+    <surface>
+      <CRG file="crg_bumps.crg" sStart="5" sEnd="45" orientation="opposite" mode="attached" sOffset="45"/>
+    </surface>
+  </road>
+  <road id="3" length="60" junction="-1">
+    <planView><geometry s="0" x="0" y="-30" hdg="0" length="60"><line/></geometry></planView>
+    
+    <lanes><laneSection s="0">
+      <left><lane id="1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right>
+    </laneSection></lanes>
+    <surface>
+      <CRG file="crg_bumps.crg" sStart="0" sEnd="60" mode="genuine" sOffset="10"/>
+    </surface>
+  </road>
+  <road id="4" length="60" junction="-1">
+    <planView><geometry s="0" x="0" y="-60" hdg="0" length="60"><line/></geometry></planView>
+    
+    <lanes><laneSection s="0">
+      <left><lane id="1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right>
+    </laneSection></lanes>
+    <surface>
+      <CRG file="crg_bumps.crg" sStart="0" sEnd="60" mode="global" xOffset="10" yOffset="-60"/>
+    </surface>
+  </road>
+</OpenDRIVE>

@@ -5,7 +5,8 @@
 //! from the ASAM OpenDRIVE 1.9 road surface section.
 
 use libopendrive::{
-    load_str, CrgAlong, CrgMode, CrgPurpose, RoadNetwork, RoadSurface, SurfaceHint, SurfaceSample,
+    load_file, load_str, CrgAlong, CrgMode, CrgPurpose, RoadNetwork, RoadSurface, SurfaceHint,
+    SurfaceSample,
 };
 use opencrg::CrgGrid;
 
@@ -417,4 +418,37 @@ fn a_network_keeps_its_crg_records_through_serde() {
     let json = serde_json::to_string(&net).unwrap();
     let back: RoadNetwork = serde_json::from_str(&json).unwrap();
     assert_eq!(back.crg_surfaces(), net.crg_surfaces());
+}
+
+/// `crg.xodr` lays the same file on four roads, one per mode. Each puts the
+/// crest of its speed bump, 9.8 m into the file, where the mode says.
+#[test]
+fn the_fixture_map_lays_its_bump_on_every_road() {
+    let net = load_file("tests/data/crg.xodr").unwrap();
+    let mesh = net.surface_mesh();
+    let surface = RoadSurface::new(&net, &mesh, |file| {
+        CrgGrid::from_path(format!("tests/data/{file}")).ok()
+    });
+    let crest = 0.07;
+    let (s, radius): (f64, f64) = (45.0 - 9.8, 1.0 / 0.0166667);
+    let arc = (
+        100.0 + radius * (s / radius).sin(),
+        radius * (1.0 - (s / radius).cos()),
+    );
+    for (road, point) in [
+        (1, (19.8, 0.0)),
+        (2, arc),
+        (3, (19.8, -30.0)),
+        (4, (19.8, -60.0)),
+    ] {
+        let got = at(&surface, point);
+        assert_near(got.crg_height.expect("on the bump"), crest, 1e-6);
+        if road != 1 {
+            assert_near(got.z, crest, 2e-5);
+        }
+    }
+    let wet = at(&surface, (60.0, -2.0));
+    assert!(wet.friction.unwrap() < 0.5, "{wet:?}");
+    let dry = at(&surface, (50.0, 2.0));
+    assert_near(dry.friction.unwrap(), 0.9, 1e-3);
 }

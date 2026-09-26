@@ -25,6 +25,13 @@ one behaviour each -- `spiral`, `banked_sweeper`, `right_banked_sweeper`,
 `climbing_banked`, `mid_road_super`, and the malformed set (`no_geometry`,
 `non_finite`, `zero_length`, `dangling_link`).
 
+`crg.xodr` lays generated OpenCRG files on four roads, one per mode:
+`crg_bumps.crg`, a 40 m elevation grid with a speed bump, a washboard, two
+potholes and ruts, and `crg_grip.crg`, a friction grid with a wet patch.
+`crg.py` writes all three. Regenerate with
+
+    python3 tests/data/crg.py
+
 `objects.xodr` is generated rather than written by hand: `objects.py` builds it
 with [scenariogeneration], so the object fixture comes from a writer other than
 this crate. Regenerate with
