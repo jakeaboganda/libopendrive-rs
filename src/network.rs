@@ -4,6 +4,7 @@
 use std::ops::Range;
 
 use crate::coords::Point;
+use crate::crg::CrgSurface;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
 use crate::object::{Object, ObjectId};
@@ -244,19 +245,21 @@ pub struct RoadNetwork {
     lanes: Vec<Lane>,
     objects: Vec<Object>,
     structures: Vec<Structure>,
+    crg: Vec<CrgSurface>,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
     /// [`Self::nearest_lane`]. Derived from `lanes`, so it takes no part in
     /// equality.
     index: LaneIndex,
 }
 
-/// Two networks are equal when their lanes, objects and structures are; the
-/// index is a function of the lanes.
+/// Two networks are equal when their lanes, objects, structures and CRG
+/// surfaces are; the index is a function of the lanes.
 impl PartialEq for RoadNetwork {
     fn eq(&self, other: &Self) -> bool {
         self.lanes == other.lanes
             && self.objects == other.objects
             && self.structures == other.structures
+            && self.crg == other.crg
     }
 }
 
@@ -267,6 +270,7 @@ struct NetworkData {
     lanes: Vec<Lane>,
     objects: Vec<Object>,
     structures: Vec<Structure>,
+    crg: Vec<CrgSurface>,
 }
 
 #[cfg(feature = "serde")]
@@ -275,6 +279,7 @@ impl From<NetworkData> for RoadNetwork {
         Self::new(data.lanes)
             .with_objects(data.objects)
             .with_structures(data.structures)
+            .with_crg_surfaces(data.crg)
     }
 }
 
@@ -285,6 +290,7 @@ impl From<RoadNetwork> for NetworkData {
             lanes: net.lanes,
             objects: net.objects,
             structures: net.structures,
+            crg: net.crg,
         }
     }
 }
@@ -397,6 +403,7 @@ impl RoadNetwork {
             lanes,
             objects: Vec::new(),
             structures: Vec::new(),
+            crg: Vec::new(),
             index,
         }
     }
@@ -411,6 +418,19 @@ impl RoadNetwork {
     pub fn with_structures(mut self, structures: Vec<Structure>) -> Self {
         self.structures = structures;
         self
+    }
+
+    /// This network with the OpenCRG surfaces `crg` laid on its lanes,
+    /// replacing any it had.
+    pub fn with_crg_surfaces(mut self, crg: Vec<CrgSurface>) -> Self {
+        self.crg = crg;
+        self
+    }
+
+    /// The OpenCRG files the map lays on its roads, in map order. Load them
+    /// into a [`RoadSurface`](crate::RoadSurface).
+    pub fn crg_surfaces(&self) -> &[CrgSurface] {
+        &self.crg
     }
 
     /// Every tunnel and bridge, in the order the importer emitted them.

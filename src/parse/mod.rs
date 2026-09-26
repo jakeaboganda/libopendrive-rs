@@ -11,11 +11,12 @@
 use std::collections::HashMap;
 
 use crate::coords::{Point, Vector};
+use crate::crg::{RefPoint, Stretch};
 use crate::object::orient;
 use crate::{
-    Border, Corner, Coverage, Direction, Extent, Lane, LaneId, LaneType, Marking, Material, Object,
-    ObjectId, ObjectType, ParkingSpace, Polyline, RoadNetwork, Section, Shape, Structure,
-    StructureId, StructureKind, UserData,
+    Border, Corner, Coverage, CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface, Direction,
+    Extent, Lane, LaneId, LaneType, Marking, Material, Object, ObjectId, ObjectType, ParkingSpace,
+    Polyline, RoadNetwork, Section, Shape, Structure, StructureId, StructureKind, UserData,
 };
 
 mod links;
@@ -208,6 +209,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     let mut lanes = Vec::new();
     let mut objects = Objects::default();
     let mut structures = Structures::default();
+    let mut surfaces = Vec::new();
     let mut topo = Topology::default();
     let index = object_index(root);
     for road in root.children().filter(|n| n.has_tag_name("road")) {
@@ -217,12 +219,14 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             &mut lanes,
             &mut objects,
             &mut structures,
+            &mut surfaces,
             &mut topo,
         );
     }
     if lanes.is_empty() {
         return Err(ImportError::Malformed("no lanes found".into()));
     }
+    surfaces.extend(junction_crgs(root, &topo));
     // Resolve connectivity once all lanes exist and are registered.
     topo.junctions = links::junctions(root);
     links::resolve(&mut lanes, &topo);
@@ -245,9 +249,37 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     Ok((
         RoadNetwork::new(lanes)
             .with_objects(objects.baked)
-            .with_structures(structures.baked),
+            .with_structures(structures.baked)
+            .with_crg_surfaces(surfaces),
         provenance,
     ))
+}
+
+/// Every `<junction>` `<CRG>`, over the lanes of the roads in its junction.
+fn junction_crgs(root: roxmltree::Node, topo: &Topology) -> Vec<CrgSurface> {
+    let mut surfaces = Vec::new();
+    for junction in root.children().filter(|n| n.has_tag_name("junction")) {
+        let id = junction.attribute("id").unwrap_or_default();
+        let roads: Vec<&str> = root
+            .children()
+            .filter(|n| n.has_tag_name("road") && n.attribute("junction") == Some(id))
+            .filter_map(|n| n.attribute("id"))
+            .collect();
+        let lanes: Vec<LaneId> = topo
+            .metas
+            .iter()
+            .filter(|m| roads.contains(&m.road.as_str()))
+            .map(|m| m.id)
+            .collect();
+        for node in child(junction, "surface")
+            .into_iter()
+            .flat_map(|n| n.children())
+            .filter(|n| n.has_tag_name("CRG"))
+        {
+            surfaces.extend(junction_crg(node, lanes.clone()));
+        }
+    }
+    surfaces
 }
 
 /// Make a real-world document parseable: strip a UTF-8 BOM and remove the
@@ -529,6 +561,7 @@ fn parse_road(
     out: &mut Vec<Lane>,
     objects: &mut Objects,
     structures: &mut Structures,
+    surfaces: &mut Vec<CrgSurface>,
     topo: &mut Topology,
 ) {
     let road_id = road.attribute("id").unwrap_or_default().to_string();
@@ -633,16 +666,152 @@ fn parse_road(
         out,
         topo,
     );
+    let baked = BakedRoad {
+        id: &road_id,
+        length,
+        sections: &sections,
+        surface: &|s, t| surface_at(&geoms, &elevations, &superelevations, s, t),
+        axes: &|s| road_axes(&geoms, &elevations, &superelevations, s),
+    };
     if let Some(objects_node) = child(road, "objects") {
-        let road = BakedRoad {
-            id: &road_id,
-            length,
-            sections: &sections,
-            surface: &|s, t| surface_at(&geoms, &elevations, &superelevations, s, t),
-            axes: &|s| road_axes(&geoms, &elevations, &superelevations, s),
-        };
-        place_objects(objects_node, index, &road, objects);
-        place_structures(objects_node, &road, out, structures);
+        place_objects(objects_node, index, &baked, objects);
+        place_structures(objects_node, &baked, out, structures);
+    }
+    let line = RefLine {
+        geoms: &geoms,
+        elevations: &elevations,
+        superelevations: &superelevations,
+    };
+    for node in child(road, "surface")
+        .into_iter()
+        .flat_map(|n| n.children())
+        .filter(|n| n.has_tag_name("CRG"))
+    {
+        surfaces.extend(road_crg(node, &baked, &line));
+    }
+}
+
+/// A road's reference line and the profiles along it.
+struct RefLine<'a> {
+    geoms: &'a [GeomRec],
+    elevations: &'a [Cubic],
+    superelevations: &'a [Cubic],
+}
+
+impl RefLine<'_> {
+    /// The reference line at `s`.
+    fn station(&self, s: f64) -> RefPoint {
+        let (x, y, heading) = geom_at(self.geoms, s).pose(s);
+        let elevation = active(self.elevations, s);
+        let bank = active(self.superelevations, s);
+        RefPoint {
+            s,
+            x,
+            y,
+            heading,
+            z: elevation.map_or(0.0, |e| e.eval(s)),
+            grade: elevation.map_or(0.0, |e| e.slope(s)),
+            bank: bank.map_or(0.0, |e| e.eval(s)),
+            bank_rate: bank.map_or(0.0, |e| e.slope(s)),
+        }
+    }
+}
+
+/// How far apart a CRG stretch's stations are, in metres. The importer bakes
+/// spirals at the same step.
+const CRG_STEP: f64 = 0.25;
+
+/// A road `<CRG>`, or `None` if it lacks a file, a known mode, or a stretch
+/// of road to lie on.
+fn road_crg(node: roxmltree::Node, road: &BakedRoad, line: &RefLine) -> Option<CrgSurface> {
+    let from = attr_f64(node, "sStart")?.max(0.0);
+    let to = attr_f64(node, "sEnd")?.min(road.length);
+    if to <= from {
+        return None;
+    }
+    let offset = |name: &str| attr_f64(node, name).unwrap_or(0.0);
+    let along = CrgAlong {
+        s_offset: offset("sOffset"),
+        t_offset: offset("tOffset"),
+        opposite: node.attribute("orientation") == Some("opposite"),
+    };
+    let mode = match node.attribute("mode")? {
+        "attached" => CrgMode::Attached(along),
+        "attached0" => CrgMode::Attached0(along),
+        "genuine" => {
+            let at = line.station(along.s_offset);
+            let t = along.t_offset * at.bank.cos();
+            let (sin, cos) = at.heading.sin_cos();
+            CrgMode::Genuine {
+                start: CrgPose {
+                    x: at.x - t * sin,
+                    y: at.y + t * cos,
+                    heading: at.heading + offset("hOffset"),
+                },
+            }
+        }
+        "global" => global_crg(node),
+        _ => return None,
+    };
+    let steps = ((to - from) / CRG_STEP).ceil().max(1.0) as usize;
+    let stations = (0..=steps)
+        .map(|k| line.station(from + (to - from) * k as f64 / steps as f64))
+        .collect();
+    Some(crg_surface(
+        node,
+        mode,
+        road.lanes((from, to), &[]),
+        Some(Stretch { stations }),
+    ))
+}
+
+/// A `<junction>` `<CRG>` over the lanes of the junction's roads. `None`
+/// unless it is `global`, the one mode with no reference line.
+fn junction_crg(node: roxmltree::Node, lanes: Vec<LaneId>) -> Option<CrgSurface> {
+    if node.attribute("mode") != Some("global") {
+        return None;
+    }
+    Some(crg_surface(node, global_crg(node), lanes, None))
+}
+
+fn global_crg(node: roxmltree::Node) -> CrgMode {
+    let offset = |name: &str| attr_f64(node, name).unwrap_or(0.0);
+    CrgMode::Global {
+        origin: CrgPose {
+            x: offset("xOffset"),
+            y: offset("yOffset"),
+            heading: offset("hOffset"),
+        },
+    }
+}
+
+/// The attributes every `<CRG>` shares. `zOffset` and `zScale` do not apply
+/// to friction.
+fn crg_surface(
+    node: roxmltree::Node,
+    mode: CrgMode,
+    lanes: Vec<LaneId>,
+    road: Option<Stretch>,
+) -> CrgSurface {
+    let purpose = match node.attribute("purpose") {
+        Some("friction") => CrgPurpose::Friction,
+        _ => CrgPurpose::Elevation,
+    };
+    let (z_offset, z_scale) = match purpose {
+        CrgPurpose::Elevation => (
+            attr_f64(node, "zOffset").unwrap_or(0.0),
+            attr_f64(node, "zScale").unwrap_or(1.0),
+        ),
+        CrgPurpose::Friction => (0.0, 1.0),
+    };
+    CrgSurface {
+        file: node.attribute("file").unwrap_or_default().to_string(),
+        purpose,
+        mode,
+        z_offset,
+        z_scale,
+        lanes,
+        road,
     }
 }
 

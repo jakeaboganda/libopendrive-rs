@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### OpenCRG road surfaces
+
+- Each `<CRG>` under a road's or a junction's `<surface>` imports as a
+  `CrgSurface` in `RoadNetwork::crg_surfaces`. All four modes are read:
+  `attached`, `attached0`, `genuine` and `global`. Both purposes are read:
+  elevation and friction.
+- `RoadSurface` loads the files through a closure and answers
+  `sample(x, y, hint)`: the height, up-normal, CRG grid height and friction
+  under a point, in `f64`. Where no CRG covers the point, it answers from the
+  surface mesh. A `SurfaceHint` per moving point keeps each search short.
+- The crate re-exports `opencrg`.
+
 ### Breaking
 
 - The minimum Rust version is 1.85, up from 1.82, for the `opencrg`

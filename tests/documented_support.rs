@@ -12,7 +12,8 @@ const CRATE_DOCS: &str = include_str!("../src/lib.rs");
 
 /// Tags read in one place and ignored in another, which a scan of tag names
 /// alone cannot tell apart. An object's `<border>` is read, a lane's is not.
-const READ_IN_ANOTHER_PLACE: [&str; 1] = ["border"];
+/// A road's `<surface>` is read, an object's is not.
+const READ_IN_ANOTHER_PLACE: [&str; 2] = ["border", "surface"];
 
 /// `<left>` and `<right>` reach `child()` through a loop variable rather than
 /// a literal, so no scan of the source can see them.

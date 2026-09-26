@@ -45,7 +45,7 @@
 //!
 //! | Element | Attributes read |
 //! | --- | --- |
-//! | `<road>` | `id`, `length` |
+//! | `<road>` | `id`, `length`, `junction` |
 //! | `<road><link>` | `elementType`, `elementId`, `contactPoint` |
 //! | `<planView><geometry>` | `s`, `x`, `y`, `hdg`, `length` |
 //! | `<line>` | none |
@@ -79,6 +79,8 @@
 //! | `<markings><marking>` | `side`, `color`, `width`, `zOffset`, `lineLength`, `spaceLength`, `startOffset`, `stopOffset` |
 //! | `<borders><border>` | `type`, `width`, `outlineId`, `useCompleteOutline` |
 //! | `<cornerReference>` | `id` |
+//! | `<road><surface><CRG>` | `file`, `mode`, `purpose`, `orientation`, `sStart`, `sEnd`, `sOffset`, `tOffset`, `hOffset`, `xOffset`, `yOffset`, `zOffset`, `zScale` |
+//! | `<junction><surface><CRG>` | `file`, `mode`, `purpose`, `xOffset`, `yOffset`, `hOffset`, `zOffset`, `zScale` |
 //!
 //! Four attribute values steer the import:
 //!
@@ -177,11 +179,48 @@
 //! through a tunnel or over a bridge. Its road id, id, `s` and `length` are
 //! in its [`StructureProvenance`].
 //!
+//! # Road surfaces
+//!
+//! Each `<CRG>` under a road's or a junction's `<surface>` becomes a
+//! [`CrgSurface`] in [`RoadNetwork::crg_surfaces`]. The importer reads the
+//! record, not the OpenCRG file it names. [`RoadSurface::new`] loads the
+//! files through a closure you pass. Then [`RoadSurface::sample`] gives the
+//! height, normal and friction under a point, in `f64`. Where a CRG covers
+//! the point, the value comes from it. Everywhere else it comes from the
+//! surface mesh, which the CRG does not change.
+//!
+//! The modes follow the road surface section of ASAM OpenDRIVE 1.9:
+//!
+//! - `attached` lays the CRG grid along the road's reference line and adds
+//!   its height to the road's. The file's reference line, with its height,
+//!   slope and bank, is ignored. The spec's formula evaluates the file with
+//!   `crgEvaluv2z`, which includes them, but its text says they are
+//!   disregarded. The importer follows the text.
+//! - `attached0` lays the file along the road the same way, and its
+//!   elevation replaces the road's height.
+//! - `genuine` starts the file's own reference line at the road's
+//!   `(sOffset, tOffset)`, turned by `hOffset`.
+//! - `global` leaves the file in its own coordinates, moved by `xOffset`,
+//!   `yOffset` and `hOffset`.
+//!
+//! Along the road, `u = s - sOffset` and `v = t - tOffset`.
+//! `orientation="opposite"` negates both. The spec's matrix for it also
+//! swaps them, which contradicts its own text that the file turns 180
+//! degrees. The importer follows the text.
+//!
+//! A road's CRG applies between `sStart` and `sEnd`, on the lanes of the
+//! sections there. A junction's CRG applies on every lane of the roads in the
+//! junction, before any CRG of those roads, since the spec says it supersedes
+//! their elevation. A junction's CRG must be `global`. The importer reads no
+//! junction reference line, so it skips the other modes there. A friction CRG
+//! ignores `zOffset` and `zScale`, as the spec says.
+//!
 //! # What the importer ignores
 //!
 //! Everything else in the file, silently. That includes `<geoReference>`,
 //! `<signals>`, `<roadMark>`, `<controller>`, `<junctionGroup>`,
-//! `<station>`, and road `<type>` with its `<speed>`.
+//! `<station>`, an object's `<surface>`, and road `<type>` with its
+//! `<speed>`.
 //!
 //! Three omissions change the road you get back, rather than only dropping
 //! detail around it:
@@ -239,6 +278,7 @@
 //! full width and radius.
 
 mod coords;
+mod crg;
 mod geometry;
 mod grid;
 mod mesh;
@@ -253,6 +293,9 @@ mod structure;
 mod fixtures;
 
 pub use coords::{Point, Vector};
+pub use crg::{
+    CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface, RoadSurface, SurfaceHint, SurfaceSample,
+};
 pub use geometry::TooFewPoints;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
 pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};
@@ -262,6 +305,8 @@ pub use object::{
     Shape, UserData,
 };
 pub use object_mesh::ObjectSpan;
+/// The OpenCRG reader, for loading the files a [`RoadSurface`] evaluates.
+pub use opencrg;
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ImportError,
     LaneProvenance, ObjectProvenance, Orientation, Provenance, StructureProvenance,

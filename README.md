@@ -82,6 +82,24 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   of each lane they cover. Call `structures_over(lane)` to find out whether a
   lane runs through a tunnel or over a bridge, and where.
 
+- `<surface><CRG>` on roads and junctions, in all four modes, for elevation
+  and friction. The importer keeps the records. `RoadSurface` loads the
+  OpenCRG files they name and gives the height, normal and friction under a
+  point in `f64`, for a vehicle model. Off the CRG it answers from the surface
+  mesh, which the CRG does not change.
+
+  ```rust
+  use libopendrive::{load_file, opencrg::CrgGrid, RoadSurface, SurfaceHint};
+
+  let net = load_file("maps/track.xodr")?;
+  let mesh = net.surface_mesh();
+  let surface = RoadSurface::new(&net, &mesh, |file| {
+      CrgGrid::from_path(format!("maps/{file}")).ok()
+  });
+  let mut wheel = SurfaceHint::default();
+  let ground = surface.sample(12.0, -30.0, &mut wheel);
+  ```
+
 For the exact element and attribute list, see
 [the crate docs](https://docs.rs/libopendrive).
 

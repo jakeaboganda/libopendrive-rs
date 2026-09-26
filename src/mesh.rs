@@ -122,6 +122,7 @@ impl Mesh {
     /// [`Mesh::sampler`] instead. It answers the same thing off an index.
     pub fn height_at(&self, x: f32, y: f32) -> Option<(f32, Vector)> {
         self.highest(0..self.indices.len() / 3, x, y)
+            .map(|(height, normal, _)| (height, normal))
     }
 
     /// An index over this mesh's triangles, for repeated [`Mesh::height_at`]
@@ -135,14 +136,15 @@ impl Mesh {
         MeshSampler::new(self)
     }
 
-    /// The highest of `triangles` covering `(x, y)`, with its normal.
+    /// The highest of `triangles` covering `(x, y)`, with its normal and
+    /// index.
     fn highest(
         &self,
         triangles: impl IntoIterator<Item = usize>,
         x: f32,
         y: f32,
-    ) -> Option<(f32, Vector)> {
-        let mut best: Option<(f32, Vector)> = None;
+    ) -> Option<(f32, Vector, usize)> {
+        let mut best: Option<(f32, Vector, usize)> = None;
         for t in triangles {
             let tri = &self.indices[t * 3..t * 3 + 3];
             let (ia, ib, ic) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
@@ -163,7 +165,7 @@ impl Mesh {
                 continue;
             }
             let height = l1 * a.z + l2 * b.z + l3 * c.z;
-            if best.is_some_and(|(best_height, _)| height <= best_height) {
+            if best.is_some_and(|(best_height, _, _)| height <= best_height) {
                 continue;
             }
             // Smooth (interpolated vertex) normal, so a draped body doesn't snap
@@ -176,7 +178,7 @@ impl Mesh {
                 (b - a).cross(c - a).normalize_or(Vector::Z)
             };
             let n = if n.z < 0.0 { -n } else { n }; // face up regardless of winding
-            best = Some((height, n));
+            best = Some((height, n, t));
         }
         best
     }
@@ -219,11 +221,26 @@ impl<'a> MeshSampler<'a> {
     /// The surface height (world Z) and up-normal directly under `(x, y)`.
     /// See [`Mesh::height_at`], which this answers identically.
     pub fn height_at(&self, x: f32, y: f32) -> Option<(f32, Vector)> {
+        self.top(x, y).map(|(height, normal, _)| (height, normal))
+    }
+
+    /// Like [`Self::height_at`], with the lane of the triangle, if the mesh
+    /// says.
+    pub(crate) fn top(&self, x: f32, y: f32) -> Option<(f32, Vector, Option<LaneId>)> {
         // A triangle covering the point overlaps the cell holding it, so the
         // one cell is the whole candidate set.
         let candidates = self.grid.at(x, y);
-        self.mesh
-            .highest(candidates.iter().map(|&t| t as usize), x, y)
+        let (height, normal, t) =
+            self.mesh
+                .highest(candidates.iter().map(|&t| t as usize), x, y)?;
+        let index = (t * 3) as u32;
+        let lanes = &self.mesh.lanes;
+        let span = lanes.partition_point(|span| span.indices.end <= index);
+        let lane = lanes
+            .get(span)
+            .filter(|span| span.indices.contains(&index))
+            .map(|span| span.lane);
+        Some((height, normal, lane))
     }
 }
 
