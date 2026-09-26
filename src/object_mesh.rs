@@ -33,8 +33,9 @@ impl RoadNetwork {
     ///
     /// Every face has its own vertices, carrying that face's normal, so edges
     /// stay sharp. Faces are wound to face outward: away from a solid's
-    /// middle, up from a lid, down from a floor. An open outline has no
-    /// inside, so its walls keep the order of its corners.
+    /// middle, a lid away from the floor, and the floor away from the lid. An
+    /// open outline has no inside, so its walls keep the order of its
+    /// corners.
     ///
     /// - A box is six faces and a cylinder is a prism of 16 sides.
     /// - An outline is a wall along each edge, from the corners' bases to their
@@ -51,8 +52,9 @@ impl RoadNetwork {
     /// with one zero dimension, and the left wall of a sweep with no width.
     /// Draw those double-sided.
     ///
-    /// A lid is triangulated in plan, so a closed outline must not cross
-    /// itself, and one standing on its edge gets no lid.
+    /// A lid is triangulated in the plane of its corners, so a closed outline
+    /// must not cross itself, and its lid is flat only if its tops lie in one
+    /// plane. One standing on its edge gets a lid too.
     pub fn object_mesh(&self) -> Mesh {
         let mut mesh = Mesh::default();
         for object in self.objects() {
@@ -178,9 +180,10 @@ fn cylinder(
 }
 
 fn outline(mesh: &mut Mesh, corners: &[Corner], closed: bool, holes: &[Vec<Corner>]) {
-    walls(mesh, corners, closed, false);
+    let lid = lid_normal(corners);
+    walls(mesh, corners, closed.then(|| about(corners, lid)));
     for hole in holes {
-        walls(mesh, hole, true, true);
+        walls(mesh, hole, Some(-about(hole, lid)));
     }
     if closed {
         let mut starts = Vec::new();
@@ -191,32 +194,65 @@ fn outline(mesh: &mut Mesh, corners: &[Corner], closed: bool, holes: &[Vec<Corne
         }
         let bases: Vec<Point> = ring.iter().map(|c| c.base).collect();
         let tops: Vec<Point> = ring.iter().map(|c| c.top).collect();
-        let plan: Vec<[f32; 2]> = tops.iter().map(|p| [p.x, p.y]).collect();
-        let triangles = triangulate(&plan, &starts);
-        face(mesh, &tops, &triangles, Vector::Z);
+        // Flat in the lid's own plane, measured from its first corner.
+        let e1 = if lid.z.abs() > 0.5 {
+            Vector::X
+        } else {
+            Vector::Z
+        };
+        let e1 = (e1 - lid * e1.dot(lid)).normalize_or_zero();
+        let e2 = lid.cross(e1);
+        let flat: Vec<[f32; 2]> = tops
+            .iter()
+            .map(|&p| [(p - tops[0]).dot(e1), (p - tops[0]).dot(e2)])
+            .collect();
+        let triangles = triangulate(&flat, &starts);
+        face(mesh, &tops, &triangles, lid);
         if bases != tops {
-            face(mesh, &bases, &triangles, -Vector::Z);
+            face(mesh, &bases, &triangles, -lid);
         }
     }
 }
 
-/// A wall along each edge of `ring`, facing away from the solid: out of an
-/// outline, into a `hole`. An open ring has no inside, so its walls keep the
-/// order of its corners.
-fn walls(mesh: &mut Mesh, ring: &[Corner], closed: bool, hole: bool) {
+/// Which way a closed outline's lid faces: square to its tops, away from its
+/// bases, or up as far as it can where they coincide. Up for an outline lying
+/// flat.
+fn lid_normal(corners: &[Corner]) -> Vector {
+    let tops: Vec<Point> = corners.iter().map(|c| c.top).collect();
+    let normal = area_normal(&tops).normalize_or(Vector::Z);
+    let rise = corners
+        .iter()
+        .fold(Vector::ZERO, |sum, c| sum + (c.top - c.base));
+    let away = normal.dot(rise);
+    if away.abs() > MIN_AREA {
+        normal * away.signum()
+    } else if normal.z < 0.0 {
+        -normal
+    } else {
+        normal
+    }
+}
+
+/// `lid`, or its reverse, whichever `ring` runs anticlockwise about.
+fn about(ring: &[Corner], lid: Vector) -> Vector {
+    let bases: Vec<Point> = ring.iter().map(|c| c.base).collect();
+    lid * area_normal(&bases).dot(lid).signum()
+}
+
+/// A wall along each edge of `ring`, facing out of it seen from `normal`:
+/// out of a ring running anticlockwise about it, into one running
+/// clockwise. An open ring, with no `normal`, has no inside, so its walls
+/// keep the order of its corners.
+fn walls(mesh: &mut Mesh, ring: &[Corner], normal: Option<Vector>) {
     let n = ring.len();
     let bases: Vec<Point> = ring.iter().map(|c| c.base).collect();
-    // Right of each edge is outside a counter-clockwise ring.
-    let right = match (closed, (plan_area(&bases) >= 0.0) != hole) {
-        (false, _) => 0.0,
-        (true, true) => 1.0,
-        (true, false) => -1.0,
+    let (edges, normal) = match normal {
+        Some(normal) => (n, normal),
+        None => (n - 1, Vector::ZERO),
     };
-    let edges = if closed { n } else { n - 1 };
     for i in 0..edges {
         let j = (i + 1) % n;
-        let along = bases[j] - bases[i];
-        let out = Vector::new(along.y, -along.x, 0.0) * right;
+        let out = (bases[j] - bases[i]).cross(normal);
         face(
             mesh,
             &[bases[i], bases[j], ring[j].top, ring[i].top],
@@ -334,16 +370,14 @@ fn face(mesh: &mut Mesh, points: &[Point], triangles: &[[usize; 3]], out: Vector
         .extend(kept.iter().flatten().map(|&i| first + i as u32));
 }
 
-/// Twice the signed area of `points` in plan: positive if they run
-/// counter-clockwise seen from above.
-fn plan_area(points: &[Point]) -> f32 {
+/// Twice the vector area of the polygon through `points` (Newell's method):
+/// square to it, facing the side it runs anticlockwise seen from.
+fn area_normal(points: &[Point]) -> Vector {
     let n = points.len();
-    (0..n)
-        .map(|i| {
-            let (a, b) = (points[i], points[(i + 1) % n]);
-            a.x * b.y - b.x * a.y
-        })
-        .sum()
+    (0..n).fold(Vector::ZERO, |sum, i| {
+        let (a, b) = (points[i] - points[0], points[(i + 1) % n] - points[0]);
+        sum + a.cross(b)
+    })
 }
 
 /// Triangles covering a simple polygon with holes, by ear clipping. `polygon`

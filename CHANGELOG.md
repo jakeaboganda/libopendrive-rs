@@ -28,8 +28,10 @@
 
 `RoadNetwork::object_mesh` tessellates them into one `Mesh` of
 outward-facing faces, with an `ObjectSpan` per object in `Mesh::objects`, as
-`surface_mesh` does for lanes. A closed outline gets a lid and a floor, and a
-face with no area is left out, so a post given only a height has no span.
+`surface_mesh` does for lanes. A closed outline gets a lid and a floor in the
+plane of its corners, so one standing on its edge, such as a sign, gets them
+too. A face with no area is left out, so a post given only a height has no
+span.
 
 `RoadNetwork::object` looks one up by its id. Its road id, `<object id>`,
 anchoring `(s, t)`, `orientation` and `validLength` are in an

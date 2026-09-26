@@ -444,10 +444,10 @@ fn an_outlined_object_has_no_solid_of_its_own() {
     // Shed, tree, marker, guide post, gate, nine poles. The outlined house
     // and fence, and the swept railing and barrier, add no solid.
     // Plus two sweeps, and the house, fence, crosswalk and island outlines.
-    // The two parking bays are solids too, the courtyard an outline and the
-    // pipe a sweep.
+    // The two parking bays are solids too, the courtyard and the board
+    // outlines, and the pipe a sweep.
     assert_eq!(solids, 5 + 9 + 2);
-    assert_eq!(objects().len(), 5 + 9 + 2 + 4 + 2 + 1 + 1);
+    assert_eq!(objects().len(), 5 + 9 + 2 + 4 + 2 + 2 + 1);
 }
 
 #[test]

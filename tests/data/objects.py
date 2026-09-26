@@ -150,6 +150,16 @@ pipe.repeat(repeatLength=40, repeatDistance=0, sStart=5, tStart=-16, tEnd=-16,
             zOffsetStart=0, zOffsetEnd=0)
 road.add_object(pipe)
 
+# A board standing on its edge: pitched a right angle back, so its outline's
+# u axis points up. 2 m tall, 1 m wide, and its height a 0.1 m thickness.
+board = xodr.Object(s=20, t=-20, Type=xodr.ObjectType.obstacle, id="17", name="Board",
+                    pitch=-1.5708)
+face = xodr.Outline(closed=True)
+for u, v in [(0, 0), (2, 0), (2, 1), (0, 1)]:
+    face.add_corner(xodr.CornerLocal(u, v, 0, 0.1))
+board.add_outline(face)
+road.add_object(board)
+
 # A tunnel over the last 25 m of the arc, both lanes.
 road.add_tunnel(xodr.Tunnel(s=75, length=25, id="20", name="Hill",
                             tunnel_type=xodr.TunnelType.standard, daylight=0.1, lighting=0.8))

@@ -183,3 +183,72 @@ fn a_real_file_meshes_its_railings_and_not_its_bare_posts() {
         .iter()
         .all(|s| net.object(s.object).unwrap().kind == ObjectType::Railing));
 }
+
+/// One object on a straight, flat 40 m road, and its span.
+fn one_object(object: &str) -> (Mesh, ObjectSpan) {
+    let xml = format!(
+        r#"<OpenDRIVE><road length="40" id="1" junction="-1">
+          <planView><geometry s="0" x="0" y="0" hdg="0" length="40"><line/></geometry></planView>
+          <lanes><laneSection s="0"><right><lane id="-1" type="driving">
+            <width sOffset="0" a="3.5"/></lane></right></laneSection></lanes>
+          <objects>{object}</objects></road></OpenDRIVE>"#
+    );
+    let mesh = libopendrive::load_str(&xml).expect("loads").object_mesh();
+    mesh.validate().expect("a collider can build it");
+    let span = mesh.objects[0].clone();
+    (mesh, span)
+}
+
+/// An `<outline>` of `cornerLocal`s at `(u, v)`, each `height` tall.
+fn ring(attrs: &str, corners: &[(f32, f32)], height: f32) -> String {
+    let corners: String = corners
+        .iter()
+        .map(|(u, v)| format!(r#"<cornerLocal u="{u}" v="{v}" height="{height}"/>"#))
+        .collect();
+    format!("<outline {attrs}>{corners}</outline>")
+}
+
+#[test]
+fn outlines_and_holes_enclose_their_volume_whichever_way_they_run() {
+    let square = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)];
+    let well = [(1.0, 1.0), (3.0, 1.0), (3.0, 3.0), (1.0, 3.0)];
+    let reversed = |r: &[(f32, f32)]| r.iter().rev().copied().collect::<Vec<_>>();
+    for outer in [square.to_vec(), reversed(&square)] {
+        for hole in [well.to_vec(), reversed(&well)] {
+            let (mesh, span) = one_object(&format!(
+                r#"<object id="o" s="10" t="0"><outlines>{}{}</outlines></object>"#,
+                ring("", &outer, 2.0),
+                ring(r#"outer="false""#, &hole, 2.0),
+            ));
+            let got = volume(&mesh, &span);
+            assert!((got - 24.0).abs() < 1e-3, "{outer:?} {hole:?}: {got} m³");
+        }
+    }
+}
+
+#[test]
+fn an_outline_standing_on_its_edge_gets_a_lid() {
+    // Pitched a right angle back, so u points up: a 2 m tall, 1 m wide
+    // board, its height a 0.1 m thickness behind it.
+    let board = |height| {
+        one_object(&format!(
+            r#"<object id="o" s="10" t="0" pitch="{}"><outlines>{}</outlines></object>"#,
+            -std::f64::consts::FRAC_PI_2,
+            ring(
+                "",
+                &[(0.0, 0.0), (2.0, 0.0), (2.0, 1.0), (0.0, 1.0)],
+                height
+            ),
+        ))
+    };
+    let (mesh, span) = board(0.1);
+    let got = volume(&mesh, &span);
+    assert!((got - 0.2).abs() < 1e-4, "board: {got} m³");
+
+    // With no thickness it is one sheet, its lid.
+    let (mesh, span) = board(0.0);
+    let area: f32 = triangles(&mesh, &span)
+        .map(|[a, b, c]| (b - a).cross(c - a).length() / 2.0)
+        .sum();
+    assert!((area - 2.0).abs() < 1e-4, "sign: {area} m²");
+}

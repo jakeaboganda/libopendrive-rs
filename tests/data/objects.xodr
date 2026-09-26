@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <OpenDRIVE>
-    <header name="objects" revMajor="1" revMinor="5" date="2026-09-26 11:47:19.782414" north="0.0" south="0.0" east="0.0" west="0.0"/>
+    <header name="objects" revMajor="1" revMinor="5" date="2026-09-26 12:09:04.568522" north="0.0" south="0.0" east="0.0" west="0.0"/>
     <road rule="RHT" id="0" junction="-1" length="100.0">
         <link/>
         <planView>
@@ -147,6 +147,16 @@
             </object>
             <object id="16" s="0" t="0" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" name="Pipe" type="obstacle" orientation="none" hdg="0">
                 <repeat length="40" distance="0" s="5" tStart="-16" tEnd="-16" heightStart="1" heightEnd="1" zOffsetStart="0" zOffsetEnd="0" radiusStart="0.3" radiusEnd="0.5"/>
+            </object>
+            <object id="17" s="20" t="-20" subtype="None" dynamic="no" zOffset="0" pitch="-1.5708" roll="0" name="Board" type="obstacle" orientation="none" hdg="0">
+                <outlines>
+                    <outline closed="true">
+                        <cornerLocal u="0" v="0" z="0" height="0.1"/>
+                        <cornerLocal u="2" v="0" z="0" height="0.1"/>
+                        <cornerLocal u="2" v="1" z="0" height="0.1"/>
+                        <cornerLocal u="0" v="1" z="0" height="0.1"/>
+                    </outline>
+                </outlines>
             </object>
             <tunnel s="75" length="25" id="20" name="Hill" type="standard" daylight="0.1" lighting="0.8"/>
         </objects>
