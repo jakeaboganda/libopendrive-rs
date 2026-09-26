@@ -106,7 +106,8 @@ solid yellow one on the other. The two blue boxes are parking spaces.
 ![A crosswalk's markings and two parking spaces](markings.png)
 
 Borders, such as a kerb, are bands along the outline, coloured by type.
-Hover one for its type and width.
+Hover one for its type and width. Where two borders share an edge, the one
+later in the file is drawn over the other.
 
 ## Tunnels and bridges
 

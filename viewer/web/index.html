@@ -577,7 +577,10 @@ function buildMarkings() {
 
 // Every border's band as one mesh, in the border type's colour. Pickable:
 // `owner` maps a triangle to its object and border, and hovering the band
-// outlines it and names the border.
+// outlines it and names the border. The spec does not say which side of an
+// edge a border is on, so two on one edge, such as a curb and paint, overlap.
+// The mesh writes no depth, so the later border in the file covers the
+// earlier one instead of flickering against it.
 function buildBorders() {
   const positions = [], colors = [], owner = [];
   const c = new THREE.Color();
@@ -601,7 +604,7 @@ function buildBorders() {
   g.computeVertexNormals();
   g.computeBoundingSphere();
   const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
-    vertexColors: true, side: THREE.DoubleSide,
+    vertexColors: true, side: THREE.DoubleSide, depthWrite: false,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8,
   }));
   mesh.renderOrder = 1;
