@@ -18,18 +18,27 @@
 //! with each object's slice of it. A structure table lists the tunnels and
 //! bridges, each with the stretch of every lane it covers.
 //!
+//! Where the map lays OpenCRG files on its roads, the exporter loads them from
+//! beside the `.xodr` and samples [`RoadSurface`] over every lane they cover:
+//! a grid draped on the road mesh, with the CRG height, the surface height and
+//! the friction at each vertex.
+//!
 //! Lane boundaries are not exported. They are already in the mesh: a lane's
 //! vertex range alternates left and right rib, which is what the viewer draws
 //! them from. See [`LaneSpan`].
 
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
+use std::path::Path;
 use std::process::ExitCode;
 
+use libopendrive::opencrg::CrgGrid;
 use libopendrive::{
-    load_file_with_provenance, Corner, Direction, Extent, LaneProvenance, LaneSpan, Marking, Mesh,
-    Object, ObjectProvenance, Orientation, Point, Provenance, RoadNetwork, Shape, Structure,
-    StructureKind, StructureProvenance,
+    load_file_with_provenance, Corner, CrgMode, CrgPurpose, CrgSurface, Direction, Extent, LaneId,
+    LaneProvenance, LaneSpan, Marking, Mesh, Object, ObjectProvenance, Orientation, Point,
+    Provenance, RoadNetwork, RoadSurface, Shape, Structure, StructureKind, StructureProvenance,
+    SurfaceHint,
 };
 use serde_json::{json, Map, Value};
 
@@ -62,7 +71,23 @@ fn main() -> ExitCode {
         }
     }
 
-    let scene = build_scene(&net, &mesh, &object_mesh, &provenance);
+    let dir = Path::new(&input).parent().unwrap_or(Path::new("."));
+    let mut loaded: HashMap<String, f64> = HashMap::new();
+    let surface = RoadSurface::new(&net, &mesh, |file| {
+        match CrgGrid::from_path(dir.join(file)) {
+            Ok(grid) => {
+                loaded.insert(file.to_string(), spacing(&grid));
+                Some(grid)
+            }
+            Err(e) => {
+                eprintln!("warning: CRG {file}: {e}");
+                None
+            }
+        }
+    });
+
+    let mut scene = build_scene(&net, &mesh, &object_mesh, &provenance);
+    scene["crg"] = crg_overlay(&net, &mesh, &surface, &loaded);
     let bytes = serde_json::to_vec(&scene).expect("scene serializes");
     if let Err(e) = fs::write(&output, &bytes) {
         eprintln!("writing {output}: {e}");
@@ -70,11 +95,12 @@ fn main() -> ExitCode {
     }
 
     eprintln!(
-        "wrote {output}: {} lanes, {} objects, {} vertices, {} triangles ({} KiB)",
+        "wrote {output}: {} lanes, {} objects, {} vertices, {} triangles, {} CRG files ({} KiB)",
         mesh.lanes.len(),
         net.objects().len(),
         mesh.vertices.len(),
         mesh.indices.len() / 3,
+        loaded.len(),
         bytes.len() / 1024,
     );
     ExitCode::SUCCESS
@@ -340,4 +366,167 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
     entry.insert("centerline".into(), json!(centerline));
     entry.insert("headings".into(), json!(headings));
     Value::Object(entry)
+}
+
+/// How many grid cells each loaded CRG file may add to the overlay.
+const CELLS_PER_FILE: f64 = 250_000.0;
+
+/// How far above the road mesh the overlay is draped, in metres, so it is
+/// never hidden under the road it describes.
+const LIFT: f32 = 0.005;
+
+/// The finest spacing of a CRG file's grid, in metres.
+fn spacing(grid: &CrgGrid) -> f64 {
+    let (nu, nv) = grid.dims();
+    let ((u0, u1), (v0, v1)) = (grid.u_range(), grid.v_range());
+    let du = (u1 - u0) / (nu.max(2) - 1) as f64;
+    let dv = (v1 - v0) / (nv.max(2) - 1) as f64;
+    du.min(dv)
+}
+
+/// The CRG overlay: [`RoadSurface`] sampled over every lane a CRG covers, on
+/// a grid draped `LIFT` above the road mesh. Each vertex carries the CRG
+/// grid height (`heights`), the surface height (`z`) and the friction, null
+/// where none applies. A cell is drawn only where all four corners have one
+/// of them. The grid is as fine as the finest loaded file, or coarser to stay
+/// within [`CELLS_PER_FILE`] per file. `range` is the 99th percentile of the
+/// absolute CRG heights, for the colour scale.
+fn crg_overlay(
+    net: &RoadNetwork,
+    mesh: &Mesh,
+    surface: &RoadSurface,
+    loaded: &HashMap<String, f64>,
+) -> Value {
+    let surfaces: Vec<Value> = net
+        .crg_surfaces()
+        .iter()
+        .map(|c| crg_entry(c, loaded.contains_key(&c.file)))
+        .collect();
+    let covered: HashSet<LaneId> = net
+        .crg_surfaces()
+        .iter()
+        .filter(|c| loaded.contains_key(&c.file))
+        .flat_map(|c| c.lanes.iter().copied())
+        .collect();
+    let spans: Vec<&LaneSpan> = mesh
+        .lanes
+        .iter()
+        .filter(|s| covered.contains(&s.lane))
+        .collect();
+
+    let ribs = |span: &LaneSpan| -> Vec<(Point, Point)> {
+        let v = &mesh.vertices[span.vertices.start as usize..span.vertices.end as usize];
+        v.chunks_exact(2).map(|p| (p[0], p[1])).collect()
+    };
+    let area: f64 = spans
+        .iter()
+        .map(|span| {
+            ribs(span)
+                .windows(2)
+                .map(|w| {
+                    let along = ((w[1].0 - w[0].0).length() + (w[1].1 - w[0].1).length()) / 2.0;
+                    let across = ((w[0].0 - w[0].1).length() + (w[1].0 - w[1].1).length()) / 2.0;
+                    f64::from(along * across)
+                })
+                .sum::<f64>()
+        })
+        .sum();
+    let finest = loaded.values().copied().fold(f64::INFINITY, f64::min);
+    let cell = finest.max((area / (CELLS_PER_FILE * loaded.len() as f64)).sqrt()) as f32;
+
+    let (mut positions, mut heights, mut z, mut friction) = (vec![], vec![], vec![], vec![]);
+    let mut indices: Vec<u32> = vec![];
+    for span in &spans {
+        let ribs = ribs(span);
+        let widest = ribs
+            .iter()
+            .map(|(l, r)| (*l - *r).length())
+            .fold(0.0, f32::max);
+        let columns = (widest / cell).ceil().max(1.0) as usize;
+        let mut rows: Vec<(Point, Point)> = vec![];
+        for w in ribs.windows(2) {
+            let along = ((w[1].0 - w[0].0).length()).max((w[1].1 - w[0].1).length());
+            let steps = (along / cell).ceil().max(1.0) as usize;
+            for i in 0..steps {
+                let f = i as f32 / steps as f32;
+                rows.push((lerp(w[0].0, w[1].0, f), lerp(w[0].1, w[1].1, f)));
+            }
+        }
+        rows.extend(ribs.last().copied());
+
+        let mut hints = vec![SurfaceHint::default(); columns + 1];
+        let mut previous: Vec<Option<u32>> = vec![];
+        for (left, right) in rows {
+            let row: Vec<Option<u32>> = (0..=columns)
+                .map(|j| {
+                    let p = lerp(left, right, j as f32 / columns as f32);
+                    let sample = surface.sample(f64::from(p.x), f64::from(p.y), &mut hints[j])?;
+                    if sample.crg_height.is_none() && sample.friction.is_none() {
+                        return None;
+                    }
+                    positions.extend([p.x, p.y, p.z + LIFT]);
+                    heights.push(sample.crg_height.map(|h| h as f32));
+                    z.push(sample.z as f32);
+                    friction.push(sample.friction.map(|f| f as f32));
+                    Some((heights.len() - 1) as u32)
+                })
+                .collect();
+            if !previous.is_empty() {
+                for j in 0..columns {
+                    let quad = [previous[j], previous[j + 1], row[j + 1], row[j]];
+                    if let [Some(a), Some(b), Some(c), Some(d)] = quad {
+                        indices.extend([a, b, c, a, c, d]);
+                    }
+                }
+            }
+            previous = row;
+        }
+    }
+
+    let mut magnitudes: Vec<f32> = heights.iter().flatten().map(|h| h.abs()).collect();
+    magnitudes.sort_by(f32::total_cmp);
+    let range = magnitudes
+        .get((magnitudes.len() as f64 * 0.99) as usize)
+        .or(magnitudes.last())
+        .copied()
+        .filter(|r| *r > 0.0)
+        .unwrap_or(0.001);
+
+    json!({
+        "surfaces": surfaces,
+        "cell": cell,
+        "range": range,
+        "positions": positions,
+        "heights": heights,
+        "z": z,
+        "friction": friction,
+        "indices": indices,
+    })
+}
+
+/// One `<CRG>` record: its file, mode, purpose and the lanes it covers, and
+/// whether its file loaded.
+fn crg_entry(c: &CrgSurface, loaded: bool) -> Value {
+    let mode = match c.mode {
+        CrgMode::Attached(_) => "attached",
+        CrgMode::Attached0(_) => "attached0",
+        CrgMode::Genuine { .. } => "genuine",
+        CrgMode::Global { .. } => "global",
+    };
+    json!({
+        "file": c.file,
+        "mode": mode,
+        "purpose": match c.purpose {
+            CrgPurpose::Elevation => "elevation",
+            CrgPurpose::Friction => "friction",
+        },
+        "zOffset": c.z_offset,
+        "zScale": c.z_scale,
+        "lanes": c.lanes.iter().map(|l| l.0).collect::<Vec<_>>(),
+        "loaded": loaded,
+    })
+}
+
+fn lerp(a: Point, b: Point, f: f32) -> Point {
+    a + (b - a) * f
 }

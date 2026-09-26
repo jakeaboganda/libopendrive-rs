@@ -31,6 +31,8 @@
   #legend { padding: 8px 12px; border-top: 1px solid #2a2f3a; display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: #8fa1b3; }
   #legend span { display: flex; align-items: center; gap: 4px; }
   .swatch { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  .ramp { width: 90px; height: 9px; border-radius: 2px; display: inline-block;
+          background: linear-gradient(to right, #2166ac, #f7f7f7, #b2182b); }
   #legend .heading { flex-basis: 100%; color: #7c8595; margin-top: 2px; }
   #tools label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
   #tools select { background: #1b1f27; color: inherit; border: 1px solid #2a2f3a; border-radius: 4px; padding: 2px 4px; }
@@ -66,9 +68,10 @@
       <label><input type="checkbox" id="objects" checked> objects</label>
       <label><input type="checkbox" id="tunnels" checked> tunnels</label>
       <label><input type="checkbox" id="bridges" checked> bridges</label>
+      <label id="crglabel"><input type="checkbox" id="crg" checked> CRG heights</label>
       <label><input type="checkbox" id="flag"> flag bad tris <span id="flagcount"></span></label>
     </div>
-    <div id="hint">drag: orbit · scroll: zoom · right-drag: pan · [w] cycles wireframe · [n] toggles normals · [o] toggles objects · hover a lane or object for coordinates</div>
+    <div id="hint">drag: orbit · scroll: zoom · right-drag: pan · [w] cycles wireframe · [n] toggles normals · [o] toggles objects · [c] toggles CRG heights · hover a lane or object for coordinates</div>
     <div id="err"></div>
   </div>
 </div>
@@ -179,6 +182,7 @@ let laneById = new Map();
 let activeLane = null;
 let structures = [];         // tunnels and bridges
 let structureTints = {};     // kind -> mesh tinting the lanes it covers
+let crgMesh = null;          // the CRG height overlay; userData is the exported crg record
 
 init().catch(showError);
 
@@ -217,12 +221,13 @@ async function init() {
   buildOverlays(data);
   buildObjects(data);
   buildStructures(data);
+  buildCrg(data);
   buildSidebar();
   buildLegend();
   frameOn(roadMesh);
 
   applyMode();
-  for (const id of ['mode', 'flag', 'centerlines', 'boundaries', 'normals', 'objects', 'tunnels', 'bridges']) {
+  for (const id of ['mode', 'flag', 'centerlines', 'boundaries', 'normals', 'objects', 'tunnels', 'bridges', 'crg']) {
     document.getElementById(id).addEventListener('change', applyMode);
   }
 
@@ -237,8 +242,8 @@ async function init() {
       const order = ['solid', 'wire', 'both'];
       sel.value = order[(order.indexOf(sel.value) + 1) % order.length];
       applyMode();
-    } else if (e.key === 'n' || e.key === 'o') {
-      const box = document.getElementById(e.key === 'n' ? 'normals' : 'objects');
+    } else if (e.key === 'n' || e.key === 'o' || e.key === 'c') {
+      const box = document.getElementById({ n: 'normals', o: 'objects', c: 'crg' }[e.key]);
       box.checked = !box.checked;
       applyMode();
     }
@@ -411,6 +416,7 @@ function applyMode() {
   if (markingMesh) markingMesh.visible = on('objects');
   for (const [kind, mesh] of Object.entries(structureTints)) mesh.visible = on(kind + 's');
   if (!on('objects')) objectOutline.visible = false;
+  if (crgMesh) crgMesh.visible = on('crg');
   badMesh.visible = on('flag');
   const n = badMesh.userData.count;
   document.getElementById('flagcount').textContent = on('flag') ? `(${n})` : '';
@@ -701,6 +707,15 @@ function buildLegend() {
   group('structures', structures.map(s => s.kind), STRUCTURE_COLORS, FALLBACK_COLOR);
   group('parking access', objects.filter(o => o.parkingSpace).map(o => o.parkingSpace.access),
     PARKING_COLORS, OBJECT_COLORS['parking-space']);
+  if (crgMesh) {
+    const mm = (crgMesh.userData.range * 1000).toFixed(1);
+    const h = document.createElement('span');
+    h.className = 'heading';
+    h.textContent = 'CRG height';
+    const el = document.createElement('span');
+    el.innerHTML = `−${mm} mm <i class="ramp"></i> +${mm} mm`;
+    frag.append(h, el);
+  }
   document.getElementById('legend').replaceChildren(frag);
 }
 
@@ -803,6 +818,7 @@ function onHover(ev) {
     const type = st.type ? ` (${escapeHtml(st.type)})` : '';
     rows.push(`<b>${st.kind}</b> ${escapeHtml(st.name || '(unnamed)')}${type}   ${structureRange(st)}`);
   }
+  if (crgMesh && crgMesh.visible) rows.push(...crgRows(lane));
   rows.push(`section ${lane.section}   ${lane.direction}`, `laneId ${lane.laneId}`);
 
   tip.style.display = 'block';
@@ -915,6 +931,69 @@ function surfaceNormal(hit) {
 }
 
 function hideTip() { tip.style.display = 'none'; }
+
+// --- CRG overlay ---------------------------------------------------------------
+
+// The CRG heights as a heat map draped over the road: blue below the road,
+// white level with it, red above, saturating at the exported 99th percentile.
+// Grey where a friction CRG covers the road and no elevation CRG does.
+function buildCrg(data) {
+  const c = data.crg;
+  if (!c || !c.indices.length) {
+    document.getElementById('crglabel').style.display = 'none';
+    return;
+  }
+  const colors = new Float32Array(c.heights.length * 3);
+  c.heights.forEach((h, i) => colors.set(heatColor(h, c.range), i * 3));
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(c.positions, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  g.setIndex(new THREE.Uint32BufferAttribute(c.indices, 1));
+  crgMesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    vertexColors: true, side: THREE.DoubleSide,
+    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
+  }));
+  crgMesh.userData = c;
+  crgMesh.renderOrder = 1;
+  scene.add(crgMesh);
+}
+
+function heatColor(h, range) {
+  if (h == null) return [0.45, 0.45, 0.5];
+  const x = Math.max(-1, Math.min(1, h / range));
+  const mid = [0.969, 0.969, 0.969];
+  const end = x < 0 ? [0.129, 0.4, 0.675] : [0.698, 0.094, 0.169];
+  return mid.map((m, k) => m + (end[k] - m) * Math.abs(x));
+}
+
+// Tooltip rows for the CRG under the cursor: the values at the hovered point,
+// interpolated across the overlay triangle, and the CRG records on the lane.
+function crgRows(lane) {
+  const c = crgMesh.userData;
+  const rows = c.surfaces
+    .filter(s => s.lanes.includes(lane.laneId))
+    .map(s => `<b>CRG</b> ${escapeHtml(s.file)}  ${s.mode} ${s.purpose}` +
+      (s.loaded ? '' : '  (not loaded)'));
+  const hit = raycaster.intersectObject(crgMesh, false)[0];
+  if (!hit) return rows;
+  const f = hit.face, pos = crgMesh.geometry.getAttribute('position');
+  const corners = [f.a, f.b, f.c];
+  const [a, b, d] = corners.map(i => new THREE.Vector3().fromBufferAttribute(pos, i));
+  const bary = new THREE.Vector3();
+  if (!THREE.Triangle.getBarycoord(hit.point, a, b, d, bary)) return rows;
+  const weights = [bary.x, bary.y, bary.z];
+  const at = values => {
+    const v = corners.map(i => values[i]);
+    if (v.some(x => x == null)) return v[weights.indexOf(Math.max(...weights))];
+    return v.reduce((sum, x, k) => sum + x * weights[k], 0);
+  };
+  const h = at(c.heights), z = at(c.z), mu = at(c.friction);
+  const parts = [];
+  if (h != null) parts.push(`height ${(h * 1000).toFixed(1)} mm   z ${z.toFixed(3)} m`);
+  if (mu != null) parts.push(`friction ${mu.toFixed(3)}`);
+  if (parts.length) rows.push(parts.join('   '));
+  return rows;
+}
 
 // A picked triangle's face index maps to indices[faceIndex*3]; find the lane
 // span whose index range contains it (binary search over sorted spans).

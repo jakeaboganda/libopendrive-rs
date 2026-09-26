@@ -15,6 +15,8 @@
 - Friction is the grid value as the file gives it. OpenCRG's placement
   shift applies to heights only.
 - The crate re-exports `opencrg`.
+- The viewer draws the CRG heights as a heat map over the road, and reads
+  out the height and friction under the cursor.
 
 ### Breaking
 

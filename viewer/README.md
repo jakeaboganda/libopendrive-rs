@@ -48,11 +48,13 @@ features below.
 | `w` | cycle the wireframe |
 | `n` | toggle normals |
 | `o` | toggle objects |
+| `c` | toggle the CRG heat map |
 | click a sidebar entry | highlight it and move the camera to it |
 | type in the filter box | filter lanes by road id, lane id or lane type, and tunnels and bridges by name, kind or road |
 
 The checkboxes along the top toggle centerlines (green), lane boundaries
-(cream), normals (a hair at every mesh vertex), objects, tunnels and bridges.
+(cream), normals (a hair at every mesh vertex), objects, tunnels, bridges,
+and the CRG heat map.
 
 ## Lanes
 
@@ -119,6 +121,34 @@ bridge's name, type and `s` range to the readout.
 
 The sidebar lists tunnels and bridges above the lanes. Click one to
 highlight its lanes and frame the stretch it covers.
+
+## OpenCRG surfaces
+
+Where the map lays OpenCRG files on its roads, the exporter loads them from
+beside the `.xodr`, and warns about any it cannot read. It samples
+`RoadSurface` over every lane a CRG covers, and the viewer draws the result
+as a heat map over the road. Blue is below the road, white is level with it,
+and red is above. The colour is the CRG grid's own height, times `zScale`,
+without the file's reference-line height or bank. The scale saturates at the
+99th percentile of those heights, and the legend shows it. Grey is where only
+a friction CRG covers the road.
+
+The heat map is draped 5 mm above the road mesh, so the road never hides it.
+It shows where the CRG is and what it holds, not the CRG surface's own
+height. Hover it to read the CRG height, the surface height `z` and the
+friction under the cursor, and the CRG files on the lane.
+
+The grid is as fine as the finest CRG file, or coarser to keep to about
+250,000 cells per file.
+
+`tests/data/crg.xodr` lays the same generated file on four roads, one per
+mode, and a friction file on the first:
+
+```sh
+cargo run --example viewer_export --features serde -- tests/data/crg.xodr viewer/web/crg.json
+```
+
+![The CRG test map from above](crg.png)
 
 ## Coordinates
 
