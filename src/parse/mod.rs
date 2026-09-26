@@ -3449,6 +3449,49 @@ mod tests {
         assert_eq!(pieces(&objects[1]), [3, 3]);
     }
 
+    fn ends(pieces: &[[Point; 4]]) -> Vec<(f32, f32)> {
+        pieces
+            .iter()
+            .map(|[a, b, c, d]| (a.lerp(*d, 0.5).x, b.lerp(*c, 0.5).x))
+            .collect()
+    }
+
+    #[test]
+    fn a_strip_steps_over_an_edge_with_no_length() {
+        let (a, b, c) = (
+            Point::ORIGIN,
+            Point::new(2.0, 0.0, 0.0),
+            Point::new(4.0, 0.0, 0.0),
+        );
+        // A repeated corner, and a corner straight above the one before:
+        // no length in plan, so no across to measure.
+        let up = Point::new(2.0, 0.0, 1.0);
+        assert_eq!(ends(&strip(&[a, a, b], 0.0, 0.0, None, 0.1)), [(0.0, 2.0)]);
+        assert_eq!(ends(&strip(&[a, b, up], 0.0, 0.0, None, 0.1)), [(0.0, 2.0)]);
+        // A dash across the repeated corner carries on past it.
+        let dashes = strip(&[a, b, b, c], 1.0, 0.0, Some((2.0, 1.0)), 0.1);
+        assert_eq!(ends(&dashes), [(1.0, 2.0), (2.0, 3.0)]);
+    }
+
+    #[test]
+    fn a_strip_of_too_many_dashes_is_refused() {
+        let path = [Point::ORIGIN, Point::new(10.0, 0.0, 0.0)];
+        assert!(strip(&path, 0.0, 0.0, Some((1e-5, 1e-5)), 0.1).is_empty());
+        assert_eq!(strip(&path, 0.0, 0.0, Some((0.5, 0.5)), 0.1).len(), 10);
+    }
+
+    #[test]
+    fn offsets_past_the_end_of_a_strip_leave_nothing() {
+        let path = [Point::ORIGIN, Point::new(10.0, 0.0, 0.0)];
+        for (start, stop) in [(20.0, 0.0), (0.0, 20.0), (6.0, 6.0)] {
+            for dashes in [None, Some((1.0, 1.0))] {
+                let pieces = strip(&path, start, stop, dashes, 0.1);
+                assert!(pieces.is_empty(), "{start}, {stop}, {dashes:?}: {pieces:?}");
+            }
+        }
+        assert_eq!(ends(&strip(&path, 4.0, 4.0, None, 0.1)), [(4.0, 6.0)]);
+    }
+
     #[test]
     fn a_side_marking_paints_every_solid_with_a_box() {
         let markings = r#"<markings>
