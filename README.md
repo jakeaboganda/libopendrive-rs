@@ -100,6 +100,18 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   let ground = surface.sample(12.0, -30.0, &mut wheel);
   ```
 
+  Public maps that come with CRG files are hard to find, so
+  `examples/crg_to_xodr.rs` writes one for any CRG file: a road along the
+  file's reference line, with the file laid on it. `examples/crg_data.sh`
+  downloads five measured and test-course files from ASAM and Project Chrono,
+  and writes a map and a viewer scene for each. `examples/crg_profile.rs`
+  drives a wheel down a lane and writes what it rolls over as CSV.
+
+  ```sh
+  sh examples/crg_data.sh
+  cargo run --release --example crg_profile -- target/crg/country_road.xodr > profile.csv
+  ```
+
 For the exact element and attribute list, see
 [the crate docs](https://docs.rs/libopendrive).
 
@@ -159,8 +171,8 @@ per object.
 The optional `serde` feature serializes the network and its mesh. The example
 at `examples/viewer_export.rs` uses it to bake a map straight to the JSON the
 viewer reads. You can also use it to cache an import. A `RoadNetwork`
-serializes its lanes, objects and structures, and rebuilds its index when
-deserialized, so the result behaves like a freshly imported map.
+serializes its lanes, objects, structures and CRG records, and rebuilds its
+index when deserialized, so the result behaves like a freshly imported map.
 
 ```toml
 libopendrive = { version = "0.2", features = ["serde"] }

@@ -18,6 +18,10 @@
 - The crate re-exports `opencrg`.
 - The viewer draws the CRG heights as a heat map over the road. Hover it
   to read the height and friction under the cursor.
+- `examples/crg_to_xodr.rs` writes a map for an OpenCRG file.
+  `examples/crg_profile.rs` drives a wheel down a lane and writes the
+  surface under it as CSV. `examples/crg_data.sh` downloads five CRG files
+  from ASAM and Project Chrono and prepares each for the viewer.
 
 ### Breaking
 
