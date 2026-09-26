@@ -182,7 +182,7 @@ fn outline(mesh: &mut Mesh, corners: &[Corner], closed: bool) {
     }
     if closed {
         let plan: Vec<[f32; 2]> = tops.iter().map(|p| [p.x, p.y]).collect();
-        let triangles = triangulate(&plan);
+        let triangles = triangulate(&plan, &[]);
         face(mesh, &tops, &triangles, Vector::Z);
         if bases != tops {
             face(mesh, &bases, &triangles, -Vector::Z);
@@ -275,29 +275,54 @@ fn plan_area(points: &[Point]) -> f32 {
         .sum()
 }
 
-/// Triangles covering a simple polygon, by ear clipping. Wound
-/// counter-clockwise whichever way the polygon runs. A polygon with no area
-/// gets none, and one that crosses itself gets as many as clip cleanly.
-fn triangulate(polygon: &[[f32; 2]]) -> Vec<[usize; 3]> {
+/// Triangles covering a simple polygon with holes, by ear clipping. `polygon`
+/// is the outer ring followed by each hole's, and `holes` is where each hole
+/// starts. Each hole is bridged into the outer ring first, so the result is
+/// one ring to clip. Wound counter-clockwise whichever way the rings run. A
+/// ring with no area is skipped, as is the whole polygon if it is the outer
+/// one, and a polygon that crosses itself gets as many as clip cleanly.
+fn triangulate(polygon: &[[f32; 2]], holes: &[usize]) -> Vec<[usize; 3]> {
     let turn = |a: usize, b: usize, c: usize| {
         let (a, b, c) = (polygon[a], polygon[b], polygon[c]);
         (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
     };
     let n = polygon.len();
-    let area: f32 = (0..n)
-        .map(|i| {
-            let (a, b) = (polygon[i], polygon[(i + 1) % n]);
-            a[0] * b[1] - b[0] * a[1]
-        })
-        .sum();
-    if n < 3 || area.abs() < MIN_AREA {
-        return Vec::new();
+    let starts: Vec<usize> = std::iter::once(0).chain(holes.iter().copied()).collect();
+    let rings = starts.iter().enumerate().map(|(k, &from)| {
+        let to = starts.get(k + 1).copied().unwrap_or(n);
+        let ring: Vec<usize> = (from..to).collect();
+        let area: f32 = (0..ring.len())
+            .map(|i| turn(ring[0], ring[i], ring[(i + 1) % ring.len()]))
+            .sum();
+        (ring, area)
+    });
+    let mut ring = Vec::new();
+    let mut inner = Vec::new();
+    for (k, (mut r, area)) in rings.enumerate() {
+        if r.len() < 3 || area.abs() < MIN_AREA {
+            if k == 0 {
+                return Vec::new();
+            }
+            continue;
+        }
+        // The outer ring counter-clockwise, and the holes clockwise.
+        if (area < 0.0) == (k == 0) {
+            r.reverse();
+        }
+        if k == 0 {
+            ring = r;
+        } else {
+            inner.push(r);
+        }
     }
-    let mut ring: Vec<usize> = (0..n).collect();
-    if area < 0.0 {
-        ring.reverse();
+    // Rightmost hole first, so each bridge runs to a ring with no hole
+    // further right left to join it.
+    let right = |r: &Vec<usize>| r.iter().map(|&i| polygon[i][0]).fold(f32::MIN, f32::max);
+    inner.sort_by(|a, b| right(b).total_cmp(&right(a)));
+    for hole in inner {
+        bridge(polygon, &mut ring, &hole);
     }
-    let mut triangles = Vec::with_capacity(n - 2);
+    let mut triangles = Vec::with_capacity(ring.len().saturating_sub(2));
     while ring.len() > 3 {
         let m = ring.len();
         let corner = |i: usize| (ring[(i + m - 1) % m], ring[i], ring[(i + 1) % m]);
@@ -338,6 +363,81 @@ fn triangulate(polygon: &[[f32; 2]]) -> Vec<[usize; 3]> {
     triangles
 }
 
+/// Splice `hole`, a clockwise ring inside the counter-clockwise `ring`, into
+/// it along a bridge from the hole's rightmost corner to a corner of `ring`
+/// it can see (Eberly, "Triangulation by Ear Clipping"). Both ends of the
+/// bridge appear twice in the result.
+fn bridge(polygon: &[[f32; 2]], ring: &mut Vec<usize>, hole: &[usize]) {
+    let at = |i: usize| polygon[i];
+    let turn = |a: [f32; 2], b: [f32; 2], c: [f32; 2]| {
+        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    };
+    let (j, m) = hole
+        .iter()
+        .map(|&i| at(i))
+        .enumerate()
+        .max_by(|a, b| a.1[0].total_cmp(&b.1[0]))
+        .expect("a hole has corners");
+
+    // The nearest edge a ray from `m` toward +x meets, where it meets it,
+    // and that edge's rightmost end.
+    let len = ring.len();
+    let mut hit: Option<(f32, usize)> = None;
+    for k in 0..len {
+        let (a, b) = (at(ring[k]), at(ring[(k + 1) % len]));
+        if a[1] == b[1] || (a[1] > m[1]) == (b[1] > m[1]) && a[1] != m[1] && b[1] != m[1] {
+            continue;
+        }
+        let x = a[0] + (m[1] - a[1]) * (b[0] - a[0]) / (b[1] - a[1]);
+        if x < m[0] || hit.is_some_and(|(best, _)| x >= best) {
+            continue;
+        }
+        let end = if a[0] > b[0] { k } else { (k + 1) % len };
+        hit = Some((x, end));
+    }
+    let Some((x, mut target)) = hit else {
+        return;
+    };
+    // A corner of `ring` inside the triangle from `m` to the ray's hit to
+    // `target` would block the bridge. The one at the shallowest angle to
+    // the ray is visible.
+    let (i, end) = ([x, m[1]], ring[target]);
+    let p = at(end);
+    let s = turn(m, i, p).signum();
+    let inside = |r: [f32; 2]| {
+        turn(m, i, r) * s >= 0.0 && turn(i, p, r) * s >= 0.0 && turn(p, m, r) * s >= 0.0
+    };
+    let mut best = f32::INFINITY;
+    for (k, &v) in ring.iter().enumerate() {
+        let r = at(v);
+        if s == 0.0 || v == end || r[0] < m[0] || !inside(r) {
+            continue;
+        }
+        let slope = (r[1] - m[1]).abs() / (r[0] - m[0]).max(f32::MIN_POSITIVE);
+        if slope < best {
+            (best, target) = (slope, k);
+        }
+    }
+    // A corner a previous bridge doubled appears twice. Take the copy whose
+    // corner `m` sits in.
+    let v = ring[target];
+    if let Some(k) = (0..len).filter(|&k| ring[k] == v).find(|&k| {
+        let (a, b) = (at(ring[(k + len - 1) % len]), at(ring[(k + 1) % len]));
+        let (l1, l2) = (turn(a, at(v), m) > 0.0, turn(at(v), b, m) > 0.0);
+        if turn(a, at(v), b) >= 0.0 {
+            l1 && l2
+        } else {
+            l1 || l2
+        }
+    }) {
+        target = k;
+    }
+
+    let from_m = hole[j..].iter().chain(&hole[..=j]).copied();
+    let spliced: Vec<usize> = from_m.chain([ring[target]]).collect();
+    ring.splice(target + 1..target + 1, spliced);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -359,7 +459,7 @@ mod tests {
         let mut reversed = l;
         reversed.reverse();
         for polygon in [l, reversed] {
-            let triangles = triangulate(&polygon);
+            let triangles = triangulate(&polygon, &[]);
             assert_eq!(triangles.len(), 4);
             assert!((area(&polygon, &triangles) - 3.0).abs() < 1e-6);
         }
@@ -368,12 +468,94 @@ mod tests {
     #[test]
     fn ear_clipping_steps_over_a_corner_on_a_straight_edge() {
         let polygon = [[0., 0.], [1., 0.], [2., 0.], [2., 1.], [0., 1.]];
-        let triangles = triangulate(&polygon);
+        let triangles = triangulate(&polygon, &[]);
         assert!((area(&polygon, &triangles) - 2.0).abs() < 1e-6);
     }
 
     #[test]
     fn a_polygon_with_no_area_has_no_triangles() {
-        assert!(triangulate(&[[0., 0.], [1., 0.], [2., 0.]]).is_empty());
+        assert!(triangulate(&[[0., 0.], [1., 0.], [2., 0.]], &[]).is_empty());
+    }
+
+    /// Rings, each a list of corners, as one polygon and the hole starts.
+    fn rings(rings: &[&[[f32; 2]]]) -> (Vec<[f32; 2]>, Vec<usize>) {
+        let mut polygon = Vec::new();
+        let mut holes = Vec::new();
+        for (k, ring) in rings.iter().enumerate() {
+            if k > 0 {
+                holes.push(polygon.len());
+            }
+            polygon.extend_from_slice(ring);
+        }
+        (polygon, holes)
+    }
+
+    /// The triangles cover `want` square metres, all wound counter-clockwise,
+    /// and none of them covers any of `empty`.
+    fn assert_covers(rs: &[&[[f32; 2]]], want: f32, empty: &[[f32; 2]]) {
+        let (polygon, holes) = rings(rs);
+        let triangles = triangulate(&polygon, &holes);
+        assert!((area(&polygon, &triangles) - want).abs() < 1e-4);
+        for &[a, b, c] in &triangles {
+            assert!(area(&polygon, &[[a, b, c]]) > 0.0);
+            for &e in empty {
+                let turn = |p: [f32; 2], q: [f32; 2]| {
+                    (q[0] - p[0]) * (e[1] - p[1]) - (q[1] - p[1]) * (e[0] - p[0])
+                };
+                let (a, b, c) = (polygon[a], polygon[b], polygon[c]);
+                let within = turn(a, b) > 0.0 && turn(b, c) > 0.0 && turn(c, a) > 0.0;
+                assert!(!within, "{e:?} is covered by {:?}", [a, b, c]);
+            }
+        }
+    }
+
+    const SQUARE: [[f32; 2]; 4] = [[0., 0.], [4., 0.], [4., 4.], [0., 4.]];
+
+    #[test]
+    fn ear_clipping_leaves_a_hole_empty_whichever_way_it_runs() {
+        let hole = [[1., 1.], [3., 1.], [3., 3.], [1., 3.]];
+        let mut reversed = hole;
+        reversed.reverse();
+        for hole in [hole, reversed] {
+            assert_covers(&[&SQUARE, &hole], 12.0, &[[2., 2.]]);
+        }
+    }
+
+    #[test]
+    fn ear_clipping_bridges_several_holes() {
+        let outer = [[0., 0.], [10., 0.], [10., 10.], [0., 10.]];
+        let (a, b) = ([1., 1.], [6., 6.]);
+        let square = |[x, y]: [f32; 2]| [[x, y], [x + 2., y], [x + 2., y + 2.], [x, y + 2.]];
+        // Side by side, one above the other with their right edges in line,
+        // and diagonally apart.
+        for other in [[6., 1.], [1., 6.], b] {
+            assert_covers(
+                &[&outer, &square(a), &square(other)],
+                92.0,
+                &[[2., 2.], [other[0] + 1., other[1] + 1.]],
+            );
+        }
+    }
+
+    #[test]
+    fn a_bridge_goes_round_a_corner_in_the_way() {
+        // A notch hangs down from the top edge to (4, 3), inside the triangle
+        // the first bridge would cut across.
+        let notched = [
+            [0., 0.],
+            [10., 0.],
+            [10., 10.],
+            [5., 10.],
+            [4., 3.],
+            [3., 10.],
+            [0., 10.],
+        ];
+        let hole = [[1., 1.5], [2., 1.5], [2., 2.5], [1., 2.5]];
+        assert_covers(&[&notched, &hole], 100.0 - 7.0 - 1.0, &[[1.5, 2.]]);
+    }
+
+    #[test]
+    fn a_hole_with_no_area_is_skipped() {
+        assert_covers(&[&SQUARE, &[[1., 1.], [2., 2.], [3., 3.]]], 16.0, &[]);
     }
 }
