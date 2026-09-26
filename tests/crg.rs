@@ -123,9 +123,7 @@ fn assert_near(got: f64, want: f64, tolerance: f64) {
     );
 }
 
-/// The normal agrees with the slope of the heights around it, to 1e-4. On a
-/// curve the heights ride on 0.25 m chords of the reference line, whose
-/// sagitta tilts them by about that much.
+/// The normal agrees with the slope of the heights around it.
 fn assert_normal_follows_heights(surface: &RoadSurface, (x, y): (f64, f64)) {
     let h = 1e-3;
     let z = |dx: f64, dy: f64| at(surface, (x + dx, y + dy)).z;
@@ -135,7 +133,7 @@ fn assert_normal_follows_heights(surface: &RoadSurface, (x, y): (f64, f64)) {
     let want = [-gx / length, -gy / length, 1.0 / length];
     let got = at(surface, (x, y)).normal;
     for c in 0..3 {
-        assert_near(got[c], want[c], 1e-4);
+        assert_near(got[c], want[c], 1e-6);
     }
 }
 
@@ -219,8 +217,8 @@ fn attached_adds_the_grid_to_the_road() {
             let got = at(&surface, xy(geometry, s, t, bank));
             let road = 2.0 + 0.03 * s + t * bank.sin();
             let bump = plane(s - 8.0, t - 0.5);
-            assert_near(got.z, road + 2.0 * bump + 0.1, 2e-5);
-            assert_near(got.crg_height.unwrap(), 2.0 * bump, 2e-5);
+            assert_near(got.z, road + 2.0 * bump + 0.1, 1e-6);
+            assert_near(got.crg_height.unwrap(), 2.0 * bump, 1e-6);
             assert_normal_follows_heights(&surface, xy(geometry, s, t, bank));
         }
     }
@@ -258,7 +256,7 @@ fn attached0_ignores_the_road_height() {
     let surface = surface(&net, &mesh, plane_crg(45.0, 4.0, ""));
     let (s, t) = (30.0, -2.0);
     let got = at(&surface, xy(ARC, s, t, 0.05));
-    assert_near(got.z, 3.0 * elevation(s, t) - 1.0, 2e-5);
+    assert_near(got.z, 3.0 * elevation(s, t) - 1.0, 1e-6);
     assert_normal_follows_heights(&surface, xy(ARC, s, t, 0.05));
 }
 
@@ -444,7 +442,7 @@ fn the_fixture_map_lays_its_bump_on_every_road() {
         let got = at(&surface, point);
         assert_near(got.crg_height.expect("on the bump"), crest, 1e-6);
         if road != 1 {
-            assert_near(got.z, crest, 2e-5);
+            assert_near(got.z, crest, 1e-6);
         }
     }
     let wet = at(&surface, (60.0, -2.0));

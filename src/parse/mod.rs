@@ -717,8 +717,9 @@ impl RefLine<'_> {
     }
 }
 
-/// How far apart a CRG stretch's stations are, in metres. The importer bakes
-/// spirals at the same step.
+/// How far apart a CRG stretch's stations are, in metres. The stretch joins
+/// them with arcs, so lines and arcs are exact. A spiral from straight to a
+/// 50 m radius over 50 m is off by under a micrometre.
 const CRG_STEP: f64 = 0.25;
 
 /// A road `<CRG>`, or `None` if it lacks a file, a known mode, or a stretch

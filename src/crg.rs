@@ -94,8 +94,8 @@ pub struct CrgSurface {
     pub(crate) road: Option<Stretch>,
 }
 
-/// A stretch of a road's reference line, sampled every 0.25 m, the step the
-/// importer bakes spirals at.
+/// A stretch of a road's reference line, sampled every 0.25 m. Between two
+/// stations the line is the arc that turns from one heading to the other.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct Stretch {
@@ -158,17 +158,17 @@ impl Stretch {
                 .min(last)
         };
         let mut came_from = None;
-        let f = loop {
-            let f = fraction(&st[i], &st[i + 1], x, y);
+        let (f, d) = loop {
+            let (f, d) = foot(&st[i], &st[i + 1], x, y);
             let next = if f < 0.0 && i > 0 {
                 i - 1
             } else if f > 1.0 && i < last {
                 i + 1
             } else {
-                break f;
+                break (f, d);
             };
             if came_from == Some(next) {
-                break f.clamp(0.0, 1.0);
+                break (f.clamp(0.0, 1.0), d);
             }
             came_from = Some(i);
             i = next;
@@ -184,7 +184,6 @@ impl Stretch {
         let heading = a.heading + wrap(b.heading - a.heading) * f;
         let along = [heading.cos(), heading.sin()];
         let left = [-along[1], along[0]];
-        let d = (x - lerp(a.x, b.x)) * left[0] + (y - lerp(a.y, b.y)) * left[1];
         let bank = lerp(a.bank, b.bank);
         let t = d / bank.cos();
         let curvature = wrap(b.heading - a.heading) / (b.s - a.s);
@@ -202,23 +201,22 @@ impl Stretch {
     }
 }
 
-/// How far along from `a` to `b` the normal through `(x, y)` is, 0 at `a` and
-/// 1 at `b`. The normal turns with the heading between the two, so every
-/// point beside the road has exactly one, however the road bends.
-fn fraction(a: &RefPoint, b: &RefPoint, x: f64, y: f64) -> f64 {
-    let chord = [b.x - a.x, b.y - a.y];
-    let w = [x - a.x, y - a.y];
-    let ta = [a.heading.cos(), a.heading.sin()];
+/// Where the normal through `(x, y)` meets the arc from `a` to `b`: how far
+/// along, 0 at `a` and 1 at `b`, and how far `(x, y)` is to its left.
+fn foot(a: &RefPoint, b: &RefPoint, x: f64, y: f64) -> (f64, f64) {
+    let length = b.s - a.s;
     let turn = wrap(b.heading - a.heading);
-    let tb = [(a.heading + turn).cos(), (a.heading + turn).sin()];
-    let dt = [tb[0] - ta[0], tb[1] - ta[1]];
-    let dot = |p: [f64; 2], q: [f64; 2]| p[0] * q[0] + p[1] * q[1];
-    let (q0, q1, q2) = (dot(w, ta), dot(w, dt) - dot(chord, ta), -dot(chord, dt));
-    let mut f = -q0 / q1;
-    for _ in 0..3 {
-        f -= (q0 + f * (q1 + f * q2)) / (q1 + 2.0 * f * q2);
+    let (sin, cos) = a.heading.sin_cos();
+    let (wx, wy) = (x - a.x, y - a.y);
+    if turn.abs() < 1e-12 {
+        return ((wx * cos + wy * sin) / length, wy * cos - wx * sin);
     }
-    f
+    let radius = length / turn;
+    let (cx, cy) = (-radius * sin, radius * cos);
+    let (vx, vy) = (cx - wx, cy - wy);
+    let rho = vx.hypot(vy).copysign(radius);
+    let heading = (-vx / rho).atan2(vy / rho);
+    (wrap(heading - a.heading) / turn, radius - rho)
 }
 
 /// An angle wrapped into `[-pi, pi)`.
