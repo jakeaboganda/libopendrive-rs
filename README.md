@@ -145,7 +145,7 @@ serializes its lanes, objects and structures, and rebuilds its index when
 deserialized, so the result behaves like a freshly imported map.
 
 ```toml
-libopendrive = { version = "0.1", features = ["serde"] }
+libopendrive = { version = "0.2", features = ["serde"] }
 ```
 
 ## Coordinate types
