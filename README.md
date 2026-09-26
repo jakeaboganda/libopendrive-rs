@@ -55,6 +55,8 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
 - `<object>`s, from `RoadNetwork::objects`, in world coordinates on the road
   surface.
   - A plain object is a box or a cylinder with a heading, pitch and roll.
+    It leans with the grade and bank of the road under it, as in
+    libOpenDRIVE.
   - A `<repeat>` with a `distance` becomes one object per step, so a row of
     posts arrives as posts. A `<repeat>` with a `distance` of 0, such as a
     guard rail, becomes one shape swept along the road. With a radius it is

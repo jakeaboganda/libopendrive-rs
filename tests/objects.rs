@@ -55,15 +55,45 @@ fn assert_corner(got: &Corner, base: Point, height: f32, what: &str) {
     );
 }
 
-/// The solid's pose and extent, after checking it sits at `(s, t)` raised by
-/// `z_offset`, turned `hdg` against the road.
+/// `[u, v, z]` turned roll about X, then pitch about Y, then yaw about Z.
+fn turned((yaw, pitch, roll): (f64, f64, f64), [u, v, z]: [f32; 3]) -> Vector {
+    let [u, v, z] = [u, v, z].map(f64::from);
+    let (sr, cr) = roll.sin_cos();
+    let (sp, cp) = pitch.sin_cos();
+    let (sy, cy) = yaw.sin_cos();
+    let (v, z) = (v * cr - z * sr, v * sr + z * cr);
+    let (u, z) = (u * cp + z * sp, -u * sp + z * cp);
+    let (u, v) = (u * cy - v * sy, u * sy + v * cy);
+    Vector::new(u as f32, v as f32, z as f32)
+}
+
+/// Road 0's own axes at `s`: along it up its 2 % grade, level across it, and
+/// square to both.
+fn road_axes(s: f64) -> [Vector; 3] {
+    let (sin, cos) = (CURVATURE * s).sin_cos();
+    let along = Vector::new(cos as f32, sin as f32, 0.02).normalize_or_zero();
+    let across = Vector::new(-sin as f32, cos as f32, 0.0);
+    [along, across, along.cross(across)]
+}
+
+/// Where `local` lands in the frame of an object on road 0 at `(s, t)`,
+/// raised `z_offset` square to the road and turned `(hdg, pitch, roll)`
+/// against its axes.
+fn placed(s: f64, t: f64, z_offset: f64, turn: (f64, f64, f64), local: [f32; 3]) -> Point {
+    let [along, across, up] = road_axes(s);
+    let d = turned(turn, local);
+    raised(s, t, 0.0) + up * z_offset as f32 + along * d.x + across * d.y + up * d.z
+}
+
+/// The solid's extent, after checking it sits at `(s, t)` raised by
+/// `z_offset`, turned `turn` against the road, which tilts it with the grade.
 fn assert_solid(
     object: &Object,
     s: f64,
     t: f64,
     z_offset: f64,
-    hdg: f64,
-) -> (f32, f32, Option<Extent>) {
+    turn: (f64, f64, f64),
+) -> Option<Extent> {
     let Shape::Solid {
         position,
         heading,
@@ -74,18 +104,34 @@ fn assert_solid(
     else {
         panic!("{} is not a solid: {:?}", object.kind, object.shape);
     };
-    assert_near(
-        position,
-        raised(s, t, z_offset),
-        &format!("{} at s={s}", object.kind),
-    );
-    let want = (CURVATURE * s + hdg) as f32;
-    assert!(
-        (heading - want).abs() < 1e-5,
-        "{} at s={s}: heading {heading}, expected {want}",
-        object.kind
-    );
-    (pitch, roll, extent)
+    let what = format!("{} at s={s}", object.kind);
+    let origin = placed(s, t, z_offset, turn, [0.0; 3]);
+    assert_near(position, origin, &what);
+    let angles = (f64::from(heading), f64::from(pitch), f64::from(roll));
+    for axis in [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]] {
+        let want = placed(s, t, z_offset, turn, axis) - origin;
+        let got = turned(angles, axis);
+        assert!(
+            (got - want).length() < 1e-5,
+            "{what}: axis {axis:?} {got:?}, expected {want:?}"
+        );
+    }
+    extent
+}
+
+/// A `<cornerLocal>` at `(u, v)`, `height` tall, of an object on road 0 at
+/// `(s, t)` raised `z_offset` and turned `turn`. Its top is up in the
+/// object's frame.
+fn assert_local_corner(
+    got: &Corner,
+    (s, t, z_offset, turn): (f64, f64, f64, (f64, f64, f64)),
+    (u, v): (f32, f32),
+    height: f32,
+    what: &str,
+) {
+    let at = |z| placed(s, t, z_offset, turn, [u, v, z]);
+    assert_near(got.base, at(0.0), &format!("{what} base"));
+    assert_near(got.top, at(height), &format!("{what} top"));
 }
 
 /// The objects baked on `road`.
@@ -115,7 +161,7 @@ fn single_objects_sit_on_the_road_surface_at_their_station() {
     let shed = &objects[0];
     assert_eq!(shed.kind, ObjectType::Building);
     assert_eq!(shed.name, "Shed");
-    let (_, _, extent) = assert_solid(shed, 40.0, -6.0, 0.5, 0.3);
+    let extent = assert_solid(shed, 40.0, -6.0, 0.5, (0.3, 0.0, 0.0));
     assert_eq!(
         extent,
         Some(Extent::Box {
@@ -128,8 +174,7 @@ fn single_objects_sit_on_the_road_surface_at_their_station() {
     let tree = &objects[1];
     assert_eq!(tree.kind, ObjectType::Tree);
     assert_eq!(tree.name, "");
-    let (pitch, roll, extent) = assert_solid(tree, 60.0, 5.0, 0.0, 0.0);
-    assert_eq!((pitch, roll), (0.1, -0.2));
+    let extent = assert_solid(tree, 60.0, 5.0, 0.0, (0.0, 0.1, -0.2));
     assert_eq!(
         extent,
         Some(Extent::Cylinder {
@@ -140,14 +185,14 @@ fn single_objects_sit_on_the_road_surface_at_their_station() {
 
     let marker = &objects[2];
     assert_eq!(marker.kind, ObjectType::None);
-    let (_, _, extent) = assert_solid(marker, 10.0, 0.0, 0.0, 0.0);
+    let extent = assert_solid(marker, 10.0, 0.0, 0.0, (0.0, 0.0, 0.0));
     assert_eq!(extent, None);
 
     // A vendor's own type is still an object, and a height alone still
     // makes a box, one with no footprint.
     let post = &objects[3];
     assert_eq!(post.kind, ObjectType::Unknown);
-    let (_, _, extent) = assert_solid(post, 20.0, 4.0, 0.0, 0.0);
+    let extent = assert_solid(post, 20.0, 4.0, 0.0, (0.0, 0.0, 0.0));
     assert_eq!(
         extent,
         Some(Extent::Box {
@@ -240,7 +285,7 @@ fn a_repeat_becomes_one_object_per_step_with_its_values_interpolated() {
     for (k, pole) in poles.iter().enumerate() {
         let f = k as f64 / 8.0;
         let s = 5.0 + 10.0 * k as f64;
-        let (_, _, extent) = assert_solid(pole, s, -4.0 - 2.0 * f, 0.0, 0.0);
+        let extent = assert_solid(pole, s, -4.0 - 2.0 * f, 0.0, (0.0, 0.0, 0.0));
         assert_eq!(
             extent,
             Some(Extent::Cylinder {
@@ -358,18 +403,6 @@ fn outline(object: &Object) -> (&[Corner], bool) {
     (corners, *closed)
 }
 
-/// Where `(u, v)` in the frame of an object at `(s, t)` with no `hdg` or
-/// `zOffset` lands.
-fn local(s: f64, t: f64, (u, v): (f32, f32)) -> Point {
-    let origin = raised(s, t, 0.0);
-    let (sin, cos) = ((CURVATURE * s).sin() as f32, (CURVATURE * s).cos() as f32);
-    Point::new(
-        origin.x + u * cos - v * sin,
-        origin.y + u * sin + v * cos,
-        origin.z,
-    )
-}
-
 #[test]
 fn an_inner_outline_is_a_hole_in_the_outline_round_it() {
     let courtyard: Vec<Object> = objects()
@@ -387,12 +420,13 @@ fn an_inner_outline_is_a_hole_in_the_outline_round_it() {
     else {
         panic!("a closed outline: {:?}", courtyard.shape);
     };
-    let at = |(u, v)| local(78.0, 10.0, (u, v));
+    let frame = (78.0, 10.0, 0.0, (0.0, 0.0, 0.0));
+    let at = |(u, v)| placed(78.0, 10.0, 0.0, frame.3, [u, v, 0.0]);
     for (corner, uv) in corners
         .iter()
         .zip([(0.0, 0.0), (10.0, 0.0), (10.0, 8.0), (0.0, 8.0)])
     {
-        assert_corner(corner, at(uv), 4.0, &format!("outer {uv:?}"));
+        assert_local_corner(corner, frame, uv, 4.0, &format!("outer {uv:?}"));
     }
     let [hole] = &holes[..] else {
         panic!("one hole: {holes:?}");
@@ -400,7 +434,7 @@ fn an_inner_outline_is_a_hole_in_the_outline_round_it() {
     let well = [(3.0, 2.0), (7.0, 2.0), (7.0, 5.0), (3.0, 5.0)];
     assert_eq!(hole.len(), 4);
     for (corner, uv) in hole.iter().zip(well) {
-        assert_corner(corner, at(uv), 4.0, &format!("hole {uv:?}"));
+        assert_local_corner(corner, frame, uv, 4.0, &format!("hole {uv:?}"));
     }
 
     // The border naming the hole runs round it.
@@ -423,20 +457,13 @@ fn a_local_outline_is_placed_in_the_objects_own_frame() {
     let (corners, closed) = outline(&house);
     assert!(closed);
     // The frame's origin is the object's station raised by its zOffset, and
-    // its u axis is the road heading plus the object's hdg.
-    let origin = raised(30.0, 10.0, 0.1);
-    let yaw = CURVATURE * 30.0 + 0.2;
-    let (sin, cos) = (yaw.sin() as f32, yaw.cos() as f32);
-    for (corner, (u, v)) in corners
+    // it is turned by the object's hdg against the road's own axes.
+    for (corner, uv) in corners
         .iter()
         .zip([(0.0, 0.0), (6.0, 0.0), (6.0, 4.0), (0.0, 4.0)])
     {
-        let base = Point::new(
-            origin.x + u * cos - v * sin,
-            origin.y + u * sin + v * cos,
-            origin.z,
-        );
-        assert_corner(corner, base, 5.0, &format!("house ({u}, {v})"));
+        let frame = (30.0, 10.0, 0.1, (0.2, 0.0, 0.0));
+        assert_local_corner(corner, frame, uv, 5.0, &format!("house {uv:?}"));
     }
     assert_eq!(corners.len(), 4);
 }
@@ -759,14 +786,7 @@ fn a_marking_with_no_corners_paints_a_side_of_the_box() {
     // A 5.5 x 2.5 m bay at (s, -9), turned a right angle against the road.
     // The paint is 5 mm up, as the markings give no zOffset.
     let corner = |s: f64, (u, v): (f32, f32)| {
-        let yaw = CURVATURE * s + 1.5708;
-        let (sin, cos) = (yaw.sin() as f32, yaw.cos() as f32);
-        let origin = raised(s, -9.0, 0.005);
-        Point::new(
-            origin.x + u * cos - v * sin,
-            origin.y + u * sin + v * cos,
-            origin.z,
-        )
+        placed(s, -9.0, 0.0, (1.5708, 0.0, 0.0), [u, v, 0.0]) + Vector::Z * 0.005
     };
     let (u, v) = (2.75, 1.25);
 
@@ -928,4 +948,30 @@ fn a_border_runs_round_the_whole_outline_or_along_the_edges_it_references() {
         0.5,
         "end",
     );
+}
+
+#[test]
+fn an_object_leans_with_a_banked_road() {
+    // Road 2 banks 0.15 rad about its reference line, so the kiosk at t = -5
+    // is 5 cos 0.15 right of it and 5 sin 0.15 down. Its zOffset raises it
+    // square to the bank, and it rolls with it.
+    let kiosk = &on("2")[0];
+    let Shape::Solid {
+        position,
+        heading,
+        pitch,
+        roll,
+        ..
+    } = kiosk.shape
+    else {
+        panic!("a solid: {:?}", kiosk.shape);
+    };
+    let (sin, cos) = 0.15_f32.sin_cos();
+    let want = Point::new(20.0, -80.0 - 5.0 * cos - 0.2 * sin, -5.0 * sin + 0.2 * cos);
+    assert_near(position, want, "kiosk");
+    assert!(
+        heading.abs() < 1e-6 && pitch.abs() < 1e-6,
+        "{heading}, {pitch}"
+    );
+    assert!((roll - 0.15).abs() < 1e-6, "roll {roll}");
 }

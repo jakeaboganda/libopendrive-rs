@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <OpenDRIVE>
-    <header name="objects" revMajor="1" revMinor="5" date="2026-09-26 12:09:04.568522" north="0.0" south="0.0" east="0.0" west="0.0"/>
+    <header name="objects" revMajor="1" revMinor="5" date="2026-09-26 14:25:14.326411" north="0.0" south="0.0" east="0.0" west="0.0"/>
     <road rule="RHT" id="0" junction="-1" length="100.0">
         <link/>
         <planView>
@@ -204,6 +204,44 @@
             <bridge s="40" length="15" name="Creek" id="21" type="concrete">
                 <validity fromLane="-1" toLane="-1"/>
             </bridge>
+        </objects>
+    </road>
+    <road rule="RHT" id="2" junction="-1" length="40">
+        <link/>
+        <planView>
+            <geometry s="0" x="0" y="-80" hdg="0" length="40">
+                <line/>
+            </geometry>
+        </planView>
+        <elevationProfile/>
+        <lateralProfile>
+            <superelevation s="0" a="0.15" b="0" c="0" d="0"/>
+        </lateralProfile>
+        <lanes>
+            <laneSection s="0">
+                <left>
+                    <lane id="1" type="driving" level="false">
+                        <link/>
+                        <width a="3.0" b="0.0" c="-0.0" d="0.0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.2"/>
+                    </lane>
+                </left>
+                <center>
+                    <lane id="0" type="none" level="false">
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.2"/>
+                    </lane>
+                </center>
+                <right>
+                    <lane id="-1" type="driving" level="false">
+                        <link/>
+                        <width a="3.0" b="0.0" c="-0.0" d="0.0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.2"/>
+                    </lane>
+                </right>
+            </laneSection>
+        </lanes>
+        <objects>
+            <object id="30" s="20" t="-5" subtype="None" dynamic="no" zOffset="0.2" pitch="0" roll="0" width="2" height="2.5" name="Kiosk" type="building" orientation="none" hdg="0" length="3"/>
         </objects>
     </road>
 </OpenDRIVE>

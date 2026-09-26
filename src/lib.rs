@@ -95,7 +95,12 @@
 //! not a raw mirror of the file's `+s` links.
 //!
 //! Each `<object>` bakes to one or more [`Object`]s in world coordinates,
-//! sitting on the road surface and raised by `zOffset`. `<object type>`
+//! sitting on the road surface. As in libOpenDRIVE, an object's own frame
+//! follows the road under it: `hdg`, `pitch` and `roll` turn it against the
+//! road's grade and bank, and `zOffset` raises it square to the surface. So
+//! an object on a banked road leans with the bank. `<repeat>` sweeps and
+//! `<cornerRoad>` corners are given in road coordinates, not the object's
+//! frame, and still rise straight up. `<object type>`
 //! chooses their [`ObjectType`], and an unrecognised name bakes as
 //! [`ObjectType::Unknown`]. The [`Shape`] follows libOpenDRIVE:
 //!

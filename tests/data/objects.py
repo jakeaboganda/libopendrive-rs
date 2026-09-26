@@ -4,8 +4,9 @@ straight road that places some of them again by reference.
     uv run --with scenariogeneration==0.16.6 tests/data/objects.py
 
 Road 0 is a 100 m left arc of radius 200 m starting at the origin heading +X,
-climbing at 2 %. Road 1 is a flat 60 m straight from (0, -40) heading +X. So
-every placement has a closed form to check against.
+climbing at 2 %. Road 1 is a flat 60 m straight from (0, -40) heading +X, and
+road 2 a 40 m straight from (0, -80) banked at 0.15 rad. So every placement
+has a closed form to check against.
 
 scenariogeneration has no `<objectReference>`, `<borders>` or `<bridge>`, so
 those are added to its output afterwards, as text.
@@ -167,9 +168,18 @@ road.add_tunnel(xodr.Tunnel(s=75, length=25, id="20", name="Hill",
 straight = xodr.create_road(xodr.Line(60), id=1, left_lanes=1, right_lanes=1)
 straight.planview.set_start_point(0, -40, 0)
 
+# A straight banked at 0.15 rad from (0, -80) heading +X, with a kiosk on it
+# that leans with the bank.
+banked = xodr.create_road(xodr.Line(40), id=2, left_lanes=1, right_lanes=1)
+banked.planview.set_start_point(0, -80, 0)
+banked.add_superelevation(0, 0.15, 0, 0, 0)
+banked.add_object(xodr.Object(s=20, t=-5, Type=xodr.ObjectType.building, id="30",
+                              name="Kiosk", length=3, width=2, height=2.5, zOffset=0.2))
+
 odr = xodr.OpenDrive("objects")
 odr.add_road(road)
 odr.add_road(straight)
+odr.add_road(banked)
 odr.adjust_roads_and_lanes()
 out = Path(__file__).with_name("objects.xodr")
 odr.write_xml(str(out))

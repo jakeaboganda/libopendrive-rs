@@ -405,6 +405,12 @@ impl Cubic {
         let ds = s - self.start;
         self.a + self.b * ds + self.c * ds * ds + self.d * ds * ds * ds
     }
+
+    /// The rate of change at `s`.
+    fn slope(&self, s: f64) -> f64 {
+        let ds = s - self.start;
+        self.b + 2.0 * self.c * ds + 3.0 * self.d * ds * ds
+    }
 }
 
 /// The record whose start is the greatest not exceeding `s` (records sorted by
@@ -616,6 +622,7 @@ fn parse_road(
             length,
             sections: &sections,
             surface: &|s, t| surface_at(&geoms, &elevations, &superelevations, s, t),
+            axes: &|s| road_axes(&geoms, &elevations, &superelevations, s),
         };
         place_objects(objects_node, index, &road, objects);
         place_structures(objects_node, &road, out, structures);
@@ -655,6 +662,8 @@ struct BakedRoad<'a> {
     /// The road surface at a station `(s, t)`, and the reference line's
     /// heading there.
     surface: &'a dyn Fn(f64, f64) -> (Point, f64),
+    /// The road's own axes at station `s`, from [`road_axes`].
+    axes: &'a dyn Fn(f64) -> [[f64; 3]; 3],
 }
 
 impl BakedRoad<'_> {
@@ -932,6 +941,34 @@ fn emit_section(
     }
 }
 
+/// The road's own axes at station `s`, as libOpenDRIVE has them: along the
+/// reference line up its grade, across it tilted by the superelevation, and
+/// square to both. Unit length and square to each other, right-handed.
+fn road_axes(
+    geoms: &[GeomRec],
+    elevations: &[Cubic],
+    superelevations: &[Cubic],
+    s: f64,
+) -> [[f64; 3]; 3] {
+    let (_, _, hdg) = geom_at(geoms, s).pose(s);
+    let grade = active(elevations, s).map_or(0.0, |e| e.slope(s));
+    let phi = active(superelevations, s).map_or(0.0, |e| e.eval(s));
+    let (sin_h, cos_h) = hdg.sin_cos();
+    let (sin_p, cos_p) = phi.sin_cos();
+    let along = unit([cos_h, sin_h, grade]);
+    let up = unit(cross(along, [-sin_h * cos_p, cos_h * cos_p, sin_p]));
+    [along, cross(up, along), up]
+}
+
+fn cross([a, b, c]: [f64; 3], [x, y, z]: [f64; 3]) -> [f64; 3] {
+    [b * z - c * y, c * x - a * z, a * y - b * x]
+}
+
+fn unit(v: [f64; 3]) -> [f64; 3] {
+    let length = v.iter().map(|c| c * c).sum::<f64>().sqrt();
+    v.map(|c| c / length)
+}
+
 /// Sample one lane's centerline to points in our coordinate frame, with the
 /// reference line's analytical heading at each sample.
 ///
@@ -1109,23 +1146,44 @@ struct Station {
     radius: Option<f64>,
 }
 
-/// An object's own frame at one station: its origin, raised off the road by
-/// `zOffset`, and its orientation. The yaw is the reference line's heading
-/// plus the object's `hdg`. `pitch` and `roll` are already against the ground
-/// plane.
+/// An object's own frame at one station: its origin, and its u, v and z
+/// axes in the network's frame.
 struct Frame {
     origin: Point,
-    yaw: f64,
-    pitch: f64,
-    roll: f64,
+    axes: [[f64; 3]; 3],
 }
 
 impl Frame {
-    /// A point given in this frame, in the network's. The rotation is yaw
-    /// about Z, then pitch about the turned Y, then roll about the turned X.
+    /// The frame of an object turned `hdg`, `pitch` and `roll` against the
+    /// road's `axes`, as [`orient`] turns them, with its origin at `origin`.
+    fn on_road(origin: Point, road: [[f64; 3]; 3], (hdg, pitch, roll): (f64, f64, f64)) -> Self {
+        let turned = |local: [f64; 3]| {
+            let [u, v, z] = orient(hdg, pitch, roll, local);
+            [0, 1, 2].map(|i| road[0][i] * u + road[1][i] * v + road[2][i] * z)
+        };
+        Self {
+            origin,
+            axes: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]].map(turned),
+        }
+    }
+
+    /// A point given in this frame, in the network's.
     fn point(&self, local: [f64; 3]) -> Point {
-        let [u, v, z] = orient(self.yaw, self.pitch, self.roll, local);
-        self.origin + Vector::new(u as f32, v as f32, z as f32)
+        let [u, v, w] = self.axes;
+        let at = |i: usize| local[0] * u[i] + local[1] * v[i] + local[2] * w[i];
+        self.origin + Vector::new(at(0) as f32, at(1) as f32, at(2) as f32)
+    }
+
+    /// The frame's orientation as the yaw, pitch and roll [`orient`] takes.
+    /// Pitched straight up or down, yaw and roll turn about the same axis,
+    /// so the roll is 0.
+    fn angles(&self) -> (f64, f64, f64) {
+        let [u, v, w] = self.axes;
+        let pitch = (-u[2]).clamp(-1.0, 1.0).asin();
+        if u[2].abs() > 1.0 - 1e-9 {
+            return (f64::atan2(-v[0], v[1]), pitch, 0.0);
+        }
+        (f64::atan2(u[1], u[0]), pitch, f64::atan2(v[2], w[2]))
     }
 }
 
@@ -1354,7 +1412,9 @@ fn place_objects(
 /// Bake one `<object>` into `out`, placed on `road` as `at` says.
 ///
 /// Each object sits on the road surface, so it rides the elevation and
-/// superelevation profiles like a lane does. One `<object>` can bake to
+/// superelevation profiles like a lane does. Its own frame is the road's
+/// axes there, from [`road_axes`], turned by its `hdg`, `pitch` and `roll`
+/// and raised `zOffset` along the surface normal. One `<object>` can bake to
 /// several [`Object`]s, following libOpenDRIVE:
 ///
 /// - with neither `<repeat>`s nor outlines, one [`Shape::Solid`];
@@ -1384,22 +1444,20 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
     let pitch = attr_f64(node, "pitch").unwrap_or(0.0);
     let roll = attr_f64(node, "roll").unwrap_or(0.0);
     let frame = |st: &Station| {
-        let (mut origin, road_hdg) = (road.surface)(st.s, st.t);
-        origin.z += st.z_offset as f32;
-        Frame {
-            origin,
-            yaw: road_hdg + hdg,
-            pitch,
-            roll,
-        }
+        let (on_surface, _) = (road.surface)(st.s, st.t);
+        let axes = (road.axes)(st.s);
+        let raise = axes[2].map(|c| (c * st.z_offset) as f32);
+        let origin = on_surface + Vector::from_array(raise);
+        Frame::on_road(origin, axes, (hdg, pitch, roll))
     };
     let point = |st: &Station| {
         let f = frame(st);
+        let (yaw, pitch, roll) = f.angles();
         let solid = Shape::Solid {
             position: f.origin,
-            heading: f.yaw as f32,
-            pitch: f.pitch as f32,
-            roll: f.roll as f32,
+            heading: yaw as f32,
+            pitch: pitch as f32,
+            roll: roll as f32,
             extent: extent(st),
         };
         let mut part = Part::new(solid, st, (st.s, st.s));
@@ -3606,19 +3664,18 @@ mod tests {
     #[test]
     fn an_object_rides_the_banked_surface_like_a_lane() {
         // Same pivot as a lane at t = 3: up by 3 sin 0.1, in to 3 cos 0.1.
+        // Then zOffset raises it square to the banked surface, and it leans
+        // with the bank, as libOpenDRIVE has it.
         let objects = objects_of(&banked_road_with(
-            r#"<object id="1" s="10" t="3" zOffset="0.5"/>"#,
+            r#"<object id="1" s="10" t="3" zOffset="0.5" roll="0.05"/>"#,
         ));
         let (p, pitch, roll, _) = solid(&objects[0]);
+        let (sin, cos) = 0.1_f32.sin_cos();
         assert!((p.x - 10.0).abs() < 1e-5, "x {}", p.x);
-        assert!((p.y - 3.0 * 0.1_f32.cos()).abs() < 1e-5, "y {}", p.y);
-        assert!(
-            (p.z - (3.0 * 0.1_f32.sin() + 0.5)).abs() < 1e-5,
-            "z {}",
-            p.z
-        );
-        // Pitch and roll are the file's, not the road's bank.
-        assert_eq!((pitch, roll), (0.0, 0.0));
+        assert!((p.y - (3.0 * cos - 0.5 * sin)).abs() < 1e-5, "y {}", p.y);
+        assert!((p.z - (3.0 * sin + 0.5 * cos)).abs() < 1e-5, "z {}", p.z);
+        assert!(pitch.abs() < 1e-6, "pitch {pitch}");
+        assert!((roll - 0.15).abs() < 1e-6, "roll {roll}");
     }
 
     #[test]
@@ -3785,13 +3842,49 @@ mod tests {
         assert!(objects.is_empty());
     }
 
+    /// A road running along +X on level ground.
+    const FLAT: [[f64; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+
+    #[test]
+    fn a_frames_angles_turn_it_as_it_is() {
+        // Turned on a road that climbs, banks and bends, and pitched straight
+        // up, where yaw and roll turn about the same axis.
+        let geoms = [GeomRec {
+            s: 0.0,
+            x: 0.0,
+            y: 0.0,
+            hdg: 0.4,
+            geom: Geom::Line,
+        }];
+        let cubic = |a, b| Cubic {
+            start: 0.0,
+            a,
+            b,
+            c: 0.0,
+            d: 0.0,
+        };
+        let road = road_axes(&geoms, &[cubic(0.0, 0.08)], &[cubic(-0.2, 0.0)], 5.0);
+        let half = std::f64::consts::FRAC_PI_2;
+        for (axes, turn) in [
+            (FLAT, (0.3, -0.2, 0.5)),
+            (road, (0.3, -0.2, 0.5)),
+            (FLAT, (0.3, half, 0.5)),
+            (road, (1.0, 0.0, 0.0)),
+        ] {
+            let frame = Frame::on_road(Point::ORIGIN, axes, turn);
+            let again = Frame::on_road(Point::ORIGIN, FLAT, frame.angles());
+            for (a, b) in frame.axes.iter().zip(again.axes) {
+                for (x, y) in a.iter().zip(b) {
+                    assert!((x - y).abs() < 1e-9, "{:?} != {:?}", frame.axes, again.axes);
+                }
+            }
+        }
+    }
+
     #[test]
     fn a_frame_turns_yaw_then_pitch_then_roll() {
-        let frame = |yaw: f64, pitch: f64, roll: f64| Frame {
-            origin: Point::new(1.0, 2.0, 3.0),
-            yaw,
-            pitch,
-            roll,
+        let frame = |yaw: f64, pitch: f64, roll: f64| {
+            Frame::on_road(Point::new(1.0, 2.0, 3.0), FLAT, (yaw, pitch, roll))
         };
         let near = |got: Point, want: [f32; 3]| {
             assert!(

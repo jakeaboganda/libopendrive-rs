@@ -155,15 +155,16 @@ pub struct Section {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Shape {
     /// A solid placed at a pose. The orientation is three angles in
-    /// radians, applied as yaw, then pitch, then roll.
+    /// radians, in the network's axes, applied as yaw, then pitch, then roll.
+    /// They take in the grade and bank of the road under the object.
     Solid {
         /// The object's origin, the base of its extent.
         position: Point,
         /// Yaw about +Z, counter-clockwise from +X.
         heading: f32,
-        /// Pitch against the ground plane.
+        /// Pitch about the turned Y, nose down for a positive angle.
         pitch: f32,
-        /// Roll against the ground plane.
+        /// Roll about the turned X, left side up for a positive angle.
         roll: f32,
         /// The volume it occupies, or `None` for an object the map gives no
         /// size.

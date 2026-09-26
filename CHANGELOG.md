@@ -9,9 +9,12 @@
 `ObjectType`, a subtype, a name, whether it is dynamic, and a `Shape`:
 
 - `Shape::Solid`: a plain object, placed on the road surface at its `(s, t)`
-  and raised by `zOffset`. It carries its heading (the road's plus its own),
-  its pitch and roll, and an `Extent`: a cylinder if it has a radius, or a
-  box if it has any of a length, a width and a height.
+  and raised by `zOffset`. It carries its heading, pitch and roll, and an
+  `Extent`: a cylinder if it has a radius, or a box if it has any of a
+  length, a width and a height. As in libOpenDRIVE, an object leans with
+  the grade and bank of the road under it, and `zOffset` raises it square to
+  the surface. So does an outline in `cornerLocal` corners. Sweeps and
+  `cornerRoad` corners still rise straight up.
 - A `<repeat>` with a `distance` is one solid every `distance` metres, with
   `t`, `zOffset` and the dimensions interpolated along it. On esmini's
   e6mini that turns four objects into 794 posts.
