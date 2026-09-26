@@ -29,7 +29,7 @@
       <left><lane id="1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right>
     </laneSection></lanes>
     <surface>
-      <CRG file="crg_bumps.crg" sStart="0" sEnd="60" mode="genuine" sOffset="10"/>
+      <CRG file="crg_bumps.crg" sStart="10" sEnd="50" mode="genuine" sOffset="10"/>
     </surface>
   </road>
   <road id="4" length="60" junction="-1">
@@ -39,7 +39,7 @@
       <left><lane id="1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right>
     </laneSection></lanes>
     <surface>
-      <CRG file="crg_bumps.crg" sStart="0" sEnd="60" mode="global" xOffset="10" yOffset="-60"/>
+      <CRG file="crg_bumps.crg" sStart="10" sEnd="50" mode="global" xOffset="10" yOffset="-60"/>
     </surface>
   </road>
 </OpenDRIVE>

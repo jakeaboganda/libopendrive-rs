@@ -106,11 +106,11 @@ def main():
         ),
         road(
             3, 0, -30, "<line/>", 60,
-            '<CRG file="crg_bumps.crg" sStart="0" sEnd="60" mode="genuine" sOffset="10"/>',
+            '<CRG file="crg_bumps.crg" sStart="10" sEnd="50" mode="genuine" sOffset="10"/>',
         ),
         road(
             4, 0, -60, "<line/>", 60,
-            '<CRG file="crg_bumps.crg" sStart="0" sEnd="60" mode="global" xOffset="10" yOffset="-60"/>',
+            '<CRG file="crg_bumps.crg" sStart="10" sEnd="50" mode="global" xOffset="10" yOffset="-60"/>',
         ),
     ]
     header = '<?xml version="1.0" encoding="UTF-8"?>\n<OpenDRIVE>\n  <header revMajor="1" revMinor="9"/>\n'
