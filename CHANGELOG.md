@@ -16,8 +16,8 @@
 - Friction is the grid value exactly as the file has it. OpenCRG shifts
   heights to start at 0 and leaves friction alone.
 - The crate re-exports `opencrg`.
-- The viewer draws the CRG heights as a heat map over the road. Hover it
-  to read the height and friction under the cursor.
+- The viewer draws the CRG heights as a heat map over the road, centred on
+  their median. Hover it to read the height and friction under the cursor.
 - `examples/crg_to_xodr.rs` writes a map for an OpenCRG file.
   `examples/crg_profile.rs` drives a wheel down a lane and writes the
   surface under it as CSV. `examples/crg_data.sh` downloads five CRG files

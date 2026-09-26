@@ -708,12 +708,13 @@ function buildLegend() {
   group('parking access', objects.filter(o => o.parkingSpace).map(o => o.parkingSpace.access),
     PARKING_COLORS, OBJECT_COLORS['parking-space']);
   if (crgMesh) {
-    const mm = (crgMesh.userData.range * 1000).toFixed(1);
+    const { center, range } = crgMesh.userData;
+    const mm = x => `${x < 0 ? '−' : ''}${Math.abs(x * 1000).toFixed(1)} mm`;
     const h = document.createElement('span');
     h.className = 'heading';
     h.textContent = 'CRG height';
     const el = document.createElement('span');
-    el.innerHTML = `−${mm} mm <i class="ramp"></i> +${mm} mm`;
+    el.innerHTML = `${mm(center - range)} <i class="ramp"></i> ${mm(center + range)}`;
     frag.append(h, el);
   }
   document.getElementById('legend').replaceChildren(frag);
@@ -934,8 +935,8 @@ function hideTip() { tip.style.display = 'none'; }
 
 // --- CRG overlay ---------------------------------------------------------------
 
-// The CRG heights as a heat map draped over the road: blue below the road,
-// white level with it, red above, saturating at the exported 99th percentile.
+// The CRG heights as a heat map draped over the road: white at the median
+// height, blue below it, red above, saturating at the exported range.
 // Grey where a friction CRG covers the road and no elevation CRG does.
 function buildCrg(data) {
   const c = data.crg;
@@ -944,7 +945,7 @@ function buildCrg(data) {
     return;
   }
   const colors = new Float32Array(c.heights.length * 3);
-  c.heights.forEach((h, i) => colors.set(heatColor(h, c.range), i * 3));
+  c.heights.forEach((h, i) => colors.set(heatColor(h == null ? h : h - c.center, c.range), i * 3));
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(c.positions, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));

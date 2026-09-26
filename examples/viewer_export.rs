@@ -389,8 +389,10 @@ fn spacing(grid: &CrgGrid) -> f64 {
 /// grid height (`heights`), the surface height (`z`) and the friction, null
 /// where none applies. A cell is drawn only where all four corners have one
 /// of them. The grid is as fine as the finest loaded file, or coarser to stay
-/// within [`CELLS_PER_FILE`] per file. `range` is the 99th percentile of the
-/// absolute CRG heights, for the colour scale.
+/// within [`CELLS_PER_FILE`] per file. The colour scale runs `range` either
+/// side of `center`: the median CRG height, and the 99.9th percentile of the
+/// distance from it. A file of absolute heights and a flat road with a few
+/// obstacles both get a scale that shows them.
 fn crg_overlay(
     net: &RoadNetwork,
     mesh: &Mesh,
@@ -483,18 +485,32 @@ fn crg_overlay(
         }
     }
 
-    let mut magnitudes: Vec<f32> = heights.iter().flatten().map(|h| h.abs()).collect();
-    magnitudes.sort_by(f32::total_cmp);
-    let range = magnitudes
-        .get((magnitudes.len() as f64 * 0.99) as usize)
-        .or(magnitudes.last())
-        .copied()
-        .filter(|r| *r > 0.0)
+    let percentile = |mut values: Vec<f32>, p: f64| {
+        values.sort_by(f32::total_cmp);
+        let at = ((values.len() as f64 * p) as usize).min(values.len().saturating_sub(1));
+        (values.get(at).copied(), values.last().copied())
+    };
+    let center = percentile(heights.iter().flatten().copied().collect(), 0.5)
+        .0
+        .unwrap_or(0.0);
+    let (tail, most) = percentile(
+        heights
+            .iter()
+            .flatten()
+            .map(|h| (h - center).abs())
+            .collect(),
+        0.999,
+    );
+    let range = [tail, most]
+        .into_iter()
+        .flatten()
+        .find(|r| *r > 0.0)
         .unwrap_or(0.001);
 
     json!({
         "surfaces": surfaces,
         "cell": cell,
+        "center": center,
         "range": range,
         "positions": positions,
         "heights": heights,

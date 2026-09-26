@@ -128,11 +128,11 @@ highlight its lanes and frame the stretch it covers.
 Where the map lays OpenCRG files on its roads, the exporter loads them from
 beside the `.xodr`, and warns about any it cannot read. It samples
 `RoadSurface` over every lane a CRG covers, and the viewer draws the result
-as a heat map over the road. Blue is below the road, white is level with it,
-and red is above. The colour is the CRG grid's own height, times `zScale`,
-without the file's reference-line height or bank. The scale saturates at the
-99th percentile of those heights, and the legend shows it. Grey is where only
-a friction CRG covers the road.
+as a heat map over the road. The colour is the CRG grid's own height, times
+`zScale`, without the file's reference-line height or bank. White is the
+median of those heights, blue is below it and red above. The scale saturates
+at the 99.9th percentile of the distance from the median, and the legend
+shows its ends. Grey is where only a friction CRG covers the road.
 
 The viewer drapes the heat map 5 mm above the road mesh, so the road never
 hides it. Its shape is the road mesh's, not the CRG surface's. Hover it to
@@ -150,6 +150,17 @@ cargo run --example viewer_export --features serde -- tests/data/crg.xodr viewer
 ```
 
 ![The CRG test map from above](crg.png)
+
+For measured surfaces, `examples/crg_data.sh` downloads five CRG files, writes
+a map for each, and exports it to `viewer/web/NAME.json`. The scenes are 12
+to 38 MB each. Open `?scene=belgian_block.json` for a scan of cobbles, or
+`?scene=country_road.json` for 569 m of a country road.
+
+```sh
+sh examples/crg_data.sh
+```
+
+![Scanned cobbles from ASAM's belgian_block.crg](crg-cobbles.png)
 
 ## Coordinates
 
