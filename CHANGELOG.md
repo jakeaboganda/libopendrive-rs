@@ -5,18 +5,19 @@
 ### OpenCRG road surfaces
 
 - Each `<CRG>` under a road's or a junction's `<surface>` imports as a
-  `CrgSurface` in `RoadNetwork::crg_surfaces`. All four modes are read:
-  `attached`, `attached0`, `genuine` and `global`. Both purposes are read:
+  `CrgSurface` in `RoadNetwork::crg_surfaces`. The importer reads all four
+  modes, `attached`, `attached0`, `genuine` and `global`, and both purposes,
   elevation and friction.
-- `RoadSurface` loads the files through a closure and answers
-  `sample(x, y, hint)`: the height, up-normal, CRG grid height and friction
-  under a point, in `f64`. Where no CRG covers the point, it answers from the
-  surface mesh. A `SurfaceHint` per moving point keeps each search short.
-- Friction is the grid value as the file gives it. OpenCRG's placement
-  shift applies to heights only.
+- `RoadSurface` loads the files through a closure. `sample(x, y, hint)`
+  returns the height, up-normal, CRG grid height and friction under a point,
+  in `f64`. Where no CRG covers the point, the surface mesh answers. Give each
+  moving point its own `SurfaceHint`, and its next search starts where the
+  last one ended.
+- Friction is the grid value exactly as the file has it. OpenCRG shifts
+  heights to start at 0 and leaves friction alone.
 - The crate re-exports `opencrg`.
-- The viewer draws the CRG heights as a heat map over the road, and reads
-  out the height and friction under the cursor.
+- The viewer draws the CRG heights as a heat map over the road. Hover it
+  to read the height and friction under the cursor.
 
 ### Breaking
 

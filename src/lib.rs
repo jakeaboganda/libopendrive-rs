@@ -185,15 +185,15 @@
 //! [`CrgSurface`] in [`RoadNetwork::crg_surfaces`]. The importer reads the
 //! record, not the OpenCRG file it names. [`RoadSurface::new`] loads the
 //! files through a closure you pass. Then [`RoadSurface::sample`] gives the
-//! height, normal and friction under a point, in `f64`. Where a CRG covers
-//! the point, the value comes from it. Everywhere else it comes from the
-//! surface mesh, which the CRG does not change.
+//! height, normal and friction under a point, in `f64`. A CRG answers where
+//! it covers the point, and the surface mesh answers everywhere else. The CRG
+//! does not change the mesh.
 //!
 //! The modes follow the road surface section of ASAM OpenDRIVE 1.9:
 //!
 //! - `attached` lays the CRG grid along the road's reference line and adds
-//!   its height to the road's. The file's reference line, with its height,
-//!   slope and bank, is ignored. The spec's formula evaluates the file with
+//!   its height to the road's. It ignores the file's reference line, with its
+//!   height, slope and bank. The spec's formula evaluates the file with
 //!   `crgEvaluv2z`, which includes them, but its text says they are
 //!   disregarded. The importer follows the text.
 //! - `attached0` lays the file along the road the same way, and its
@@ -215,9 +215,9 @@
 //! junction reference line, so it skips the other modes there.
 //!
 //! A friction CRG ignores `zOffset` and `zScale`, as the spec says, and gives
-//! the grid values as the file has them. For heights, OpenCRG shifts a file
-//! without a `$ROAD_CRG_MODS` block so its reference line starts at 0, as the
-//! C-API does. Friction skips that shift.
+//! the grid values exactly as the file has them. OpenCRG, like its C-API,
+//! shifts the heights of a file without a `$ROAD_CRG_MODS` block so its
+//! reference line starts at 0. Friction skips that shift.
 //!
 //! # What the importer ignores
 //!

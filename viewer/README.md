@@ -1,7 +1,8 @@
 # OpenDRIVE viewer
 
 A three.js page that draws a map baked by `libopendrive`. Hover a lane, an
-object, a tunnel or a bridge to read what the crate knows about it.
+object, a tunnel, a bridge or a CRG heat map to read what the crate knows
+about it.
 
 The viewer has two parts. `examples/viewer_export.rs` bakes an `.xodr` into
 JSON, and `web/index.html` draws that JSON. The crate itself does no
@@ -133,10 +134,10 @@ without the file's reference-line height or bank. The scale saturates at the
 99th percentile of those heights, and the legend shows it. Grey is where only
 a friction CRG covers the road.
 
-The heat map is draped 5 mm above the road mesh, so the road never hides it.
-It shows where the CRG is and what it holds, not the CRG surface's own
-height. Hover it to read the CRG height, the surface height `z` and the
-friction under the cursor, and the CRG files on the lane.
+The viewer drapes the heat map 5 mm above the road mesh, so the road never
+hides it. Its shape is the road mesh's, not the CRG surface's. Hover it to
+read the CRG height, the surface height `z` and the friction under the
+cursor, and the CRG files on the lane.
 
 The grid is as fine as the finest CRG file, or coarser to keep to about
 250,000 cells per file.

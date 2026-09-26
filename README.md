@@ -84,8 +84,8 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
 
 - `<surface><CRG>` on roads and junctions, in all four modes, for elevation
   and friction. The importer keeps the records. `RoadSurface` loads the
-  OpenCRG files they name and gives the height, normal and friction under a
-  point in `f64`, for a vehicle model. Off the CRG it answers from the surface
+  OpenCRG files they name and gives a vehicle model the height, normal and
+  friction under a point in `f64`. Off the CRG it answers from the surface
   mesh, which the CRG does not change.
 
   ```rust
@@ -181,8 +181,9 @@ another math library is one call:
 let v = glam::Vec3::from(point.to_array());
 ```
 
-There are no required dependencies beyond `roxmltree` and `thiserror`, so
-nothing here constrains which math or engine crate you use, or its version.
+The required dependencies are `roxmltree`, `thiserror` and `opencrg`, which
+has none of its own. Nothing here constrains which math or engine crate you
+use, or its version.
 
 ## Performance
 
@@ -195,6 +196,9 @@ tracks local road density rather than map size. On CARLA's Town07 (234 roads,
 | `nearest_lane` / `sample_near` | ~0.4 us |
 | `route` (across the map) | ~29 us |
 | `MeshSampler::height_at` | ~0.2 us |
+
+`RoadSurface::sample` on a CRG takes ~0.3 us with a warm `SurfaceHint` and
+~0.6 us without one, measured on `tests/data/crg.xodr`.
 
 Import is ~15 ms for that map.
 

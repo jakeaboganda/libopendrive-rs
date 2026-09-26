@@ -1,5 +1,5 @@
-//! Road surfaces from OpenCRG files: the `<CRG>` records a map names, and
-//! [`RoadSurface`], which evaluates them under a point.
+//! Road surfaces from OpenCRG files. [`CrgSurface`] is a `<CRG>` record from
+//! the map, and [`RoadSurface`] evaluates the files under a point.
 
 use std::collections::HashMap;
 
@@ -72,8 +72,7 @@ pub enum CrgMode {
 
 /// One `<CRG>` under a `<road>` or `<junction>` `<surface>`.
 ///
-/// The network keeps the record. The file itself is loaded by
-/// [`RoadSurface::new`].
+/// The network keeps the record. [`RoadSurface::new`] loads the file.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CrgSurface {
@@ -95,8 +94,8 @@ pub struct CrgSurface {
     pub(crate) road: Option<Stretch>,
 }
 
-/// A stretch of a road's reference line, sampled finely enough to project
-/// onto: the importer's own spirals are 0.25 m chords.
+/// A stretch of a road's reference line, sampled every 0.25 m, the step the
+/// importer bakes spirals at.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct Stretch {
@@ -313,7 +312,7 @@ impl Rigid {
 
 /// Search state for one moving point, such as a wheel, passed to
 /// [`RoadSurface::sample`]. Each query starts where the last one ended, so a
-/// point that moves a little each step costs little to find, however long the
+/// point that moves a few metres per step is found without scanning the whole
 /// road. `SurfaceHint::default()` is empty.
 #[derive(Debug, Clone, Default)]
 pub struct SurfaceHint {
@@ -529,10 +528,9 @@ impl At<'_> {
         Some((z + self.record.z_offset, normal, k * bump))
     }
 
-    /// The friction coefficient at `(x, y)`: the grid value as the file
-    /// gives it. OpenCRG's default modifiers shift a file's values so its
-    /// reference line starts at height 0, which suits heights but not
-    /// friction.
+    /// The friction coefficient at `(x, y)`, the grid value exactly as the
+    /// file has it. OpenCRG's default modifiers shift a file's values so its
+    /// reference line starts at height 0. That suits heights, not friction.
     fn friction(&self, x: f64, y: f64, hint: &mut PatchHint) -> Option<f64> {
         let uv = match self.find(x, y, hint)? {
             Found::Along { uv, .. } | Found::Placed { uv, .. } => uv,

@@ -371,8 +371,8 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
 /// How many grid cells each loaded CRG file may add to the overlay.
 const CELLS_PER_FILE: f64 = 250_000.0;
 
-/// How far above the road mesh the overlay is draped, in metres, so it is
-/// never hidden under the road it describes.
+/// How far above the road mesh the overlay hangs, in metres, so the road
+/// never hides it.
 const LIFT: f32 = 0.005;
 
 /// The finest spacing of a CRG file's grid, in metres.
