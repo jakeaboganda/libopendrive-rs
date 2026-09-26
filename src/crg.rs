@@ -529,12 +529,15 @@ impl At<'_> {
         Some((z + self.record.z_offset, normal, k * bump))
     }
 
-    /// The friction coefficient at `(x, y)`.
+    /// The friction coefficient at `(x, y)`: the grid value as the file
+    /// gives it. OpenCRG's default modifiers shift a file's values so its
+    /// reference line starts at height 0, which suits heights but not
+    /// friction.
     fn friction(&self, x: f64, y: f64, hint: &mut PatchHint) -> Option<f64> {
         let uv = match self.find(x, y, hint)? {
             Found::Along { uv, .. } | Found::Placed { uv, .. } => uv,
         };
-        self.grid.elevation_at_uv(uv)
+        self.grid.grid_at_uv(uv).map(|g| g.z)
     }
 }
 

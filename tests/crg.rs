@@ -18,8 +18,8 @@ fn plane(u: f64, v: f64) -> f64 {
     A * u + B * v + C
 }
 
-/// The elevation of [`plane_crg`]. OpenCRG takes the reference line's
-/// height from the grid's first cross section, so the plane starts at 0.
+/// The elevation of [`plane_crg`]. With no `$ROAD_CRG_MODS` block, OpenCRG
+/// shifts a file so its reference line starts at height 0, as the C-API does.
 fn elevation(u: f64, v: f64) -> f64 {
     plane(u, v) - C
 }
@@ -312,6 +312,7 @@ fn global_moves_the_file_by_its_offsets() {
     assert_normal_follows_heights(&surface, point);
 }
 
+/// Friction is the file's value, without the shift that starts heights at 0.
 #[test]
 fn friction_comes_with_the_height_under_it() {
     let xml = road(
@@ -326,7 +327,7 @@ fn friction_comes_with_the_height_under_it() {
     let surface = surface(&net, &mesh, plane_crg(45.0, 4.0, ""));
 
     let got = at(&surface, xy(LINE, 20.0, 1.0, 0.0));
-    assert_near(got.friction.unwrap(), elevation(20.0, 1.0), 1e-6);
+    assert_near(got.friction.unwrap(), plane(20.0, 1.0), 1e-6);
     assert_eq!(got.crg_height, None);
     assert_near(got.z, 2.0 + 0.03 * 20.0, 1e-3);
 }
