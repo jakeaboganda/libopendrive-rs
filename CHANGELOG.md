@@ -45,11 +45,12 @@ alongside the stretch of road it spans, narrowed to the `fromLane`-`toLane`
 range of each `<validity>` it has. A reference uses its own `<validity>`, not
 its object's.
 
-`Object::markings` has one `Marking` per `<marking>` on an outline. Each one
+`Object::markings` has one `Marking` per `<marking>`. Each one
 has the marking's side, colour, width, line length and space length. Its
 pieces are world-space quads along the edges its `<cornerReference>`s name,
-cut into dashes if the marking is dashed. The importer skips a marking with
-no corner references.
+cut into dashes if the marking is dashed. A marking with no corner
+references paints its `side` of a solid's box, such as a parking bay's
+lines.
 
 `Object::borders` has one `Border` per `<border>`, such as a traffic island's
 kerb. Each one has the border's type and width, and one world-space quad per

@@ -115,12 +115,19 @@ island.add_userdata(xodr.UserData("inspected", "2026-04"))
 road.add_object(island)
 
 # Two flat parking bays beside the road, one kept for disabled drivers and
-# one for anyone for two hours.
-for id, s, access, restrictions in [("13", 26, xodr.Access.handicapped, None),
-                                    ("14", 32, xodr.Access.all, "2 hours")]:
+# one for anyone for two hours. Markings with no corner references paint
+# sides of each bay's box: the first's left and right in solid white, the
+# second's rear dashed in yellow.
+for id, s, access, restrictions, lines in [
+        ("13", 26, xodr.Access.handicapped, None,
+         [("left", xodr.RoadMarkColor.white, 0), ("right", xodr.RoadMarkColor.white, 0)]),
+        ("14", 32, xodr.Access.all, "2 hours", [("rear", xodr.RoadMarkColor.yellow, 0.5)])]:
     bay = xodr.Object(s=s, t=-9, Type=xodr.ObjectType.parkingSpace, id=id, length=5.5,
                       width=2.5, height=0, hdg=1.5708)
     bay.add_parking_space(xodr.ParkingSpace(access, restrictions))
+    for side, color, dash in lines:
+        bay.add_marking(xodr.Marking(color, lineLength=dash, side=side, spaceLength=dash,
+                                     startOffset=0, stopOffset=0, width=0.1))
     road.add_object(bay)
 
 # A building round a courtyard, outlined in its own frame: a 10 x 8 m

@@ -193,13 +193,14 @@ pub enum Shape {
 }
 
 /// Paint on an object, such as the stripes of a crosswalk: a strip along
-/// edges of its outline, solid or dashed, centred on the edges.
+/// edges of its outline or one side of its box, solid or dashed, centred on
+/// the edges.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Marking {
     /// Which side of the object the map puts the marking on, such as `left`
     /// or `front`. Free text, and empty if the map gives none. The pieces
-    /// already follow the edges, so nothing here needs it to place them.
+    /// are already placed, so nothing here needs it to place them.
     pub side: String,
     /// The colour the map names, such as `white`, or `standard` for the
     /// usual road-marking colour. Free text, and empty if the map gives none.
@@ -289,7 +290,8 @@ pub struct Object {
     /// spans, and every one of them unless the map narrows it down. Empty if
     /// there are no lanes there.
     pub lanes: Vec<LaneId>,
-    /// The paint on the object. Only an [`Shape::Outline`] has any.
+    /// The paint on the object. Only an [`Shape::Outline`] and a
+    /// [`Shape::Solid`] with an extent have any.
     pub markings: Vec<Marking>,
     /// The borders along the object's edges. Only an [`Shape::Outline`] has
     /// any.

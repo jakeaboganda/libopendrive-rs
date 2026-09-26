@@ -701,11 +701,70 @@ fn a_solid_marking_turns_the_corners_it_references() {
 }
 
 #[test]
-fn only_an_outline_carries_markings() {
+fn only_the_crosswalk_and_the_parking_bays_carry_markings() {
     assert!(objects()
         .iter()
-        .filter(|o| o.kind != ObjectType::Crosswalk)
+        .filter(|o| !matches!(o.kind, ObjectType::Crosswalk | ObjectType::ParkingSpace))
         .all(|o| o.markings.is_empty()));
+}
+
+#[test]
+#[allow(clippy::approx_constant)] // The bays' hdg, as the file gives it.
+fn a_marking_with_no_corners_paints_a_side_of_the_box() {
+    let bays: Vec<Object> = of_kind(ObjectType::ParkingSpace);
+    // A 5.5 x 2.5 m bay at (s, -9), turned a right angle against the road.
+    // The paint is 5 mm up, as the markings give no zOffset.
+    let corner = |s: f64, (u, v): (f32, f32)| {
+        let yaw = CURVATURE * s + 1.5708;
+        let (sin, cos) = (yaw.sin() as f32, yaw.cos() as f32);
+        let origin = raised(s, -9.0, 0.005);
+        Point::new(
+            origin.x + u * cos - v * sin,
+            origin.y + u * sin + v * cos,
+            origin.z,
+        )
+    };
+    let (u, v) = (2.75, 1.25);
+
+    // Each edge runs anticlockwise round the box: the left side from front
+    // to rear, the right from rear to front.
+    let [left, right] = &bays[0].markings[..] else {
+        panic!("two markings: {:?}", bays[0].markings);
+    };
+    for (m, side, from, to) in [
+        (left, "left", (u, v), (-u, v)),
+        (right, "right", (-u, -v), (u, -v)),
+    ] {
+        assert_eq!((m.side.as_str(), m.color.as_str()), (side, "white"));
+        assert_eq!(m.pieces.len(), 1, "{side} is one solid line");
+        assert_piece(
+            &m.pieces[0],
+            corner(26.0, from),
+            corner(26.0, to),
+            0.1,
+            side,
+        );
+    }
+
+    // The rear, dashed every metre across the bay's 2.5 m width.
+    let [rear] = &bays[1].markings[..] else {
+        panic!("one marking: {:?}", bays[1].markings);
+    };
+    assert_eq!(
+        (rear.side.as_str(), rear.color.as_str()),
+        ("rear", "yellow")
+    );
+    assert_eq!(rear.pieces.len(), 3);
+    for (k, piece) in rear.pieces.iter().enumerate() {
+        let from = v - k as f32;
+        assert_piece(
+            piece,
+            corner(32.0, (-u, from)),
+            corner(32.0, (-u, from - 0.5)),
+            0.1,
+            &format!("dash {k}"),
+        );
+    }
 }
 
 #[test]

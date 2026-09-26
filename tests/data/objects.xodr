@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <OpenDRIVE>
-    <header name="objects" revMajor="1" revMinor="5" date="2026-09-26 11:21:43.651028" north="0.0" south="0.0" east="0.0" west="0.0"/>
+    <header name="objects" revMajor="1" revMinor="5" date="2026-09-26 11:34:09.537391" north="0.0" south="0.0" east="0.0" west="0.0"/>
     <road rule="RHT" id="0" junction="-1" length="100.0">
         <link/>
         <planView>
@@ -115,9 +115,16 @@
             </object>
             <object id="13" s="26" t="-9" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" width="2.5" height="0" type="parkingSpace" orientation="none" hdg="1.5708" length="5.5">
                 <parkingSpace access="handicapped"/>
+                <markings>
+                    <marking color="white" lineLength="0" side="left" spaceLength="0" startOffset="0" stopOffset="0" width="0.1"/>
+                    <marking color="white" lineLength="0" side="right" spaceLength="0" startOffset="0" stopOffset="0" width="0.1"/>
+                </markings>
             </object>
             <object id="14" s="32" t="-9" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" width="2.5" height="0" type="parkingSpace" orientation="none" hdg="1.5708" length="5.5">
                 <parkingSpace access="all" restrictions="2 hours"/>
+                <markings>
+                    <marking color="yellow" lineLength="0.5" side="rear" spaceLength="0.5" startOffset="0" stopOffset="0" width="0.1"/>
+                </markings>
             </object>
             <object id="15" s="78" t="10" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" name="Courtyard" type="building" orientation="none" hdg="0">
                 <outlines>

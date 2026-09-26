@@ -64,8 +64,9 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   - An `<objectReference>` places the object it names again, at the
     reference's own station.
   - A `<marking>`, such as a crosswalk's stripes, becomes painted quads along
-    the outline edges it names. A `<border>`, such as a kerb, becomes a band
-    along them.
+    the outline edges it names, or along one side of the object's box if it
+    names none. A `<border>`, such as a kerb, becomes a band along outline
+    edges.
   - `<validity>` picks the lanes an object applies to.
   - `<parkingSpace>`, `<material>` and `<userData>` are kept on the object as
     data.

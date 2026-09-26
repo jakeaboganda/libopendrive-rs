@@ -127,8 +127,9 @@
 //! A `<marking>` becomes a [`Marking`] on the outline that has every corner
 //! its `<cornerReference>`s name. The marking is a strip `width` across,
 //! centred on the edges through those corners, and cut into dashes by
-//! `lineLength` and `spaceLength`. The importer skips a marking with no
-//! corner references, which paints a side of an object's box.
+//! `lineLength` and `spaceLength`. A marking with no corner references
+//! paints the edge of its `side` of a solid's box, on its base: `front`,
+//! `rear`, `left` or `right`. A cylinder's box is the square round it.
 //!
 //! A `<border>` becomes a [`Border`] on the outline its `outlineId` names, or
 //! on every outline it fits if it names none. The border is a band `width`

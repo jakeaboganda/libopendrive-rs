@@ -1384,15 +1384,18 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
             roll,
         }
     };
-    let solid = |st: &Station| {
+    let point = |st: &Station| {
         let f = frame(st);
-        Shape::Solid {
+        let solid = Shape::Solid {
             position: f.origin,
             heading: f.yaw as f32,
             pitch: f.pitch as f32,
             roll: f.roll as f32,
             extent: extent(st),
-        }
+        };
+        let mut part = Part::new(solid, st, (st.s, st.s));
+        part.markings = side_markings(node, &f, extent(st));
+        part
     };
 
     let mut parts = Vec::new();
@@ -1402,7 +1405,6 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
         .filter_map(|n| Repeat::parse(n, at.shift))
         .collect();
     let outlines = outline_nodes(node);
-    let point = |st: &Station| Part::new(solid(st), st, (st.s, st.s));
     if repeats.is_empty() && outlines.is_empty() && road.on_road(base.s) {
         parts.push(point(&base));
     }
@@ -1741,51 +1743,85 @@ fn corner_nodes<'a>(
         .filter(|n| n.has_tag_name("cornerRoad") || n.has_tag_name("cornerLocal"))
 }
 
+/// The `<marking>` elements under `object`'s `<markings>`.
+fn marking_nodes<'a>(
+    object: roxmltree::Node<'a, 'a>,
+) -> impl Iterator<Item = roxmltree::Node<'a, 'a>> {
+    child(object, "markings")
+        .into_iter()
+        .flat_map(|m| m.children())
+        .filter(|n| n.has_tag_name("marking"))
+}
+
 /// The `<marking>`s under `object`'s `<markings>` that run along edges of
 /// one of its outlines, `outline`, whose placed corners are `corners`.
 ///
 /// A marking follows the corners its `<cornerReference>`s name, in order, by
 /// the corners' `id`s. It belongs to the outline that has every one of them,
 /// so one naming a corner the outline lacks is left to another outline. So
-/// is one with fewer than two references, or none of any width.
-///
-/// The paint is raised `zOffset` off the corners' bases, 5 mm if the map does
-/// not say, and starts `startOffset` along the first edge and stops
-/// `stopOffset` short of the end of the last.
+/// is one with fewer than two references.
 fn markings(object: roxmltree::Node, outline: roxmltree::Node, corners: &[Corner]) -> Vec<Marking> {
     let ids: Vec<Option<&str>> = corner_nodes(outline).map(|c| c.attribute("id")).collect();
-    let Some(markings) = child(object, "markings") else {
-        return Vec::new();
+    marking_nodes(object)
+        .filter_map(|m| paint(m, &corner_path(m, &ids, corners)?))
+        .collect()
+}
+
+/// The `<marking>`s under `object`'s `<markings>` with no
+/// `<cornerReference>`s, for a solid at `frame` filling `extent`. Each runs
+/// along its `side` of the box round the extent, on its base: `front` and
+/// `rear` across the +u and -u ends, `left` and `right` along the +v and -v
+/// sides. The edge runs anticlockwise round the box seen from above. One
+/// with any other side, or on a solid with no extent, is skipped.
+fn side_markings(object: roxmltree::Node, frame: &Frame, extent: Option<Extent>) -> Vec<Marking> {
+    let (u, v) = match extent {
+        Some(Extent::Box { length, width, .. }) => (length / 2.0, width / 2.0),
+        Some(Extent::Cylinder { radius, .. }) => (radius, radius),
+        None => return Vec::new(),
     };
-    markings
-        .children()
-        .filter(|n| n.has_tag_name("marking"))
+    let (u, v) = (f64::from(u), f64::from(v));
+    let corner = |u, v| frame.point([u, v, 0.0]);
+    marking_nodes(object)
+        .filter(|m| !m.children().any(|n| n.has_tag_name("cornerReference")))
         .filter_map(|m| {
-            let width = attr_f64(m, "width").filter(|w| *w > 0.0)?;
-            let raise = Vector::Z * attr_f64(m, "zOffset").unwrap_or(0.005) as f32;
-            let path = corner_path(m, &ids, corners)?
-                .into_iter()
-                .map(|p| p + raise)
-                .collect::<Vec<_>>();
-            let line = attr_f64(m, "lineLength").unwrap_or(0.0).max(0.0);
-            let space = attr_f64(m, "spaceLength").unwrap_or(0.0).max(0.0);
-            let text = |name| m.attribute(name).unwrap_or_default().to_string();
-            Some(Marking {
-                side: text("side"),
-                color: text("color"),
-                width: width as f32,
-                line_length: line as f32,
-                space_length: space as f32,
-                pieces: strip(
-                    &path,
-                    attr_f64(m, "startOffset").unwrap_or(0.0),
-                    attr_f64(m, "stopOffset").unwrap_or(0.0),
-                    (line > 0.0 && space > 0.0).then_some((line, space)),
-                    width / 2.0,
-                ),
-            })
+            let edge = match m.attribute("side")? {
+                "front" => [corner(u, -v), corner(u, v)],
+                "left" => [corner(u, v), corner(-u, v)],
+                "rear" => [corner(-u, v), corner(-u, -v)],
+                "right" => [corner(-u, -v), corner(u, -v)],
+                _ => return None,
+            };
+            paint(m, &edge)
         })
         .collect()
+}
+
+/// One `<marking>` painted along `path`, or `None` if it has no width.
+///
+/// The paint is raised `zOffset` off the path, 5 mm if the map does not say,
+/// and starts `startOffset` along the first edge and stops `stopOffset` short
+/// of the end of the last.
+fn paint(m: roxmltree::Node, path: &[Point]) -> Option<Marking> {
+    let width = attr_f64(m, "width").filter(|w| *w > 0.0)?;
+    let raise = Vector::Z * attr_f64(m, "zOffset").unwrap_or(0.005) as f32;
+    let path: Vec<Point> = path.iter().map(|&p| p + raise).collect();
+    let line = attr_f64(m, "lineLength").unwrap_or(0.0).max(0.0);
+    let space = attr_f64(m, "spaceLength").unwrap_or(0.0).max(0.0);
+    let text = |name| m.attribute(name).unwrap_or_default().to_string();
+    Some(Marking {
+        side: text("side"),
+        color: text("color"),
+        width: width as f32,
+        line_length: line as f32,
+        space_length: space as f32,
+        pieces: strip(
+            &path,
+            attr_f64(m, "startOffset").unwrap_or(0.0),
+            attr_f64(m, "stopOffset").unwrap_or(0.0),
+            (line > 0.0 && space > 0.0).then_some((line, space)),
+            width / 2.0,
+        ),
+    })
 }
 
 /// The `<border>`s under `object`'s `<borders>` that run along edges of one
@@ -3369,6 +3405,29 @@ mod tests {
         // on both, and the one naming an outline that is not there on none.
         assert_eq!(pieces(&objects[0]), [3]);
         assert_eq!(pieces(&objects[1]), [3, 3]);
+    }
+
+    #[test]
+    fn a_side_marking_paints_every_solid_with_a_box() {
+        let markings = r#"<markings>
+            <marking side="front" width="0.1"/>
+            <marking side="top" width="0.1"/>
+            <marking side="left" width="0.1"><cornerReference id="0"/><cornerReference id="1"/></marking>
+        </markings>"#;
+        let xml = banked_road_with(&format!(
+            r#"<object id="a" s="5" t="0" length="2" width="1">
+                 <repeat s="5" length="4" distance="2"/>{markings}</object>
+               <object id="b" s="5" t="0" radius="1">{markings}</object>
+               <object id="c" s="5" t="0">{markings}</object>"#
+        ));
+        // Three repeats and a cylinder, each with its front only. A side
+        // the spec does not name, a marking with corners, and an object
+        // with no extent get none.
+        let counts: Vec<usize> = objects_of(&xml)
+            .iter()
+            .map(|o| o.markings.iter().map(|m| m.pieces.len()).sum())
+            .collect();
+        assert_eq!(counts, [1, 1, 1, 1, 0]);
     }
 
     #[test]
