@@ -98,6 +98,13 @@ fn closed_shapes_enclose_their_volume() {
         6.0 * 4.0 * 5.0,
         "house",
     );
+    // A 10 x 8 m block round a 4 x 3 m well, 4 m tall. The volume only
+    // comes out right if the well's walls face into it.
+    near(
+        volume(&mesh, named(&net, &mesh, "Courtyard").unwrap()),
+        (10.0 * 8.0 - 4.0 * 3.0) * 4.0,
+        "courtyard",
+    );
     // A 16-sided prism inscribed in the tree's radius 1.5, 7 m tall.
     let prism = 8.0 * 1.5_f32.powi(2) * (std::f32::consts::TAU / 16.0).sin() * 7.0;
     near(

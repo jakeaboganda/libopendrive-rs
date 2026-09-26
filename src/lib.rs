@@ -73,7 +73,7 @@
 //! | `<object><material>` | `surface`, `friction`, `roughness` |
 //! | `<object><userData>` | `code`, `value` |
 //! | `<object><repeat>` | `s`, `length`, `distance`, and the `Start`/`End` pair of `t`, `zOffset`, `length`, `width`, `height`, `radius` |
-//! | `<outlines><outline>` | `id`, `closed` |
+//! | `<outlines><outline>` | `id`, `closed`, `outer` |
 //! | `<cornerRoad>` | `id`, `s`, `t`, `dz`, `height` |
 //! | `<cornerLocal>` | `id`, `u`, `v`, `z`, `height` |
 //! | `<markings><marking>` | `side`, `color`, `width`, `zOffset`, `lineLength`, `spaceLength`, `startOffset`, `stopOffset` |
@@ -108,6 +108,9 @@
 //! - Each `<outline>` is a [`Shape::Outline`], and an object with outlines
 //!   has no solid of its own. `<outline>` is read under `<outlines>`, and
 //!   straight under `<object>` as OpenDRIVE 1.4 writes it.
+//! - An outline with `outer="false"` is a hole. It goes into the holes of
+//!   the first closed outer outline of the same object that encloses it, and
+//!   the importer drops it if there is none.
 //!
 //! An `<objectReference>` bakes the `<object>` it names, on whichever road
 //! that is, as if it stood at the reference's `s` and `t` with the
@@ -160,9 +163,7 @@
 //!
 //! Everything else in the file, silently. That includes `<geoReference>`,
 //! `<signals>`, `<roadMark>`, `<controller>`, `<junctionGroup>`,
-//! `<station>`, and road `<type>` with its `<speed>`. Among objects, that
-//! means an outline's `outer`, so an outline meant as a hole bakes as a
-//! solid.
+//! `<station>`, and road `<type>` with its `<speed>`.
 //!
 //! Three omissions change the road you get back, rather than only dropping
 //! detail around it:

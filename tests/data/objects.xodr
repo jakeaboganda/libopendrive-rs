@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <OpenDRIVE>
-    <header name="objects" revMajor="1" revMinor="5" date="2026-09-25 23:08:31.182775" north="0.0" south="0.0" east="0.0" west="0.0"/>
+    <header name="objects" revMajor="1" revMinor="5" date="2026-09-26 11:21:43.651028" north="0.0" south="0.0" east="0.0" west="0.0"/>
     <road rule="RHT" id="0" junction="-1" length="100.0">
         <link/>
         <planView>
@@ -118,6 +118,25 @@
             </object>
             <object id="14" s="32" t="-9" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" width="2.5" height="0" type="parkingSpace" orientation="none" hdg="1.5708" length="5.5">
                 <parkingSpace access="all" restrictions="2 hours"/>
+            </object>
+            <object id="15" s="78" t="10" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" name="Courtyard" type="building" orientation="none" hdg="0">
+                <outlines>
+                    <outline closed="true" outer="true" id="0">
+                        <cornerLocal u="0" v="0" z="0" height="4"/>
+                        <cornerLocal u="10" v="0" z="0" height="4"/>
+                        <cornerLocal u="10" v="8" z="0" height="4"/>
+                        <cornerLocal u="0" v="8" z="0" height="4"/>
+                    </outline>
+                    <outline closed="true" outer="false" id="1">
+                        <cornerLocal u="3" v="2" z="0" height="4"/>
+                        <cornerLocal u="7" v="2" z="0" height="4"/>
+                        <cornerLocal u="7" v="5" z="0" height="4"/>
+                        <cornerLocal u="3" v="5" z="0" height="4"/>
+                    </outline>
+                </outlines>
+                <borders>
+                    <border width="0.2" type="curb" outlineId="1" useCompleteOutline="true"/>
+                </borders>
             </object>
             <tunnel s="75" length="25" id="20" name="Hill" type="standard" daylight="0.1" lighting="0.8"/>
         </objects>

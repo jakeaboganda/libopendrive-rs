@@ -301,10 +301,74 @@ fn a_continuous_repeat_interpolates_its_cross_section_and_stops_at_the_road_end(
 }
 
 fn outline(object: &Object) -> (&[Corner], bool) {
-    let Shape::Outline { corners, closed } = &object.shape else {
+    let Shape::Outline {
+        corners,
+        closed,
+        holes,
+    } = &object.shape
+    else {
         panic!("{} is not an outline: {:?}", object.kind, object.shape);
     };
+    if object.name != "Courtyard" {
+        assert!(holes.is_empty(), "{} has holes", object.name);
+    }
     (corners, *closed)
+}
+
+/// Where `(u, v)` in the frame of an object at `(s, t)` with no `hdg` or
+/// `zOffset` lands.
+fn local(s: f64, t: f64, (u, v): (f32, f32)) -> Point {
+    let origin = raised(s, t, 0.0);
+    let (sin, cos) = ((CURVATURE * s).sin() as f32, (CURVATURE * s).cos() as f32);
+    Point::new(
+        origin.x + u * cos - v * sin,
+        origin.y + u * sin + v * cos,
+        origin.z,
+    )
+}
+
+#[test]
+fn an_inner_outline_is_a_hole_in_the_outline_round_it() {
+    let courtyard: Vec<Object> = objects()
+        .into_iter()
+        .filter(|o| o.name == "Courtyard")
+        .collect();
+    let [courtyard] = &courtyard[..] else {
+        panic!("one object for both outlines: {courtyard:?}");
+    };
+    let Shape::Outline {
+        corners,
+        closed: true,
+        holes,
+    } = &courtyard.shape
+    else {
+        panic!("a closed outline: {:?}", courtyard.shape);
+    };
+    let at = |(u, v)| local(78.0, 10.0, (u, v));
+    for (corner, uv) in corners
+        .iter()
+        .zip([(0.0, 0.0), (10.0, 0.0), (10.0, 8.0), (0.0, 8.0)])
+    {
+        assert_corner(corner, at(uv), 4.0, &format!("outer {uv:?}"));
+    }
+    let [hole] = &holes[..] else {
+        panic!("one hole: {holes:?}");
+    };
+    let well = [(3.0, 2.0), (7.0, 2.0), (7.0, 5.0), (3.0, 5.0)];
+    assert_eq!(hole.len(), 4);
+    for (corner, uv) in hole.iter().zip(well) {
+        assert_corner(corner, at(uv), 4.0, &format!("hole {uv:?}"));
+    }
+
+    // The border naming the hole runs round it.
+    let [curb] = &courtyard.borders[..] else {
+        panic!("one border: {:?}", courtyard.borders);
+    };
+    assert_eq!(curb.pieces.len(), 4);
+    for (k, piece) in curb.pieces.iter().enumerate() {
+        let (from, to) = (at(well[k]), at(well[(k + 1) % 4]));
+        assert_piece(piece, from, to, 0.2, &format!("curb {k}"));
+    }
 }
 
 #[test]
@@ -360,9 +424,9 @@ fn an_outlined_object_has_no_solid_of_its_own() {
     // Shed, tree, marker, guide post, gate, nine poles. The outlined house
     // and fence, and the swept railing and barrier, add no solid.
     // Plus two sweeps, and the house, fence, crosswalk and island outlines.
-    // The two parking bays are solids too.
+    // The two parking bays are solids too, and the courtyard an outline.
     assert_eq!(solids, 5 + 9 + 2);
-    assert_eq!(objects().len(), 5 + 9 + 2 + 4 + 2);
+    assert_eq!(objects().len(), 5 + 9 + 2 + 4 + 2 + 1);
 }
 
 #[test]

@@ -39,7 +39,8 @@ impl RoadNetwork {
     /// - A box is six faces and a cylinder is a prism of 16 sides.
     /// - An outline is a wall along each edge, from the corners' bases to their
     ///   tops. A closed one also has a lid over its tops and, if it has any
-    ///   height, a floor under its bases.
+    ///   height, a floor under its bases. Each hole is cut out of both and
+    ///   walled facing into it.
     /// - A sweep is a wall up each side, a top, a floor and a cap at each end.
     ///
     /// A face with no area is left out, so an object with no volume has no
@@ -85,7 +86,11 @@ impl RoadNetwork {
                     }
                 }
                 Shape::Solid { extent: None, .. } => {}
-                Shape::Outline { corners, closed } => outline(&mut mesh, corners, *closed),
+                Shape::Outline {
+                    corners,
+                    closed,
+                    holes,
+                } => outline(&mut mesh, corners, *closed, holes),
                 Shape::Sweep { sections } => sweep(&mut mesh, sections),
             }
             if mesh.indices.len() as u32 > indices {
@@ -164,29 +169,52 @@ fn cylinder(
     }
 }
 
-fn outline(mesh: &mut Mesh, corners: &[Corner], closed: bool) {
-    let n = corners.len();
-    let bases: Vec<Point> = corners.iter().map(|c| c.base).collect();
-    let tops: Vec<Point> = corners.iter().map(|c| c.top).collect();
-    let counter_clockwise = plan_area(&bases) >= 0.0;
-    let edges = if closed { n } else { n - 1 };
-    for i in 0..edges {
-        let j = (i + 1) % n;
-        let along = bases[j] - bases[i];
-        let out = match (closed, counter_clockwise) {
-            (false, _) => Vector::ZERO,
-            (true, true) => Vector::new(along.y, -along.x, 0.0),
-            (true, false) => Vector::new(-along.y, along.x, 0.0),
-        };
-        face(mesh, &[bases[i], bases[j], tops[j], tops[i]], &fan(4), out);
+fn outline(mesh: &mut Mesh, corners: &[Corner], closed: bool, holes: &[Vec<Corner>]) {
+    walls(mesh, corners, closed, false);
+    for hole in holes {
+        walls(mesh, hole, true, true);
     }
     if closed {
+        let mut starts = Vec::new();
+        let mut ring = corners.to_vec();
+        for hole in holes {
+            starts.push(ring.len());
+            ring.extend_from_slice(hole);
+        }
+        let bases: Vec<Point> = ring.iter().map(|c| c.base).collect();
+        let tops: Vec<Point> = ring.iter().map(|c| c.top).collect();
         let plan: Vec<[f32; 2]> = tops.iter().map(|p| [p.x, p.y]).collect();
-        let triangles = triangulate(&plan, &[]);
+        let triangles = triangulate(&plan, &starts);
         face(mesh, &tops, &triangles, Vector::Z);
         if bases != tops {
             face(mesh, &bases, &triangles, -Vector::Z);
         }
+    }
+}
+
+/// A wall along each edge of `ring`, facing away from the solid: out of an
+/// outline, into a `hole`. An open ring has no inside, so its walls keep the
+/// order of its corners.
+fn walls(mesh: &mut Mesh, ring: &[Corner], closed: bool, hole: bool) {
+    let n = ring.len();
+    let bases: Vec<Point> = ring.iter().map(|c| c.base).collect();
+    // Right of each edge is outside a counter-clockwise ring.
+    let right = match (closed, (plan_area(&bases) >= 0.0) != hole) {
+        (false, _) => 0.0,
+        (true, true) => 1.0,
+        (true, false) => -1.0,
+    };
+    let edges = if closed { n } else { n - 1 };
+    for i in 0..edges {
+        let j = (i + 1) % n;
+        let along = bases[j] - bases[i];
+        let out = Vector::new(along.y, -along.x, 0.0) * right;
+        face(
+            mesh,
+            &[bases[i], bases[j], ring[j].top, ring[i].top],
+            &fan(4),
+            out,
+        );
     }
 }
 

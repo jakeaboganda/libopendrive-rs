@@ -178,6 +178,10 @@ pub enum Shape {
         /// an area, such as a building. An open one is a line of wall, such as
         /// a fence.
         closed: bool,
+        /// Rings cut out of a closed outline, such as a courtyard, each
+        /// walled like the outline and at least three corners. Always empty
+        /// for an open one.
+        holes: Vec<Vec<Corner>>,
     },
     /// A rectangular cross-section swept along a road, such as a guard rail
     /// or a wall. Already in the network's frame. Consecutive sections are

@@ -21,6 +21,9 @@
   `cornerLocal` corners, each with a base and a top. An object with outlines
   gets no solid of its own. The 1.4 layout, `<outline>` straight under
   `<object>`, is read too.
+- An `<outline>` with `outer="false"` is a hole in `Shape::Outline::holes`
+  of the closed outline round it. The mesh cuts it out of the lid and the
+  floor and walls it facing in.
 
 `RoadNetwork::object_mesh` tessellates them into one `Mesh` of
 outward-facing faces, with an `ObjectSpan` per object in `Mesh::objects`, as
@@ -58,8 +61,7 @@ outline. Otherwise it follows the `<cornerReference>`s.
 `Material` per `<material>`, with its `surface`, `friction` and `roughness`.
 `Object::user_data` keeps each `<userData>` `code` and `value` as text.
 
-These placements follow libOpenDRIVE. The importer doesn't read an outline's
-`outer` flag yet, so a hole bakes as a solid.
+These placements follow libOpenDRIVE.
 
 Breaking changes:
 

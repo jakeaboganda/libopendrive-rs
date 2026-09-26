@@ -59,7 +59,8 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
     posts arrives as posts. A `<repeat>` with a `distance` of 0, such as a
     guard rail, becomes one shape swept along the road.
   - An `<outline>`, in road or local coordinates, becomes a footprint polygon
-    with a height at every corner.
+    with a height at every corner. An `outer="false"` outline is a hole cut
+    out of the outline round it.
   - An `<objectReference>` places the object it names again, at the
     reference's own station.
   - A `<marking>`, such as a crosswalk's stripes, becomes painted quads along
@@ -85,9 +86,8 @@ Geometry is cross-checked against the reference C++
 ## What it ignores
 
 Everything else in the file, silently, including `<signals>`, `<roadMark>`,
-and `<geoReference>`. The importer doesn't read an outline's `outer` flag, so
-an outline meant as a hole bakes as a solid. Three omissions change the road
-you get back, not only the detail around it:
+and `<geoReference>`. Three omissions change the road you get back, not only
+the detail around it:
 
 - `<shape>`, the other lateralProfile child, so a crowned or cambered
   cross-section imports flat across its width.

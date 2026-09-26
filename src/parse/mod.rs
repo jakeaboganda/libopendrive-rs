@@ -1351,8 +1351,10 @@ fn place_objects(
 /// - with neither `<repeat>`s nor outlines, one [`Shape::Solid`];
 /// - one [`Shape::Solid`] per step of each `<repeat>` with a `distance`, and
 ///   one [`Shape::Sweep`] per `<repeat>` with a `distance` of 0;
-/// - one [`Shape::Outline`] per `<outline>`. Outlines are not repeated, and
-///   an object with outlines gets no solid of its own.
+/// - one [`Shape::Outline`] per outer `<outline>`. Outlines are not
+///   repeated, and an object with outlines gets no solid of its own. An
+///   `outer="false"` outline is a hole in the first closed outer outline
+///   that encloses it in plan, and is dropped if none does.
 ///
 /// Any part of it that falls off the ends of the road is skipped: a solid, a
 /// whole outline with a corner there, or the length of a sweep past the end.
@@ -1413,17 +1415,49 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
         }
     }
     let origin = road.on_road(base.s).then(|| frame(&base));
+    let mut holes = Vec::new();
     for outline_node in outlines {
-        let Some((shape, stretch)) = outline(outline_node, origin.as_ref(), base.s, at.shift, road)
+        let Some((corners, closed, stretch)) =
+            outline(outline_node, origin.as_ref(), base.s, at.shift, road)
         else {
             continue;
         };
-        let mut part = Part::new(shape, &base, stretch);
-        if let Shape::Outline { corners, closed } = &part.shape {
+        if outline_node.attribute("outer") == Some("false") {
+            holes.push((outline_node, corners));
+            continue;
+        }
+        let mut part = Part::new(
+            Shape::Outline {
+                corners,
+                closed,
+                holes: Vec::new(),
+            },
+            &base,
+            stretch,
+        );
+        if let Shape::Outline { corners, .. } = &part.shape {
             part.markings = markings(node, outline_node, corners);
-            part.borders = borders(node, outline_node, corners, *closed);
+            part.borders = borders(node, outline_node, corners, closed);
         }
         parts.push(part);
+    }
+    for (outline_node, corners) in holes {
+        let owner = parts.iter_mut().find(|p| {
+            matches!(&p.shape, Shape::Outline { corners: outer, closed: true, .. }
+                if corners.len() >= 3 && corners.iter().all(|c| encloses(outer, c.base)))
+        });
+        let Some(owner) = owner else {
+            continue;
+        };
+        owner
+            .markings
+            .extend(markings(node, outline_node, &corners));
+        owner
+            .borders
+            .extend(borders(node, outline_node, &corners, true));
+        if let Shape::Outline { holes, .. } = &mut owner.shape {
+            holes.push(corners);
+        }
     }
 
     let kind = object_type(node.attribute("type"));
@@ -1630,7 +1664,8 @@ fn outline_nodes<'a>(object: roxmltree::Node<'a, 'a>) -> Vec<roxmltree::Node<'a,
         .collect()
 }
 
-/// One `<outline>` as a [`Shape::Outline`] in the network's frame.
+/// One `<outline>`'s corners in the network's frame, and whether it is
+/// closed.
 ///
 /// A `<cornerRoad>` is a road station `(s, t)`, moved by `shift`, raised by
 /// `dz`. A
@@ -1649,7 +1684,7 @@ fn outline(
     s: f64,
     (shift_s, shift_t): (f64, f64),
     road: &BakedRoad,
-) -> Option<(Shape, (f64, f64))> {
+) -> Option<(Vec<Corner>, bool, (f64, f64))> {
     let mut stretch = (f64::INFINITY, f64::NEG_INFINITY);
     let mut spans = |s: f64| stretch = (stretch.0.min(s), stretch.1.max(s));
     let corner = |c: roxmltree::Node| -> Option<Corner> {
@@ -1683,7 +1718,18 @@ fn outline(
     }
     // Closed unless the file says otherwise, as libOpenDRIVE reads it.
     let closed = node.attribute("closed") != Some("false");
-    Some((Shape::Outline { corners, closed }, stretch))
+    Some((corners, closed, stretch))
+}
+
+/// Whether `point` is inside `ring` in plan, by the even-odd rule.
+fn encloses(ring: &[Corner], point: Point) -> bool {
+    let n = ring.len();
+    (0..n).fold(false, |inside, i| {
+        let (a, b) = (ring[i].base, ring[(i + 1) % n].base);
+        let crosses = (a.y > point.y) != (b.y > point.y)
+            && point.x < a.x + (point.y - a.y) * (b.x - a.x) / (b.y - a.y);
+        inside != crosses
+    })
 }
 
 /// An `<outline>`'s corners, in order.
@@ -3326,6 +3372,39 @@ mod tests {
     }
 
     #[test]
+    fn a_hole_goes_to_the_closed_outline_round_it() {
+        let square = |attrs: &str, (u, v): (f64, f64), size: f64| {
+            let corners: String = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+                .map(|(du, dv)| {
+                    let (u, v) = (u + du * size, v + dv * size);
+                    format!(r#"<cornerLocal u="{u}" v="{v}"/>"#)
+                })
+                .concat();
+            format!("<outline {attrs}>{corners}</outline>")
+        };
+        let hole = |at| square(r#"outer="false""#, at, 1.0);
+        let xml = banked_road_with(&format!(
+            r#"<object id="o" s="5" t="0"><outlines>{}{}{}{}{}{}</outlines></object>"#,
+            // A hole inside the second outline, one in the open third, and
+            // one inside none.
+            hole((11.0, 1.0)),
+            square("", (0.0, 0.0), 3.0),
+            square("", (10.0, 0.0), 3.0),
+            square(r#"closed="false""#, (20.0, 0.0), 3.0),
+            hole((21.0, 1.0)),
+            hole((30.0, 0.0)),
+        ));
+        let holes: Vec<usize> = objects_of(&xml)
+            .iter()
+            .map(|o| match &o.shape {
+                Shape::Outline { holes, .. } => holes.len(),
+                _ => panic!("an outline: {:?}", o.shape),
+            })
+            .collect();
+        assert_eq!(holes, [0, 1, 0]);
+    }
+
+    #[test]
     fn a_structure_covers_each_section_it_spans_as_far_along_each_lane() {
         let xml = two_section_road_with(
             r#"<tunnel s="5" length="10" name="t"/>
@@ -3514,7 +3593,7 @@ mod tests {
         ));
         assert!(matches!(
             &objects[0].shape,
-            Shape::Outline { corners, closed: true } if corners.len() == 2
+            Shape::Outline { corners, closed: true, .. } if corners.len() == 2
         ));
     }
 

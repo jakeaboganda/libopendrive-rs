@@ -123,6 +123,18 @@ for id, s, access, restrictions in [("13", 26, xodr.Access.handicapped, None),
     bay.add_parking_space(xodr.ParkingSpace(access, restrictions))
     road.add_object(bay)
 
+# A building round a courtyard, outlined in its own frame: a 10 x 8 m
+# footprint, 4 m tall, with a 4 x 3 m well cut out of it. The well has a kerb
+# round it, added below.
+courtyard = xodr.Object(s=78, t=10, Type=xodr.ObjectType.building, id="15", name="Courtyard")
+for id, outer, corners in [(0, True, [(0, 0), (10, 0), (10, 8), (0, 8)]),
+                           (1, False, [(3, 2), (7, 2), (7, 5), (3, 5)])]:
+    ring = xodr.Outline(closed=True, outer=outer, id=id)
+    for u, v in corners:
+        ring.add_corner(xodr.CornerLocal(u, v, 0, 4))
+    courtyard.add_outline(ring)
+road.add_object(courtyard)
+
 # A tunnel over the last 25 m of the arc, both lanes.
 road.add_tunnel(xodr.Tunnel(s=75, length=25, id="20", name="Hill",
                             tunnel_type=xodr.TunnelType.standard, daylight=0.1, lighting=0.8))
@@ -156,6 +168,10 @@ xml = insert(xml, 'name="Island"', "</outlines>", """
                     </border>
                 </borders>""")
 
+xml = insert(xml, 'name="Courtyard"', "</outlines>", """
+                <borders>
+                    <border width="0.2" type="curb" outlineId="1" useCompleteOutline="true"/>
+                </borders>""")
 
 # Road 1 places objects from road 0 again: the shed with its own zOffset,
 # orientation, validLength and validity; the row of posts, which moves with the

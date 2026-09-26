@@ -182,7 +182,9 @@ fn object_entry(object: &Object, prov: Option<&ObjectProvenance>) -> Value {
                 "extent": extent,
             })
         }
-        Shape::Outline { corners, closed } => json!({
+        Shape::Outline {
+            corners, closed, ..
+        } => json!({
             "kind": "outline",
             "corners": corners.iter().map(corner).collect::<Vec<_>>(),
             "closed": closed,
