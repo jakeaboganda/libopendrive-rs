@@ -1418,12 +1418,14 @@ fn place_objects(
 /// several [`Object`]s, following libOpenDRIVE:
 ///
 /// - with neither `<repeat>`s nor outlines, one [`Shape::Solid`];
-/// - one [`Shape::Solid`] per step of each `<repeat>` with a `distance`, and
-///   one [`Shape::Sweep`] per `<repeat>` with a `distance` of 0;
-/// - one [`Shape::Outline`] per outer `<outline>`. Outlines are not
-///   repeated, and an object with outlines gets no solid of its own. An
-///   `outer="false"` outline is a hole in the first closed outer outline
-///   that encloses it in plan, and is dropped if none does.
+/// - one [`Shape::Sweep`] per `<repeat>` with a `distance` of 0;
+/// - at each step of each `<repeat>` with a `distance`, its outlines, or a
+///   [`Shape::Solid`] if it has none. Unlike libOpenDRIVE, which bakes the
+///   outlines once, the outlines move to each step: `<cornerLocal>` corners
+///   with the object's frame, `<cornerRoad>` corners by the step's offset
+///   from the object's `(s, t)`;
+/// - with no such repeat, one [`Shape::Outline`] per outer `<outline>`, see
+///   [`outline_parts`]. An object with outlines gets no solid of its own.
 ///
 /// Any part of it that falls off the ends of the road is skipped: a solid, a
 /// whole outline with a corner there, or the length of a sweep past the end.
@@ -1472,60 +1474,29 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
         .filter_map(|n| Repeat::parse(n, at.shift))
         .collect();
     let outlines = outline_nodes(node);
-    if repeats.is_empty() && outlines.is_empty() && road.on_road(base.s) {
-        parts.push(point(&base));
-    }
+    let outlined = |st: &Station| {
+        let origin = road.on_road(st.s).then(|| frame(st));
+        let shift = (at.shift.0 + st.s - base.s, at.shift.1 + st.t - base.t);
+        outline_parts(node, &outlines, origin.as_ref(), st, shift, road)
+    };
     for repeat in &repeats {
         if repeat.distance > 0.0 {
-            let stations = repeat.stations(&base);
-            parts.extend(stations.iter().filter(|st| road.on_road(st.s)).map(point));
+            for st in repeat.stations(&base) {
+                if !outlines.is_empty() {
+                    parts.extend(outlined(&st));
+                } else if road.on_road(st.s) {
+                    parts.push(point(&st));
+                }
+            }
         } else if let Some((shape, start, end)) = sweep(repeat, &base, road) {
             parts.push(Part::new(shape, &start, (start.s, end)));
         }
     }
-    let origin = road.on_road(base.s).then(|| frame(&base));
-    let mut holes = Vec::new();
-    for outline_node in outlines {
-        let Some((corners, closed, stretch)) =
-            outline(outline_node, origin.as_ref(), base.s, at.shift, road)
-        else {
-            continue;
-        };
-        if outline_node.attribute("outer") == Some("false") {
-            holes.push((outline_node, corners));
-            continue;
-        }
-        let mut part = Part::new(
-            Shape::Outline {
-                corners,
-                closed,
-                holes: Vec::new(),
-            },
-            &base,
-            stretch,
-        );
-        if let Shape::Outline { corners, .. } = &part.shape {
-            part.markings = markings(node, outline_node, corners);
-            part.borders = borders(node, outline_node, corners, closed);
-        }
-        parts.push(part);
-    }
-    for (outline_node, corners) in holes {
-        let owner = parts.iter_mut().find(|p| {
-            matches!(&p.shape, Shape::Outline { corners: outer, closed: true, .. }
-                if corners.len() >= 3 && corners.iter().all(|c| encloses(outer, c.base)))
-        });
-        let Some(owner) = owner else {
-            continue;
-        };
-        owner
-            .markings
-            .extend(markings(node, outline_node, &corners));
-        owner
-            .borders
-            .extend(borders(node, outline_node, &corners, true));
-        if let Shape::Outline { holes, .. } = &mut owner.shape {
-            holes.push(corners);
+    if !repeats.iter().any(|r| r.distance > 0.0) {
+        if !outlines.is_empty() {
+            parts.extend(outlined(&base));
+        } else if repeats.is_empty() && road.on_road(base.s) {
+            parts.push(point(&base));
         }
     }
 
@@ -1585,6 +1556,66 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
             referenced_from: at.referenced_from.map(str::to_string),
         });
     }
+}
+
+/// An object's `outlines` placed at `st`, one [`Part`] per outer outline,
+/// with its holes, markings and borders. `origin` is the object's frame at
+/// `st`, if that is on the road, and `shift` moves `<cornerRoad>` corners.
+/// An `outer="false"` outline is a hole in the first closed outer outline
+/// that encloses it in plan, and is dropped if none does.
+fn outline_parts(
+    node: roxmltree::Node,
+    outlines: &[roxmltree::Node],
+    origin: Option<&Frame>,
+    st: &Station,
+    shift: (f64, f64),
+    road: &BakedRoad,
+) -> Vec<Part> {
+    let mut parts = Vec::new();
+    let mut holes = Vec::new();
+    for &outline_node in outlines {
+        let Some((corners, closed, stretch)) = outline(outline_node, origin, st.s, shift, road)
+        else {
+            continue;
+        };
+        if outline_node.attribute("outer") == Some("false") {
+            holes.push((outline_node, corners));
+            continue;
+        }
+        let mut part = Part::new(
+            Shape::Outline {
+                corners,
+                closed,
+                holes: Vec::new(),
+            },
+            st,
+            stretch,
+        );
+        if let Shape::Outline { corners, .. } = &part.shape {
+            part.markings = markings(node, outline_node, corners);
+            part.borders = borders(node, outline_node, corners, closed);
+        }
+        parts.push(part);
+    }
+    for (outline_node, corners) in holes {
+        let owner = parts.iter_mut().find(|p| {
+            matches!(&p.shape, Shape::Outline { corners: outer, closed: true, .. }
+                if corners.len() >= 3 && corners.iter().all(|c| encloses(outer, c.base)))
+        });
+        let Some(owner) = owner else {
+            continue;
+        };
+        owner
+            .markings
+            .extend(markings(node, outline_node, &corners));
+        owner
+            .borders
+            .extend(borders(node, outline_node, &corners, true));
+        if let Shape::Outline { holes, .. } = &mut owner.shape {
+            holes.push(corners);
+        }
+    }
+    parts
 }
 
 /// One shape an `<object>` bakes to, and what goes with it, before it becomes
@@ -3727,6 +3758,46 @@ mod tests {
                 radius: 0.1,
                 height: 0.0
             })));
+    }
+
+    #[test]
+    fn a_repeat_moves_the_outlines_to_each_step() {
+        // A local square with a hole, and a road triangle. `ds` and `dt` move
+        // the triangle's corners.
+        let outlines = |ds: f64, dt: f64| {
+            let road = |s: f64, t: f64| format!(r#"<cornerRoad s="{}" t="{}"/>"#, s + ds, t + dt);
+            format!(
+                r#"<outlines>
+                     <outline><cornerLocal u="0" v="0"/><cornerLocal u="2" v="0"/>
+                       <cornerLocal u="2" v="2"/><cornerLocal u="0" v="2"/></outline>
+                     <outline outer="false"><cornerLocal u="0.5" v="0.5"/>
+                       <cornerLocal u="1.5" v="0.5"/><cornerLocal u="1" v="1.5"/></outline>
+                     <outline>{}{}{}</outline>
+                   </outlines>"#,
+                road(2.0, 3.0),
+                road(4.0, 3.0),
+                road(3.0, 5.0),
+            )
+        };
+        let repeated = objects_of(&banked_road_with(&format!(
+            r#"<object id="1" s="2" t="3" hdg="0.3">
+                 <repeat s="1" length="10" distance="5" tStart="1" tEnd="2"/>{}
+               </object>"#,
+            outlines(0.0, 0.0),
+        )));
+        // Each step bakes as the same object placed there would.
+        let mut want = Vec::new();
+        for (s, t) in [(1.0, 1.0), (6.0, 1.5), (11.0, 2.0)] {
+            want.extend(objects_of(&banked_road_with(&format!(
+                r#"<object id="1" s="{s}" t="{t}" hdg="0.3">{}</object>"#,
+                outlines(s - 2.0, t - 3.0),
+            ))));
+        }
+        assert_eq!(want.len(), 6);
+        let shapes =
+            |objects: &[Object]| objects.iter().map(|o| o.shape.clone()).collect::<Vec<_>>();
+        assert_eq!(shapes(&repeated), shapes(&want));
+        assert!(matches!(&want[0].shape, Shape::Outline { holes, .. } if holes.len() == 1));
     }
 
     #[test]

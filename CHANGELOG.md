@@ -26,7 +26,8 @@
 - `Shape::Outline`: one per `<outline>`, a polygon of `cornerRoad` or
   `cornerLocal` corners, each with a base and a top. An object with outlines
   gets no solid of its own. The 1.4 layout, `<outline>` straight under
-  `<object>`, is read too.
+  `<object>`, is read too. A `<repeat>` with a `distance` bakes the outlines
+  at every step, where libOpenDRIVE bakes them once.
 - An `<outline>` with `outer="false"` is a hole in `Shape::Outline::holes`
   of the closed outline round it. The mesh cuts it out of the lid and the
   floor and walls it facing in.

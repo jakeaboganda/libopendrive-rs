@@ -176,6 +176,17 @@ banked.add_superelevation(0, 0.15, 0, 0, 0)
 banked.add_object(xodr.Object(s=20, t=-5, Type=xodr.ObjectType.building, id="30",
                               name="Kiosk", length=3, width=2, height=2.5, zOffset=0.2))
 
+# A row of planters outlined in their own frame, 1.5 x 1 m and 0.6 m tall,
+# repeated every 10 m across the bank at s = 5, 15, 25, 35.
+planters = xodr.Object(s=5, t=5, Type=xodr.ObjectType.obstacle, id="31", name="Planter")
+box = xodr.Outline(closed=True)
+for u, v in [(0, 0), (1.5, 0), (1.5, 1), (0, 1)]:
+    box.add_corner(xodr.CornerLocal(u, v, 0, 0.6))
+planters.add_outline(box)
+planters.repeat(repeatLength=30, repeatDistance=10, sStart=5, tStart=5, tEnd=5,
+                heightStart=0.6, heightEnd=0.6)
+banked.add_object(planters)
+
 odr = xodr.OpenDrive("objects")
 odr.add_road(road)
 odr.add_road(straight)

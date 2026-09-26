@@ -975,3 +975,30 @@ fn an_object_leans_with_a_banked_road() {
     );
     assert!((roll - 0.15).abs() < 1e-6, "roll {roll}");
 }
+
+#[test]
+fn a_repeat_moves_the_outlines_to_each_step() {
+    // Road 2 banks 0.15 rad, so each planter's frame is the bank's: u along
+    // +X, v up the bank, and its height square to it.
+    let planters: Vec<Object> = on("2")
+        .into_iter()
+        .filter(|o| o.name == "Planter")
+        .collect();
+    assert_eq!(planters.len(), 4);
+    let (sin, cos) = 0.15_f32.sin_cos();
+    for (planter, s) in planters.iter().zip([5.0, 15.0, 25.0, 35.0]) {
+        let (corners, closed) = outline(planter);
+        assert!(closed);
+        for (corner, (u, v)) in corners
+            .iter()
+            .zip([(0.0, 0.0), (1.5, 0.0), (1.5, 1.0), (0.0, 1.0)])
+        {
+            let t = 5.0 + v;
+            let base = Point::new(s + u, -80.0 + t * cos, t * sin);
+            let what = format!("planter at s={s} ({u}, {v})");
+            assert_near(corner.base, base, &format!("{what} base"));
+            let top = base + Vector::new(0.0, -sin, cos) * 0.6;
+            assert_near(corner.top, top, &format!("{what} top"));
+        }
+    }
+}

@@ -63,7 +63,8 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
     a round pipe.
   - An `<outline>`, in road or local coordinates, becomes a footprint polygon
     with a height at every corner. An `outer="false"` outline is a hole cut
-    out of the outline round it.
+    out of the outline round it. Under a `<repeat>` with a `distance`, the
+    outline is repeated at every step.
   - An `<objectReference>` places the object it names again, at the
     reference's own station.
   - A `<marking>`, such as a crosswalk's stripes, becomes painted quads along

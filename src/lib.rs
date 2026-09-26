@@ -115,6 +115,11 @@
 //! - Each `<outline>` is a [`Shape::Outline`], and an object with outlines
 //!   has no solid of its own. `<outline>` is read under `<outlines>`, and
 //!   straight under `<object>` as OpenDRIVE 1.4 writes it.
+//! - Under a `<repeat>` with a `distance`, the outlines are baked at every
+//!   step in place of the solid. libOpenDRIVE bakes them once. At each step
+//!   `<cornerLocal>` corners follow the object's frame, and `<cornerRoad>`
+//!   corners move by the step's offset from the object's `(s, t)`. The
+//!   repeat's dimensions do not resize them.
 //! - An outline with `outer="false"` is a hole. It goes into the holes of
 //!   the first closed outer outline of the same object that encloses it, and
 //!   the importer drops it if there is none.
