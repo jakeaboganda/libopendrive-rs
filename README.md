@@ -174,7 +174,7 @@ tracks local road density rather than map size. On CARLA's Town07 (234 roads,
 
 | | per call |
 | --- | --- |
-| `nearest_lane` / `sample_near` | ~1.2 us |
+| `nearest_lane` / `sample_near` | ~0.4 us |
 | `route` (across the map) | ~29 us |
 | `MeshSampler::height_at` | ~0.2 us |
 

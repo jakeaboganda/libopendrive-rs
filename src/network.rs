@@ -1,6 +1,8 @@
 //! The baked road-network model: lanes, their connectivity graph, and the
 //! queries over both. Format-agnostic: nothing here knows OpenDRIVE.
 
+use std::ops::Range;
+
 use crate::coords::Point;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
@@ -293,8 +295,15 @@ impl From<Vec<Lane>> for RoadNetwork {
     }
 }
 
-/// The driving lanes' XY footprints, and a grid over them. Entries index
-/// `lanes` directly, so a hit resolves without a second lookup.
+/// Segments of a lane's centerline per indexed span. A query projects only
+/// onto the spans the grid offers it, so its cost tracks how finely the road
+/// near it is sampled, not how long the lanes there are.
+const SPAN_SEGMENTS: usize = 4;
+
+/// The driving lanes' centerlines, cut into spans of [`SPAN_SEGMENTS`]
+/// segments, with each span's XY footprint and a grid over them. Spans are in
+/// lane order, then along the lane, so the grid's lowest-index tie break
+/// picks what projecting onto each lane whole in turn would.
 ///
 /// Only [`LaneType::Driving`] is indexed, not everything
 /// [`LaneType::is_drivable`] admits. Snapping a body to the road must land it
@@ -303,27 +312,35 @@ impl From<Vec<Lane>> for RoadNetwork {
 #[derive(Debug, Clone, Default)]
 struct LaneIndex {
     bounds: Vec<Aabb>,
-    positions: Vec<usize>,
+    /// Each span's lane, as a position in `lanes`, and its segments.
+    spans: Vec<(usize, Range<usize>)>,
     grid: Grid,
 }
 
 impl LaneIndex {
     fn build(lanes: &[Lane]) -> Self {
-        let (mut bounds, mut positions) = (Vec::new(), Vec::new());
+        let (mut bounds, mut spans) = (Vec::new(), Vec::new());
         for (i, lane) in lanes.iter().enumerate() {
             if lane.kind != LaneType::Driving {
                 continue;
             }
-            // A centerline always has at least two points, so this is Some.
-            if let Some(b) = Aabb::around(lane.center.points().iter().map(|p| (p.x, p.y))) {
-                bounds.push(b);
-                positions.push(i);
+            let points = lane.center.points();
+            let segments = points.len() - 1;
+            for first in (0..segments).step_by(SPAN_SEGMENTS) {
+                let span = first..(first + SPAN_SEGMENTS).min(segments);
+                // A span has at least one segment, so two points: Some.
+                if let Some(b) =
+                    Aabb::around(points[span.start..=span.end].iter().map(|p| (p.x, p.y)))
+                {
+                    bounds.push(b);
+                    spans.push((i, span));
+                }
             }
         }
         let grid = Grid::build(&bounds);
         Self {
             bounds,
-            positions,
+            spans,
             grid,
         }
     }
@@ -503,14 +520,15 @@ impl RoadNetwork {
         index.grid.nearest(point.x, point.y, |item, best| {
             let i = item as usize;
             // The footprint is a lower bound on the distance to the
-            // centerline, so a lane whose box already loses needs no
+            // centerline, so a span whose box already loses needs no
             // projection. That is most of them, and all the repeats of a
-            // long lane that spans several cells.
+            // span that crosses several cells.
             if index.bounds[i].dist2(point.x, point.y) > best {
                 return None;
             }
-            let lane = &self.lanes[index.positions[i]];
-            let projection = lane.center.project(point);
+            let (lane, segments) = &index.spans[i];
+            let lane = &self.lanes[*lane];
+            let projection = lane.center.project_segments(point, segments.clone());
             Some((
                 (point - projection.point).length_squared(),
                 (lane.id, projection),

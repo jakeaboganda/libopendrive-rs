@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use crate::coords::{Point, Vector};
 
 /// A position plus a horizontal heading along a lane. Z is up (elevation).
@@ -220,13 +222,21 @@ impl Polyline {
     /// lateral offset. Nearest is by full 3D distance; the offset is measured in
     /// the ground plane against the containing segment's direction.
     pub fn project(&self, point: Point) -> Projection {
+        self.project_segments(point, 0..self.points.len() - 1)
+    }
+
+    /// [`Self::project`] onto only the segments `segments`, segment `i`
+    /// running from point `i` to point `i + 1`. Arc length is still measured
+    /// from the start of the whole line. Exact ties go to the earliest
+    /// segment, as in `project`.
+    pub(crate) fn project_segments(&self, point: Point, segments: Range<usize>) -> Projection {
         let mut best = Projection {
-            s: 0.0,
-            point: self.points[0],
+            s: self.cumulative[segments.start],
+            point: self.points[segments.start],
             offset: 0.0,
         };
         let mut best_dist = f32::INFINITY;
-        for i in 0..self.points.len() - 1 {
+        for i in segments {
             let a = self.points[i];
             let ab = self.points[i + 1] - a;
             let len2 = ab.length_squared();

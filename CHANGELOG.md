@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Performance
+
+- `nearest_lane` and `sample_near` index each lane in spans of 4 segments
+  rather than whole, and project only onto the spans near the point. Their
+  cost no longer grows with how finely a lane is sampled, or how long it is.
+  On Town07 they take about 0.4 us a call, where 0.2.0 took 1.4 us and 0.1.1
+  took 0.7 us. The answers are the same, to the bit.
+
 ### Fixes
 
 - 0.2.0 sampled a whole lane section every 25 cm if any part of it turned
