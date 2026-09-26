@@ -73,7 +73,8 @@ instead of passing for a driving lane.
 Each object is drawn where the crate places it, coloured by type. A solid
 with a size is a box or a cylinder, and one with no size is a small diamond.
 Outlines and sweeps, such as buildings and guard rails, come from the crate's
-`object_mesh()`. An object type the page has no colour for is cyan.
+`object_mesh()`, so a hole in an outline shows as a gap. An object type the
+page has no colour for is cyan.
 
 Hover an object to outline it and light up the lanes it applies to. The
 readout shows:
@@ -85,7 +86,7 @@ readout shows:
   border types, if it has them
 - for a solid, its position, heading, pitch, roll and size
 - for an outline or a sweep, the point under the cursor and how many corners
-  or sections it has
+  or sections it has, and how many holes an outline has
 
 ![Hovering a traffic island](objects.png)
 

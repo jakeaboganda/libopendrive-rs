@@ -852,8 +852,9 @@ function showObjectTip(ev, rect, hit) {
   else {
     const p = hit.point;
     rows.push(`x ${p.x.toFixed(2)}   y ${p.y.toFixed(2)}   z ${p.z.toFixed(2)}`);
+    const holes = o.holes?.length ? `, ${o.holes.length} hole${o.holes.length > 1 ? 's' : ''}` : '';
     rows.push(o.kind === 'outline'
-      ? `outline, ${o.corners.length} corners, ${o.closed ? 'closed' : 'open'}`
+      ? `outline, ${o.corners.length} corners, ${o.closed ? 'closed' : 'open'}${holes}`
       : `sweep, ${o.sections.length} sections`);
   }
   tip.style.display = 'block';

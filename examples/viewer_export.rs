@@ -151,7 +151,7 @@ fn buffers(mesh: &Mesh) -> Value {
 /// carries a pose, angles in radians applied yaw, then pitch, then roll, and
 /// an `extent` that is null for an object the map gives no size. An
 /// `outline` and a `sweep` carry corners already in world coordinates, each
-/// a `[base, top]` pair of points.
+/// a `[base, top]` pair of points. An `outline`'s `holes` are rings of them.
 fn object_entry(object: &Object, prov: Option<&ObjectProvenance>) -> Value {
     let corner = |c: &Corner| json!([c.base.to_array(), c.top.to_array()]);
     let shape = match &object.shape {
@@ -183,11 +183,17 @@ fn object_entry(object: &Object, prov: Option<&ObjectProvenance>) -> Value {
             })
         }
         Shape::Outline {
-            corners, closed, ..
+            corners,
+            closed,
+            holes,
         } => json!({
             "kind": "outline",
             "corners": corners.iter().map(corner).collect::<Vec<_>>(),
             "closed": closed,
+            "holes": holes
+                .iter()
+                .map(|h| h.iter().map(corner).collect::<Vec<_>>())
+                .collect::<Vec<_>>(),
         }),
         Shape::Sweep { sections } => json!({
             "kind": "sweep",
