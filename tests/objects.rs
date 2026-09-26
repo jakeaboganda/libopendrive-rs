@@ -265,16 +265,40 @@ fn a_continuous_repeat_with_a_radius_is_a_pipe() {
         .into_iter()
         .find(|o| o.name == "Pipe")
         .expect("the pipe");
-    let sections = sections(&pipe);
-    // s = 5, 7, ..., 45, each the square round the pipe there. The radius
+    // s = 5..45, each section the square round the pipe there. The radius
     // makes it round, and the height given plays no part.
-    assert_eq!(sections.len(), 21);
-    for (k, section) in sections.iter().enumerate() {
-        let s = 5.0 + 2.0 * k as f64;
+    let sections = sections(&pipe);
+    assert_follows_road(sections, 5.0, 45.0);
+    for section in sections {
+        let s = station(section.left.base);
         let r = 0.3 + 0.2 * (s - 5.0) / 40.0;
         let height = 2.0 * r as f32;
         assert_corner(&section.left, raised(s, -16.0 + r, 0.0), height, "left");
         assert_corner(&section.right, raised(s, -16.0 - r, 0.0), height, "right");
+    }
+}
+
+/// The `s` of a point on road 0 at any `t`, from its angle round the arc's
+/// centre.
+fn station(p: Point) -> f64 {
+    f64::from(p.x).atan2(1.0 / CURVATURE - f64::from(p.y)) / CURVATURE
+}
+
+/// The sections run from `from` to `to`, and the walls between them stray
+/// under 1 cm from the road they follow.
+fn assert_follows_road(sections: &[Section], from: f64, to: f64) {
+    let ends = |section: Option<&Section>| station(section.unwrap().left.base);
+    assert!((ends(sections.first()) - from).abs() < 1e-3);
+    assert!((ends(sections.last()) - to).abs() < 1e-3);
+    for pair in sections.windows(2) {
+        let (a, b) = (pair[0].left.base, pair[1].left.base);
+        let (sa, sb) = (station(a), station(b));
+        assert!(sb > sa, "in order along the road");
+        // How far inside the arc through its ends, in plan, the middle of
+        // the wall is.
+        let from_centre = |p: Point| (p.x as f64).hypot(1.0 / CURVATURE - p.y as f64);
+        let strays = from_centre(a) - from_centre(a.lerp(b, 0.5));
+        assert!(strays < 0.011, "s={sa}..{sb} strays {strays} m");
     }
 }
 
@@ -283,10 +307,9 @@ fn a_continuous_repeat_with_no_width_is_a_wall_along_the_road() {
     let railings = of_kind(ObjectType::Railing);
     assert_eq!(railings.len(), 1);
     let sections = sections(&railings[0]);
-    // One section every 2 m over the 100 m road, both ends included.
-    assert_eq!(sections.len(), 51);
-    for (k, section) in sections.iter().enumerate() {
-        let s = 2.0 * k as f64;
+    assert_follows_road(sections, 0.0, 100.0);
+    for section in sections {
+        let s = station(section.left.base);
         assert_eq!(section.left, section.right, "no width at s={s}");
         assert_corner(&section.left, raised(s, 7.0, 0.0), 0.8, &format!("s={s}"));
     }
@@ -299,10 +322,10 @@ fn a_continuous_repeat_interpolates_its_cross_section_and_stops_at_the_road_end(
         .find(|o| matches!(o.shape, Shape::Sweep { .. }))
         .expect("the barrier sweep");
     let sections = sections(&barrier);
-    // The repeat covers s = 70..110 on a 100 m road: s = 70, 72, ..., 100.
-    assert_eq!(sections.len(), 16);
-    for (k, section) in sections.iter().enumerate() {
-        let s = 70.0 + 2.0 * k as f64;
+    // The repeat covers s = 70..110 on a 100 m road.
+    assert_follows_road(sections, 70.0, 100.0);
+    for section in sections {
+        let s = station(section.left.base);
         let f = (s - 70.0) / 40.0;
         let (t, half, z) = (-8.0 - f, (0.5 + 0.5 * f) / 2.0, 0.4 * f);
         assert_corner(

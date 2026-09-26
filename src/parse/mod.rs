@@ -24,6 +24,15 @@ use links::{LaneMeta, RoadInfo, Topology};
 /// Arc-length spacing (meters) at which curved geometry is baked to points.
 const SAMPLE_STEP: f64 = 2.0;
 
+/// The furthest apart, in metres, a sweep's sections may be, and the closest
+/// they get where it bends.
+const SWEEP_MAX_STEP: f64 = 10.0;
+const SWEEP_MIN_STEP: f64 = 0.05;
+
+/// How far, in metres, a sweep may stray from the straight walls between its
+/// sections.
+const SWEEP_TOLERANCE: f32 = 0.01;
+
 /// The most objects one `<repeat>` may expand to, and the most dashes one
 /// `<marking>` may paint. A tiny `distance` over a long `length` would
 /// otherwise ask for billions of them. Real rows are far
@@ -1614,13 +1623,13 @@ impl<'a> Repeat<'a> {
     }
 }
 
-/// A continuous repeat as a [`Shape::Sweep`], with a cross-section at every
-/// sample station along the part of it on the road: `width` wide about its
-/// `t`, `height` tall from its `zOffset`. A missing width is 0, a wall with no
-/// thickness, as libOpenDRIVE has it. With a `radius`, the sweep is round
-/// instead, a pipe resting on `zOffset`, and `width` and `height` play no
-/// part. Also returns the station the sections start at, and the `s` they
-/// end at. `None` if less than a millimetre of it is on the road.
+/// A continuous repeat as a [`Shape::Sweep`], with a cross-section at each of
+/// its [`sweep_stations`] on the road: `width` wide about its `t`, `height`
+/// tall from its `zOffset`. A missing width is 0, a wall with no thickness, as
+/// libOpenDRIVE has it. With a `radius`, the sweep is round instead, a pipe
+/// resting on `zOffset`, and `width` and `height` play no part. Also returns
+/// the station the sections start at, and the `s` they end at. `None` if less
+/// than a millimetre of it is on the road.
 fn sweep(repeat: &Repeat, base: &Station, road: &BakedRoad) -> Option<(Shape, Station, f64)> {
     let start = repeat.start.max(0.0);
     let end = (repeat.start + repeat.length).min(road.length);
@@ -1629,32 +1638,64 @@ fn sweep(repeat: &Repeat, base: &Station, road: &BakedRoad) -> Option<(Shape, St
     }
     let first = repeat.at(base, (start - repeat.start) / repeat.length);
     let round = first.radius.is_some();
-    let sections = sample_positions(start, end)
-        .into_iter()
-        .map(|s| {
-            let st = repeat.at(base, (s - repeat.start) / repeat.length);
-            let (half, height) = match st.radius {
-                Some(r) => (r, 2.0 * r as f32),
-                None => (
-                    st.width.unwrap_or(0.0) / 2.0,
-                    st.height.unwrap_or(0.0) as f32,
-                ),
-            };
-            let corner = |t| {
-                let (mut base, _) = (road.surface)(s, t);
-                base.z += st.z_offset as f32;
-                Corner {
-                    base,
-                    top: base + Vector::Z * height,
-                }
-            };
-            Section {
-                left: corner(st.t + half),
-                right: corner(st.t - half),
+    let section = |s: f64| {
+        let st = repeat.at(base, (s - repeat.start) / repeat.length);
+        let (half, height) = match st.radius {
+            Some(r) => (r, 2.0 * r as f32),
+            None => (
+                st.width.unwrap_or(0.0) / 2.0,
+                st.height.unwrap_or(0.0) as f32,
+            ),
+        };
+        let corner = |t| {
+            let (mut base, _) = (road.surface)(s, t);
+            base.z += st.z_offset as f32;
+            Corner {
+                base,
+                top: base + Vector::Z * height,
             }
-        })
-        .collect();
+        };
+        Section {
+            left: corner(st.t + half),
+            right: corner(st.t - half),
+        }
+    };
+    let sections = sweep_stations(start, end, |a, b, f| {
+        let (a, b, at) = (section(a), section(b), section(a + (b - a) * f));
+        let strays = |a: Corner, b: Corner, at: Corner| {
+            a.base.lerp(b.base, f as f32).distance_to(at.base) > SWEEP_TOLERANCE
+        };
+        strays(a.left, b.left, at.left) || strays(a.right, b.right, at.right)
+    })
+    .into_iter()
+    .map(section)
+    .collect();
     Some((Shape::Sweep { sections, round }, first, end))
+}
+
+/// The stations of a sweep's sections over `[start, end]`: at most
+/// [`SWEEP_MAX_STEP`] apart, and closer where the sweep bends. `bends(a, b,
+/// f)` says whether the sweep a fraction `f` of the way from `a` to `b`
+/// strays from the straight line between its sections there. An interval
+/// halves while it does at a quarter, half or three quarters of the way,
+/// down to [`SWEEP_MIN_STEP`].
+fn sweep_stations(start: f64, end: f64, bends: impl Fn(f64, f64, f64) -> bool) -> Vec<f64> {
+    let seeds = ((end - start) / SWEEP_MAX_STEP).ceil().max(1.0) as usize;
+    let mut done = vec![start];
+    let mut todo: Vec<f64> = (1..=seeds)
+        .rev()
+        .map(|k| start + (end - start) * k as f64 / seeds as f64)
+        .collect();
+    while let Some(&b) = todo.last() {
+        let a = *done.last().expect("starts with start");
+        if b - a > 2.0 * SWEEP_MIN_STEP && [0.25, 0.5, 0.75].iter().any(|&f| bends(a, b, f)) {
+            todo.push((a + b) / 2.0);
+        } else {
+            done.push(b);
+            todo.pop();
+        }
+    }
+    done
 }
 
 /// An object's `<outline>`s: under `<outlines>` since OpenDRIVE 1.5, and
@@ -3606,7 +3647,7 @@ mod tests {
         let Shape::Sweep { sections, .. } = &objects[0].shape else {
             panic!("not a sweep: {:?}", objects[0].shape);
         };
-        assert_eq!(sections.len(), 11, "every 2 m over 20 m");
+        assert_eq!(sections.len(), 3, "every 10 m, as it runs straight");
         let (sin, cos) = 0.1_f32.sin_cos();
         for section in sections {
             for (corner, t) in [(section.left, 3.5_f32), (section.right, 2.5)] {
@@ -3618,6 +3659,37 @@ mod tests {
                 assert!((corner.base.z - (t * sin + 0.5)).abs() < 1e-5);
                 assert_eq!(corner.top - corner.base, Vector::new(0.0, 0.0, 2.0));
             }
+        }
+    }
+
+    #[test]
+    fn a_sweep_is_sampled_closer_where_it_bends() {
+        // A straight 10 m, then 10 m round a circle of radius 10 centred on
+        // (10, 10), with a wall along the reference line.
+        let xml = r#"<OpenDRIVE><road length="20" id="1" junction="-1">
+            <planView>
+              <geometry s="0" x="0" y="0" hdg="0" length="10"><line/></geometry>
+              <geometry s="10" x="10" y="0" hdg="0" length="10"><arc curvature="0.1"/></geometry>
+            </planView>
+            <lanes><laneSection s="0"><right><lane id="-1" type="driving">
+              <width sOffset="0" a="3.5"/></lane></right></laneSection></lanes>
+            <objects><object id="1" s="0" t="0">
+              <repeat s="0" length="20" distance="0" heightStart="1"/>
+            </object></objects></road></OpenDRIVE>"#;
+        let objects = objects_of(xml);
+        let Shape::Sweep { sections, .. } = &objects[0].shape else {
+            panic!("not a sweep: {:?}", objects[0].shape);
+        };
+        let bases: Vec<Point> = sections.iter().map(|s| s.left.base).collect();
+        let on_arc = bases.iter().filter(|p| p.x > 10.0 + 1e-3).count();
+        assert_eq!(bases.len() - on_arc, 2, "the straight is one piece");
+        // Each wall between two sections on the arc strays under 1 cm inside
+        // it, which a wall every 2 m does not: that strays 5 cm.
+        let centre = Point::new(10.0, 10.0, 0.0);
+        for pair in bases.windows(2).skip(1) {
+            let middle = pair[0].lerp(pair[1], 0.5);
+            let strays = 10.0 - middle.distance_to(centre);
+            assert!(strays < SWEEP_TOLERANCE, "{pair:?} strays {strays} m");
         }
     }
 

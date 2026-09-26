@@ -187,7 +187,9 @@ pub enum Shape {
     /// a pipe. Already in the network's frame. Consecutive sections are
     /// joined by straight walls.
     Sweep {
-        /// The cross-sections in order along the road. At least two.
+        /// The cross-sections in order along the road. At least two, at most
+        /// 10 m apart, and close enough where it bends that the walls stray
+        /// under 1 cm from it.
         sections: Vec<Section>,
         /// Whether the cross-section is the ellipse inscribed in each
         /// section, rather than the section itself. A pipe's sections are

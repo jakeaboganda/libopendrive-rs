@@ -4,7 +4,7 @@
 //! `a · (b × c) / 6`. That sum only comes out as the shape's volume when every
 //! face is there and wound outward, so it checks both at once.
 
-use libopendrive::{load_file, Mesh, ObjectSpan, ObjectType, Point, RoadNetwork};
+use libopendrive::{load_file, Mesh, ObjectSpan, ObjectType, Point, RoadNetwork, Shape};
 
 const OBJECTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/objects.xodr");
 const E6MINI: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/e6mini.xodr");
@@ -155,10 +155,18 @@ fn flat_and_open_shapes_are_single_sheets() {
 
     // The fence is two walls, one quad each, with no lid.
     assert_eq!(count(named(&net, &mesh, "Fence").unwrap()), 2 * 2);
-    // The railing has no width: one wall per 2 m along the 100 m road.
+    // The railing has no width: one wall between each two sections.
+    let railing = net
+        .objects()
+        .iter()
+        .find(|o| o.kind == ObjectType::Railing)
+        .unwrap();
+    let Shape::Sweep { sections, .. } = &railing.shape else {
+        panic!("a sweep");
+    };
     assert_eq!(
         count(of_kind(&net, &mesh, ObjectType::Railing).unwrap()),
-        50 * 2
+        (sections.len() - 1) * 2
     );
 }
 
