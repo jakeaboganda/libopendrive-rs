@@ -187,6 +187,15 @@ planters.repeat(repeatLength=30, repeatDistance=10, sStart=5, tStart=5, tEnd=5,
                 heightStart=0.6, heightEnd=0.6)
 banked.add_object(planters)
 
+# A flat pad across the bank, outlined in road coordinates, with a kerb added
+# below that has to tilt with the bank to stay on the road.
+pad = xodr.Object(s=9, t=1.5, Type=xodr.ObjectType.patch, id="32", name="Pad")
+slab = xodr.Outline(closed=True, id=0)
+for id, (s, t) in enumerate([(6, 0.5), (12, 0.5), (12, 2.5), (6, 2.5)]):
+    slab.add_corner(xodr.CornerRoad(s, t, 0, 0, id=id))
+pad.add_outline(slab)
+banked.add_object(pad)
+
 odr = xodr.OpenDrive("objects")
 odr.add_road(road)
 odr.add_road(straight)
@@ -217,6 +226,11 @@ xml = insert(xml, 'name="Island"', "</outlines>", """
 xml = insert(xml, 'name="Courtyard"', "</outlines>", """
                 <borders>
                     <border width="0.2" type="curb" outlineId="1" useCompleteOutline="true"/>
+                </borders>""")
+
+xml = insert(xml, 'name="Pad"', "</outlines>", """
+                <borders>
+                    <border width="0.6" type="curb" outlineId="0" useCompleteOutline="true"/>
                 </borders>""")
 
 # Road 1 places objects from road 0 again: the shed with its own zOffset,

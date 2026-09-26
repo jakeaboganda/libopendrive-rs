@@ -148,6 +148,11 @@
 //! across, centred on every edge with `useCompleteOutline`, and on the edges
 //! through its `<cornerReference>`s otherwise.
 //!
+//! Both lie in the surface under the edges: the road's for `<cornerRoad>`
+//! corners, and the plane of the object's frame for `<cornerLocal>` corners
+//! and a solid's box. So on a banked road a band tilts with the bank rather
+//! than lying level, and paint is raised off the road along its normal.
+//!
 //! An object's `<parkingSpace>` becomes its [`ParkingSpace`], and each
 //! `<material>` one of its [`Material`]s. Each `<userData>` is a
 //! [`UserData`] of its `code` and `value`. Any XML nested inside one is not

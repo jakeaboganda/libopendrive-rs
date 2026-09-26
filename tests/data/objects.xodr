@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <OpenDRIVE>
-    <header name="objects" revMajor="1" revMinor="5" date="2026-09-26 16:25:57.987598" north="0.0" south="0.0" east="0.0" west="0.0"/>
+    <header name="objects" revMajor="1" revMinor="5" date="2026-09-26 17:33:30.893383" north="0.0" south="0.0" east="0.0" west="0.0"/>
     <road rule="RHT" id="0" junction="-1" length="100.0">
         <link/>
         <planView>
@@ -252,6 +252,19 @@
                         <cornerLocal u="0" v="1" z="0" height="0.6"/>
                     </outline>
                 </outlines>
+            </object>
+            <object id="32" s="9" t="1.5" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" name="Pad" type="patch" orientation="none" hdg="0">
+                <outlines>
+                    <outline closed="true" id="0">
+                        <cornerRoad s="6" t="0.5" dz="0" height="0" id="0"/>
+                        <cornerRoad s="12" t="0.5" dz="0" height="0" id="1"/>
+                        <cornerRoad s="12" t="2.5" dz="0" height="0" id="2"/>
+                        <cornerRoad s="6" t="2.5" dz="0" height="0" id="3"/>
+                    </outline>
+                </outlines>
+                <borders>
+                    <border width="0.6" type="curb" outlineId="0" useCompleteOutline="true"/>
+                </borders>
             </object>
         </objects>
     </road>

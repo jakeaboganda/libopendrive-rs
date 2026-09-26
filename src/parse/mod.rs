@@ -1574,30 +1574,28 @@ fn outline_parts(
     let mut parts = Vec::new();
     let mut holes = Vec::new();
     for &outline_node in outlines {
-        let Some((corners, closed, stretch)) = outline(outline_node, origin, st.s, shift, road)
-        else {
+        let Some(ring) = outline(outline_node, origin, st.s, shift, road) else {
             continue;
         };
         if outline_node.attribute("outer") == Some("false") {
-            holes.push((outline_node, corners));
+            holes.push((outline_node, ring));
             continue;
         }
         let mut part = Part::new(
             Shape::Outline {
-                corners,
-                closed,
+                corners: ring.corners.clone(),
+                closed: ring.closed,
                 holes: Vec::new(),
             },
             st,
-            stretch,
+            ring.stretch,
         );
-        if let Shape::Outline { corners, .. } = &part.shape {
-            part.markings = markings(node, outline_node, corners);
-            part.borders = borders(node, outline_node, corners, closed);
-        }
+        part.markings = markings(node, outline_node, &ring);
+        part.borders = borders(node, outline_node, &ring, ring.closed);
         parts.push(part);
     }
-    for (outline_node, corners) in holes {
+    for (outline_node, ring) in holes {
+        let corners = &ring.corners;
         let owner = parts.iter_mut().find(|p| {
             matches!(&p.shape, Shape::Outline { corners: outer, closed: true, .. }
                 if corners.len() >= 3 && corners.iter().all(|c| encloses(outer, c.base)))
@@ -1605,14 +1603,12 @@ fn outline_parts(
         let Some(owner) = owner else {
             continue;
         };
-        owner
-            .markings
-            .extend(markings(node, outline_node, &corners));
+        owner.markings.extend(markings(node, outline_node, &ring));
         owner
             .borders
-            .extend(borders(node, outline_node, &corners, true));
+            .extend(borders(node, outline_node, &ring, true));
         if let Shape::Outline { holes, .. } = &mut owner.shape {
-            holes.push(corners);
+            holes.push(ring.corners);
         }
     }
     parts
@@ -1797,30 +1793,51 @@ fn outline_nodes<'a>(object: roxmltree::Node<'a, 'a>) -> Vec<roxmltree::Node<'a,
         .collect()
 }
 
-/// One `<outline>`'s corners in the network's frame, and whether it is
-/// closed.
+/// One `<outline>` placed in the network's frame.
+struct Ring {
+    corners: Vec<Corner>,
+    /// The normal of the surface each corner is given on, in step with
+    /// `corners`: the road's for a `<cornerRoad>`, the object frame's z axis
+    /// for a `<cornerLocal>`. Bands along the edges lie in it.
+    ups: Vec<Vector>,
+    closed: bool,
+    /// The stretch of road the outline spans.
+    stretch: (f64, f64),
+}
+
+impl Ring {
+    /// Each corner's base, with its normal.
+    fn path(&self) -> Vec<(Point, Vector)> {
+        self.corners
+            .iter()
+            .map(|c| c.base)
+            .zip(self.ups.iter().copied())
+            .collect()
+    }
+}
+
+/// Place one `<outline>` in the network's frame.
 ///
 /// A `<cornerRoad>` is a road station `(s, t)`, moved by `shift`, raised by
-/// `dz`. A
-/// `<cornerLocal>` is `(u, v, z)` in the object's own frame, so it needs the
+/// `dz`. A `<cornerLocal>` is `(u, v, z)` in the object's own frame, so it needs the
 /// object's origin to be on the road. Each corner's top is `height` above its
 /// base, up in the frame the corner is given in. An outline with a corner
 /// that cannot be placed is dropped whole, because the polygon without it is
 /// a different shape. So is one with fewer than two corners.
 ///
-/// Also returns the stretch of road the outline spans: from its first
-/// `<cornerRoad>` station to its last, taking in `s`, the object's own
-/// station, if it has a `<cornerLocal>`.
+/// The stretch of road it spans runs from its first `<cornerRoad>` station to
+/// its last, taking in `s`, the object's own station, if it has a
+/// `<cornerLocal>`.
 fn outline(
     node: roxmltree::Node,
     frame: Option<&Frame>,
     s: f64,
     (shift_s, shift_t): (f64, f64),
     road: &BakedRoad,
-) -> Option<(Vec<Corner>, bool, (f64, f64))> {
+) -> Option<Ring> {
     let mut stretch = (f64::INFINITY, f64::NEG_INFINITY);
     let mut spans = |s: f64| stretch = (stretch.0.min(s), stretch.1.max(s));
-    let corner = |c: roxmltree::Node| -> Option<Corner> {
+    let corner = |c: roxmltree::Node| -> Option<(Corner, Vector)> {
         let height = attr_f64(c, "height").unwrap_or(0.0);
         if c.has_tag_name("cornerRoad") {
             let (s, t) = (attr_f64(c, "s")? + shift_s, attr_f64(c, "t")? + shift_t);
@@ -1830,28 +1847,43 @@ fn outline(
             spans(s);
             let (mut base, _) = (road.surface)(s, t);
             base.z += attr_f64(c, "dz").unwrap_or(0.0) as f32;
-            Some(Corner {
+            let corner = Corner {
                 base,
                 top: base + Vector::Z * height as f32,
-            })
+            };
+            Some((corner, normal((road.axes)(s))))
         } else {
             let frame = frame?;
             spans(s);
             let (u, v) = (attr_f64(c, "u")?, attr_f64(c, "v")?);
             let z = attr_f64(c, "z").unwrap_or(0.0);
-            Some(Corner {
+            let corner = Corner {
                 base: frame.point([u, v, z]),
                 top: frame.point([u, v, z + height]),
-            })
+            };
+            Some((corner, normal(frame.axes)))
         }
     };
-    let corners = corner_nodes(node).map(corner).collect::<Option<Vec<_>>>()?;
+    let (corners, ups): (Vec<Corner>, Vec<Vector>) = corner_nodes(node)
+        .map(corner)
+        .collect::<Option<Vec<_>>>()?
+        .into_iter()
+        .unzip();
     if corners.len() < 2 {
         return None;
     }
-    // Closed unless the file says otherwise, as libOpenDRIVE reads it.
-    let closed = node.attribute("closed") != Some("false");
-    Some((corners, closed, stretch))
+    Some(Ring {
+        corners,
+        ups,
+        // Closed unless the file says otherwise, as libOpenDRIVE reads it.
+        closed: node.attribute("closed") != Some("false"),
+        stretch,
+    })
+}
+
+/// The z axis of `axes`, which [`road_axes`] and [`Frame`] give.
+fn normal(axes: [[f64; 3]; 3]) -> Vector {
+    Vector::from_array(axes[2].map(|c| c as f32))
 }
 
 /// Whether `point` is inside `ring` in plan, by the even-odd rule.
@@ -1885,16 +1917,16 @@ fn marking_nodes<'a>(
 }
 
 /// The `<marking>`s under `object`'s `<markings>` that run along edges of
-/// one of its outlines, `outline`, whose placed corners are `corners`.
+/// one of its outlines, `outline`, placed as `ring`.
 ///
 /// A marking follows the corners its `<cornerReference>`s name, in order, by
 /// the corners' `id`s. It belongs to the outline that has every one of them,
 /// so one naming a corner the outline lacks is left to another outline. So
 /// is one with fewer than two references.
-fn markings(object: roxmltree::Node, outline: roxmltree::Node, corners: &[Corner]) -> Vec<Marking> {
+fn markings(object: roxmltree::Node, outline: roxmltree::Node, ring: &Ring) -> Vec<Marking> {
     let ids: Vec<Option<&str>> = corner_nodes(outline).map(|c| c.attribute("id")).collect();
     marking_nodes(object)
-        .filter_map(|m| paint(m, &corner_path(m, &ids, corners)?))
+        .filter_map(|m| paint(m, &corner_path(m, &ids, ring)?))
         .collect()
 }
 
@@ -1911,7 +1943,7 @@ fn side_markings(object: roxmltree::Node, frame: &Frame, extent: Option<Extent>)
         None => return Vec::new(),
     };
     let (u, v) = (f64::from(u), f64::from(v));
-    let corner = |u, v| frame.point([u, v, 0.0]);
+    let corner = |u, v| (frame.point([u, v, 0.0]), normal(frame.axes));
     marking_nodes(object)
         .filter(|m| !m.children().any(|n| n.has_tag_name("cornerReference")))
         .filter_map(|m| {
@@ -1929,13 +1961,13 @@ fn side_markings(object: roxmltree::Node, frame: &Frame, extent: Option<Extent>)
 
 /// One `<marking>` painted along `path`, or `None` if it has no width.
 ///
-/// The paint is raised `zOffset` off the path, 5 mm if the map does not say,
-/// and starts `startOffset` along the first edge and stops `stopOffset` short
+/// The paint is raised `zOffset` off the path along its normals, 5 mm if the
+/// map does not say, and starts `startOffset` along the first edge and stops `stopOffset` short
 /// of the end of the last.
-fn paint(m: roxmltree::Node, path: &[Point]) -> Option<Marking> {
+fn paint(m: roxmltree::Node, path: &[(Point, Vector)]) -> Option<Marking> {
     let width = attr_f64(m, "width").filter(|w| *w > 0.0)?;
-    let raise = Vector::Z * attr_f64(m, "zOffset").unwrap_or(0.005) as f32;
-    let path: Vec<Point> = path.iter().map(|&p| p + raise).collect();
+    let raise = attr_f64(m, "zOffset").unwrap_or(0.005) as f32;
+    let path: Vec<(Point, Vector)> = path.iter().map(|&(p, up)| (p + up * raise, up)).collect();
     let line = attr_f64(m, "lineLength").unwrap_or(0.0).max(0.0);
     let space = attr_f64(m, "spaceLength").unwrap_or(0.0).max(0.0);
     let text = |name| m.attribute(name).unwrap_or_default().to_string();
@@ -1956,7 +1988,7 @@ fn paint(m: roxmltree::Node, path: &[Point]) -> Option<Marking> {
 }
 
 /// The `<border>`s under `object`'s `<borders>` that run along edges of one
-/// of its outlines, `outline`, whose placed corners are `corners`.
+/// of its outlines, `outline`, placed as `ring`.
 ///
 /// A border belongs to the outline whose `id` is its `outlineId`, or with no
 /// `outlineId`, to any outline that fits it. With `useCompleteOutline` it
@@ -1966,7 +1998,7 @@ fn paint(m: roxmltree::Node, path: &[Point]) -> Option<Marking> {
 fn borders(
     object: roxmltree::Node,
     outline: roxmltree::Node,
-    corners: &[Corner],
+    ring: &Ring,
     closed: bool,
 ) -> Vec<Border> {
     let ids: Vec<Option<&str>> = corner_nodes(outline).map(|c| c.attribute("id")).collect();
@@ -1983,13 +2015,13 @@ fn borders(
         .filter_map(|b| {
             let width = attr_f64(b, "width").filter(|w| *w > 0.0)?;
             let path = if b.attribute("useCompleteOutline") == Some("true") {
-                let mut path: Vec<Point> = corners.iter().map(|c| c.base).collect();
+                let mut path = ring.path();
                 if closed {
-                    path.push(corners[0].base);
+                    path.push(path[0]);
                 }
                 path
             } else {
-                corner_path(b, &ids, corners)?
+                corner_path(b, &ids, ring)?
             };
             Some(Border {
                 kind: b.attribute("type").unwrap_or_default().to_string(),
@@ -2000,21 +2032,22 @@ fn borders(
         .collect()
 }
 
-/// The bases of the corners `node`'s `<cornerReference>`s name, in order.
-/// `ids` are the corners' `id`s, in step with `corners`. `None` if a
-/// reference names no corner in `ids`, or there are fewer than two.
+/// The bases of the corners `node`'s `<cornerReference>`s name, in order,
+/// with their normals. `ids` are the corners' `id`s, in step with `ring`'s.
+/// `None` if a reference names no corner in `ids`, or there are fewer than
+/// two.
 fn corner_path(
     node: roxmltree::Node,
     ids: &[Option<&str>],
-    corners: &[Corner],
-) -> Option<Vec<Point>> {
+    ring: &Ring,
+) -> Option<Vec<(Point, Vector)>> {
     let path = node
         .children()
         .filter(|n| n.has_tag_name("cornerReference"))
         .map(|r| {
             let id = r.attribute("id")?;
             let at = ids.iter().position(|c| *c == Some(id))?;
-            Some(corners[at].base)
+            Some((ring.corners[at].base, ring.ups[at]))
         })
         .collect::<Option<Vec<_>>>()?;
     (path.len() >= 2).then_some(path)
@@ -2022,12 +2055,14 @@ fn corner_path(
 
 /// A strip `half_width` either side of the line through `path`, from `start`
 /// metres along it to `stop` metres short of its end: one quad per edge, or
-/// with `dashes` of `(line, space)` metres, one per dash per edge. Each quad
-/// goes anticlockwise seen from above. An edge with no length in plan has no
-/// across to measure, and gets none. Nor does a pattern of more than
-/// [`MAX_REPEAT_INSTANCES`] dashes, as a runaway `<repeat>` does not.
+/// with `dashes` of `(line, space)` metres, one per dash per edge. Each point
+/// of `path` comes with the normal of the surface it is on, and each quad
+/// lies in the surface its edge's ends share, anticlockwise seen from that
+/// normal. An edge along that normal has no across to measure, and gets no
+/// quad. Nor does a pattern of more than [`MAX_REPEAT_INSTANCES`] dashes, as a
+/// runaway `<repeat>` does not.
 fn strip(
-    path: &[Point],
+    path: &[(Point, Vector)],
     start: f64,
     stop: f64,
     dashes: Option<(f64, f64)>,
@@ -2035,7 +2070,7 @@ fn strip(
 ) -> Vec<[Point; 4]> {
     let mut along = vec![0.0];
     for w in path.windows(2) {
-        along.push(along.last().unwrap() + f64::from(w[0].distance_to(w[1])));
+        along.push(along.last().unwrap() + f64::from(w[0].0.distance_to(w[1].0)));
     }
     let end = along.last().unwrap() - stop;
     let painted: Vec<(f64, f64)> = match dashes {
@@ -2049,9 +2084,8 @@ fn strip(
     };
     let mut pieces = Vec::new();
     for (i, w) in path.windows(2).enumerate() {
-        let (a, b) = (w[0], w[1]);
-        let d = b - a;
-        let across = Vector::new(-d.y, d.x, 0.0).normalize_or_zero() * half_width as f32;
+        let ((a, up_a), (b, up_b)) = (w[0], w[1]);
+        let across = (up_a + up_b).cross(b - a).normalize_or_zero() * half_width as f32;
         if across == Vector::ZERO {
             continue;
         }
@@ -3514,6 +3548,49 @@ mod tests {
     }
 
     #[test]
+    fn a_band_lies_in_a_banked_road_rather_than_level() {
+        // The road banks 0.1 rad about +X, so its surface is z = y tan 0.1.
+        // A border lies in it, and paint 5 mm off it along its normal.
+        let xml = banked_road_with(
+            r#"<object id="a" s="5" t="-1">
+                 <outlines><outline id="0">
+                   <cornerRoad id="1" s="2" t="-1" dz="0"/><cornerRoad id="2" s="8" t="-1" dz="0"/>
+                   <cornerRoad id="3" s="8" t="-3" dz="0"/></outline></outlines>
+                 <markings><marking width="0.4"><cornerReference id="1"/><cornerReference id="2"/></marking></markings>
+                 <borders><border width="1" useCompleteOutline="true"/></borders>
+               </object>
+               <object id="b" s="12" t="-2" hdg="0.5">
+                 <outlines><outline><cornerLocal u="0" v="0"/><cornerLocal u="3" v="0"/>
+                   <cornerLocal u="3" v="2"/></outline></outlines>
+                 <borders><border width="1" useCompleteOutline="true"/></borders>
+               </object>
+               <object id="c" s="16" t="-2" length="2" width="1" height="1">
+                 <markings><marking side="left" width="0.4"/></markings>
+               </object>"#,
+        );
+        let tan = 0.1_f32.tan();
+        let off = |p: Point| p.z - p.y * tan;
+        let objects = objects_of(&xml);
+        let mut bands = 0;
+        for object in &objects {
+            for border in &object.borders {
+                for p in border.pieces.iter().flatten() {
+                    assert!(off(*p).abs() < 1e-5, "{} border {p:?}", object.id.0);
+                    bands += 1;
+                }
+            }
+            for marking in &object.markings {
+                for p in marking.pieces.iter().flatten() {
+                    let want = 0.005 / 0.1_f32.cos();
+                    assert!((off(*p) - want).abs() < 1e-5, "{} paint {p:?}", object.id.0);
+                    bands += 1;
+                }
+            }
+        }
+        assert_eq!(bands, 4 * (3 + 1 + 3 + 1));
+    }
+
+    #[test]
     fn a_border_goes_to_the_outline_it_names() {
         let square = |id: &str| {
             format!(
@@ -3545,6 +3622,11 @@ mod tests {
             .collect()
     }
 
+    /// `points` on level ground.
+    fn level(points: &[Point]) -> Vec<(Point, Vector)> {
+        points.iter().map(|&p| (p, Vector::Z)).collect()
+    }
+
     #[test]
     fn a_strip_steps_over_an_edge_with_no_length() {
         let (a, b, c) = (
@@ -3555,23 +3637,29 @@ mod tests {
         // A repeated corner, and a corner straight above the one before:
         // no length in plan, so no across to measure.
         let up = Point::new(2.0, 0.0, 1.0);
-        assert_eq!(ends(&strip(&[a, a, b], 0.0, 0.0, None, 0.1)), [(0.0, 2.0)]);
-        assert_eq!(ends(&strip(&[a, b, up], 0.0, 0.0, None, 0.1)), [(0.0, 2.0)]);
+        assert_eq!(
+            ends(&strip(&level(&[a, a, b]), 0.0, 0.0, None, 0.1)),
+            [(0.0, 2.0)]
+        );
+        assert_eq!(
+            ends(&strip(&level(&[a, b, up]), 0.0, 0.0, None, 0.1)),
+            [(0.0, 2.0)]
+        );
         // A dash across the repeated corner carries on past it.
-        let dashes = strip(&[a, b, b, c], 1.0, 0.0, Some((2.0, 1.0)), 0.1);
+        let dashes = strip(&level(&[a, b, b, c]), 1.0, 0.0, Some((2.0, 1.0)), 0.1);
         assert_eq!(ends(&dashes), [(1.0, 2.0), (2.0, 3.0)]);
     }
 
     #[test]
     fn a_strip_of_too_many_dashes_is_refused() {
-        let path = [Point::ORIGIN, Point::new(10.0, 0.0, 0.0)];
+        let path = level(&[Point::ORIGIN, Point::new(10.0, 0.0, 0.0)]);
         assert!(strip(&path, 0.0, 0.0, Some((1e-5, 1e-5)), 0.1).is_empty());
         assert_eq!(strip(&path, 0.0, 0.0, Some((0.5, 0.5)), 0.1).len(), 10);
     }
 
     #[test]
     fn offsets_past_the_end_of_a_strip_leave_nothing() {
-        let path = [Point::ORIGIN, Point::new(10.0, 0.0, 0.0)];
+        let path = level(&[Point::ORIGIN, Point::new(10.0, 0.0, 0.0)]);
         for (start, stop) in [(20.0, 0.0), (0.0, 20.0), (6.0, 6.0)] {
             for dashes in [None, Some((1.0, 1.0))] {
                 let pieces = strip(&path, start, stop, dashes, 0.1);

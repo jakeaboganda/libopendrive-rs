@@ -64,7 +64,9 @@ lines.
 `Object::borders` has one `Border` per `<border>`, such as a traffic island's
 kerb. Each one has the border's type and width, and one world-space quad per
 edge. With `useCompleteOutline` the band runs along every edge of the
-outline. Otherwise it follows the `<cornerReference>`s.
+outline. Otherwise it follows the `<cornerReference>`s. Marking and border
+quads lie in the surface under their edges, so on a banked road they tilt
+with the bank.
 
 `Object::parking_space` holds a `<parkingSpace>`'s `access`, such as
 `handicapped`, and its free-text `restrictions`. `Object::materials` has one

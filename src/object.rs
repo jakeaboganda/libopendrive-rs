@@ -221,7 +221,8 @@ pub struct Marking {
     pub space_length: f32,
     /// The painted pieces, in order along the edges, in the network's frame.
     /// Each is four corners going anticlockwise seen from above: a dash, or
-    /// the part of one on a single edge.
+    /// the part of one on a single edge. It lies in the surface under the
+    /// edge, raised by the marking's `zOffset`.
     pub pieces: Vec<[Point; 4]>,
 }
 
@@ -237,7 +238,7 @@ pub struct Border {
     pub width: f32,
     /// The band, one piece per edge, in order along the edges, in the
     /// network's frame. Each is four corners going anticlockwise seen from
-    /// above, level with the outline's base.
+    /// above, lying in the surface under the edge.
     pub pieces: Vec<[Point; 4]>,
 }
 

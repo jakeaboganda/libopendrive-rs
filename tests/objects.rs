@@ -1002,3 +1002,22 @@ fn a_repeat_moves_the_outlines_to_each_step() {
         }
     }
 }
+
+#[test]
+fn a_border_tilts_with_a_banked_road() {
+    // Road 2 banks 0.15 rad about the line y = -80, so its surface is
+    // z = (y + 80) tan 0.15. The pad's kerb lies in it all the way across.
+    let pads: Vec<Object> = on("2").into_iter().filter(|o| o.name == "Pad").collect();
+    let [pad] = &pads[..] else {
+        panic!("one pad: {pads:?}");
+    };
+    let [kerb] = &pad.borders[..] else {
+        panic!("one border: {:?}", pad.borders);
+    };
+    assert_eq!(kerb.pieces.len(), 4);
+    let tan = 0.15_f32.tan();
+    for p in kerb.pieces.iter().flatten() {
+        let off = p.z - (p.y + 80.0) * tan;
+        assert!(off.abs() < 1e-5, "{p:?} is {off} m off the road");
+    }
+}
