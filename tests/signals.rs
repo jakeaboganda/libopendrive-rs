@@ -11,8 +11,9 @@
 use std::f32::consts::PI;
 
 use libopendrive::{
-    load_file_with_provenance, Control, JunctionControllerProvenance, Orientation, Point,
-    Provenance, RoadNetwork, Signal, SignalProvenance, SignalReferenceProvenance, Unit,
+    load_file_with_provenance, Control, Dependency, JunctionControllerProvenance, Orientation,
+    Point, Provenance, Reference, Referenced, RoadNetwork, Signal, SignalProvenance,
+    SignalReferenceProvenance, Unit,
 };
 
 const SIGNALS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/signals.xodr");
@@ -300,6 +301,50 @@ fn a_junction_lists_the_controllers_it_syncs() {
                 sequence: None,
             }],
         ]
+    );
+}
+
+#[test]
+fn a_signal_keeps_its_dependencies_and_references_as_ids() {
+    let (net, prov) = load(SIGNALS);
+    let (limit, _) = find(&net, &prov, "1");
+    let (plate, _) = find(&net, &prov, "2");
+    assert_eq!(
+        limit.dependencies,
+        vec![Dependency {
+            signal: plate.id,
+            kind: "lorries".into()
+        }]
+    );
+    assert!(plate.dependencies.is_empty() && plate.references.is_empty());
+
+    let (light, _) = find(&net, &prov, "4");
+    let (stop, _) = find(&net, &prov, "5");
+    let mast = prov
+        .objects
+        .iter()
+        .find(|p| p.od_id == "30")
+        .expect("the mast")
+        .object;
+    assert_eq!(
+        light.references,
+        vec![
+            Reference {
+                to: Referenced::Signal(stop.id),
+                kind: "stopline".into()
+            },
+            Reference {
+                to: Referenced::Object(mast),
+                kind: "mast".into()
+            },
+        ]
+    );
+    assert_eq!(
+        stop.dependencies,
+        vec![Dependency {
+            signal: light.id,
+            kind: "light".into()
+        }]
     );
 }
 

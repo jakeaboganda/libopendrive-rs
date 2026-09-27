@@ -3,7 +3,7 @@
 //! signal keeps the catalogue codes the map gives it and looks nothing up.
 
 use crate::coords::Point;
-use crate::LaneId;
+use crate::{LaneId, ObjectId};
 
 /// An opaque signal identifier. Not a position in
 /// [`RoadNetwork::signals`](crate::RoadNetwork::signals), so look signals up
@@ -114,6 +114,12 @@ pub struct Signal {
     pub temporary: bool,
     /// The controllers the signal belongs to. Usually none, or one.
     pub controllers: Vec<ControllerId>,
+    /// The signals this one is linked to by a dependency, such as the plate
+    /// that limits a speed sign to lorries.
+    pub dependencies: Vec<Dependency>,
+    /// The signals and objects this one relates to, such as the stop line of
+    /// a traffic light.
+    pub references: Vec<Reference>,
     /// The lanes the signal applies to, on every road the map applies it
     /// to. A lane appears once.
     pub lanes: Vec<LaneId>,
@@ -163,4 +169,39 @@ pub struct Control {
     /// How the controller controls it. Free text, and empty if the map gives
     /// none.
     pub kind: String,
+}
+
+/// A signal another depends on.
+///
+/// The map's `<dependency>` names it. OpenDRIVE 1.7 calls it the signal
+/// controlled, and 1.9 the one controlling, so this keeps the link as the
+/// map gives it and reads nothing into its direction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Dependency {
+    /// The signal named.
+    pub signal: SignalId,
+    /// What the dependency is. Free text, and empty if the map gives none.
+    pub kind: String,
+}
+
+/// Something a signal relates to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Reference {
+    /// The signal or object.
+    pub to: Referenced,
+    /// What the relation is, such as `stopline`. Free text, and empty if the
+    /// map gives none.
+    pub kind: String,
+}
+
+/// What a [`Reference`] names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Referenced {
+    /// A signal.
+    Signal(SignalId),
+    /// An object.
+    Object(ObjectId),
 }

@@ -72,6 +72,8 @@
 //! | `<signals><signal>` | `id`, `name`, `dynamic`, `orientation`, `s`, `t`, `zOffset`, `hOffset`, `pitch`, `roll`, `country`, `countryRevision`, `type`, `subtype`, `value`, `unit`, `text`, `length`, `width`, `height`, `invalidated`, `temporary` |
 //! | `<signal><positionRoad>` | `roadId`, `s`, `t`, `zOffset`, `hOffset`, `pitch`, `roll` |
 //! | `<signal><positionInertial>` | `x`, `y`, `z`, `hdg`, `pitch`, `roll` |
+//! | `<signal><dependency>` | `id`, `type` |
+//! | `<signal><reference>` | `elementType`, `elementId`, `type` |
 //! | `<signals><signalReference>` | `id`, `s`, `t`, `orientation` |
 //! | `<controller>`, at the top level | `id`, `name`, `sequence` |
 //! | `<controller><control>` | `signalId`, `type` |
@@ -222,6 +224,14 @@
 //! `orientation`. Where two signals share an id, a reference applies the
 //! first. A reference to an id no signal has is skipped.
 //!
+//! A signal's `<dependency>`s become its [`Signal::dependencies`], each the
+//! signal it names and the `type`. OpenDRIVE 1.7 says a dependency names the
+//! signal controlled, and 1.9 the one controlling, so the importer keeps the
+//! link as the file gives it. Its `<reference>`s become its
+//! [`Signal::references`]: a signal, or each [`Object`] the named `<object>`
+//! baked to, with the `type`. One to an id nothing has, or to an
+//! `elementType` other than `signal` or `object`, is skipped.
+//!
 //! Each top-level `<controller>` bakes to a [`Controller`] in
 //! [`RoadNetwork::controllers`], with the signals its `<control>`s name, and
 //! each of those signals lists it in [`Signal::controllers`]. A control that
@@ -279,8 +289,8 @@
 //! Everything else in the file, silently. That includes `<geoReference>`,
 //! `<roadMark>`, `<junctionGroup>`, `<station>`, an object's
 //! `<surface>`, and road `<type>` with its `<speed>`. Of signals, it ignores
-//! a signal's `<dependency>`, `<reference>` and `<userData>`, the boards
-//! `<staticBoard>` and `<vmsBoard>`, and `<semantics>`.
+//! a signal's `<userData>`, the boards `<staticBoard>` and `<vmsBoard>`, and
+//! `<semantics>`.
 //!
 //! Three omissions change the road you get back, rather than only dropping
 //! detail around it:
@@ -373,5 +383,7 @@ pub use parse::{
     ImportError, JunctionControllerProvenance, LaneProvenance, ObjectProvenance, Orientation,
     Provenance, SignalProvenance, SignalReferenceProvenance, StructureProvenance,
 };
-pub use signal::{Control, Controller, ControllerId, Signal, SignalId, Unit};
+pub use signal::{
+    Control, Controller, ControllerId, Dependency, Reference, Referenced, Signal, SignalId, Unit,
+};
 pub use structure::{Coverage, Structure, StructureId, StructureKind};

@@ -45,12 +45,15 @@ sign(main, s=20, t=-7, id="2", name="LorriesOnly", country="DE", countryRevision
 sign(main, s=40, t=7, id="3", name="TownSign", country="DE", Type="310", subtype="-1",
      zOffset=1.5, orientation=negative, hOffset=0.3, height=0.8, width=1.2)
 
-# A traffic light over lane -1 only. Its hOffset is 14 pi, as esmini writes
-# some. It refers to the stop line after it, which depends on it.
+# A traffic light over lane -1 only, on a mast. Its hOffset is 14 pi, as
+# esmini writes some. It refers to its mast and to the stop line after it,
+# which depends on it.
 light = sign(main, s=60, t=-5, id="4", name="Light", country="OpenDRIVE", Type="1000001",
              subtype="-1", dynamic=xodr.Dynamic.yes, zOffset=4, orientation=positive,
              hOffset=43.982297150257104, height=0.9, width=0.3, length=0.3)
 light.add_validity(-1, -1)
+main.add_object(xodr.Object(s=60, t=-5, Type=xodr.ObjectType.pole, id="30", name="Mast",
+                            radius=0.1, height=4))
 stop = sign(main, s=64, t=-1.5, id="5", name="StopLine", country="OpenDRIVE", Type="294",
             subtype="-1", zOffset=0, orientation=positive, height=0.03, width=3)
 stop.add_validity(-1, -1)
@@ -117,7 +120,8 @@ def children(xml, name, text):
     end = xml.index(">", start)
     if xml[end - 1] == "/":
         return xml[:end - 1] + ">" + text + "\n            </signal>" + xml[end + 1:]
-    return insert(xml, f'name="{name}"', ">", text)
+    close = xml.index("\n            </signal>", end)
+    return xml[:close] + text + xml[close:]
 
 
 xml = out.read_text()
@@ -128,7 +132,8 @@ xml = insert(xml, 'name="RoadWorks30"', 'name="RoadWorks30"',
 xml = children(xml, "SpeedLimit50", """
                 <dependency id="2" type="lorries"/>""")
 xml = children(xml, "Light", """
-                <reference elementType="signal" elementId="5" type="stopline"/>""")
+                <reference elementType="signal" elementId="5" type="stopline"/>
+                <reference elementType="object" elementId="30" type="mast"/>""")
 xml = children(xml, "StopLine", """
                 <dependency id="4" type="light"/>""")
 xml = children(xml, "Elsewhere", """

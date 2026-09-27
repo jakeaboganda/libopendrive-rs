@@ -23,6 +23,9 @@
   `RoadNetwork::controllers`, with the signals it controls.
   `Signal::controllers` names a signal's controllers, and
   `ControllerProvenance` lists the junctions that sync each one.
+- `Signal::dependencies` and `Signal::references` keep a signal's
+  `<dependency>` and `<reference>` links, as the `SignalId`s and
+  `ObjectId`s they name.
 - `SignalProvenance` gives each signal's road, OpenDRIVE id, `(s, t)` and
   orientation.
 - The viewer draws each signal as a board, white when static and dark when

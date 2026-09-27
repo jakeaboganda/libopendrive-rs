@@ -96,7 +96,8 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   `<signalReference>` applies the signal on another road too, adding the
   lanes there. `RoadNetwork::controllers` groups the signals that always
   show the same state, such as the lights of one approach, and each signal
-  lists its controllers.
+  lists its controllers. A signal keeps its `<dependency>` and `<reference>`
+  links as the ids of the signals and objects they name.
   `load_*_with_provenance` gives its road, OpenDRIVE id, `(s, t)` and
   orientation.
 

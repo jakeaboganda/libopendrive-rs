@@ -311,7 +311,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
         return Err(ImportError::Malformed("no lanes found".into()));
     }
     surfaces.extend(junction_crgs(root, &topo));
-    let signals = signals::place(root, &roads);
+    let signals = signals::place(root, &roads, &objects.provenance);
     // Resolve connectivity once all lanes exist and are registered.
     topo.junctions = links::junctions(root);
     links::resolve(&mut lanes, &topo);
