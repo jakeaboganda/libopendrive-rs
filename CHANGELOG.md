@@ -24,23 +24,25 @@
   `<sway>` moves the mark's lines sideways by its cubic, from its `ds`.
 - `RoadMarkProvenance` gives each mark's road, lane section, `<lane id>`,
   `s` and length.
-- Where the crate departs from the spec: a mark without a `color` is
-  `standard`, one without a `type` is `none`, and one without an `sOffset`
-  starts at its section, where the spec requires all three. A negative
-  `sOffset` on a mark or a line is 0, where the spec says it is at least
-  0. One without a
-  `weight` is standard, and a line without a `rule` has none, which the
-  spec gives no default for. A width of 0 counts as none, where the spec
-  says it is above 0, so the line's, the type's, the mark's and the
-  weight's apply in turn. A line with a `length` and `space` of 0 is
-  continuous, as esmini means it, where the spec would paint nothing. A
-  `none` mark paints nothing even with lines, as esmini draws it.
-  `tOffset` and a sway point along +t on both sides of the road, which
-  the spec does not say, and a sway moves nothing before its `ds`. Dashes are measured
-  along the reference line, which the spec does not say. Marks out of
-  order are sorted rather than dropped. A lane with no `<width>` does not
-  bake, so its marks go too, where the spec would draw them on its inner
-  border.
+- Where the crate departs from the spec:
+  - A mark without a `color` is `standard`, one without a `type` is
+    `none`, and one without an `sOffset` starts at its section. The spec
+    requires all three.
+  - A negative `sOffset` on a mark or a line is 0. The spec says it is at
+    least 0.
+  - A mark without a `weight` is standard, and a line without a `rule` has
+    none. The spec gives no default for either.
+  - A width of 0 counts as none, so the line's, the type's, the mark's and
+    the weight's apply in turn. The spec says a width is above 0.
+  - A line with a `length` and `space` of 0 is continuous, as esmini means
+    it. The spec would paint nothing.
+  - A `none` mark paints nothing even with lines, as esmini draws it.
+  - `tOffset` and a sway point along +t on both sides of the road, and a
+    sway moves nothing before its `ds`. Dashes are measured along the
+    reference line. The spec says none of this.
+  - Marks out of order are sorted rather than dropped.
+  - A lane with no `<width>` does not bake, so its marks go too. The spec
+    would draw them on its inner border.
 - The viewer paints each road mark's lines in their colour. Hover one to
   read the mark, each of its lines with its pattern and rule, and light up
   the lanes either side. `m` toggles road marks.
