@@ -23,8 +23,10 @@ use crate::{
 mod links;
 mod road_marks;
 mod signals;
+mod warning;
 use links::{LaneMeta, RoadInfo, Topology};
 use road_marks::MarkDef;
+pub use warning::{RoadSkipReason, Warning};
 
 /// The furthest apart, in metres, a lane's centerline samples get, on
 /// straight or gently curving road.
@@ -316,6 +318,9 @@ pub struct Provenance {
     pub controllers: Vec<ControllerProvenance>,
     /// One per baked road mark, in baked-road-mark order.
     pub road_marks: Vec<RoadMarkProvenance>,
+    /// What the load dropped, or read against the spec, in file order.
+    /// Empty for a clean file.
+    pub warnings: Vec<Warning>,
 }
 
 /// Load an OpenDRIVE file from disk and bake it into a `RoadNetwork`.
@@ -353,8 +358,9 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     let mut topo = Topology::default();
     let index = object_index(root);
     let mut roads = Vec::new();
+    let mut warnings = Vec::new();
     for road in root.children().filter(|n| n.has_tag_name("road")) {
-        let baked = parse_road(
+        match parse_road(
             road,
             &index,
             &mut lanes,
@@ -362,8 +368,26 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             &mut structures,
             &mut surfaces,
             &mut topo,
-        );
-        roads.extend(baked.map(|baked| (road, baked)));
+        ) {
+            Ok(baked) => {
+                warnings.extend(baked.sections.iter().flat_map(|section| {
+                    section
+                        .def
+                        .dropped
+                        .iter()
+                        .map(|&lane| Warning::LaneDropped {
+                            road_id: baked.id.clone(),
+                            section: section.index,
+                            lane,
+                        })
+                }));
+                roads.push((road, baked));
+            }
+            Err(reason) => warnings.push(Warning::RoadSkipped {
+                road_id: road.attribute("id").unwrap_or_default().to_string(),
+                reason,
+            }),
+        }
     }
     if lanes.is_empty() {
         return Err(ImportError::Malformed("no lanes found".into()));
@@ -393,6 +417,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
         signals: signals.provenance,
         controllers: signals.controller_provenance,
         road_marks: road_marks.provenance,
+        warnings,
     };
     Ok((
         RoadNetwork::new(lanes)
@@ -693,7 +718,7 @@ fn height_at(lane: &LaneDef, s_lane: f64) -> (f64, f64) {
 
 /// A `<laneSection>`'s lanes as the file gives them. Only lanes with a
 /// width are here, since a lane without one has nothing to sample and no
-/// border.
+/// border. The ids of those without one are in `dropped`.
 struct SectionDef {
     /// The left lanes, ordered from the center outward: 1, 2, 3, ...
     left: Vec<LaneDef>,
@@ -701,6 +726,8 @@ struct SectionDef {
     right: Vec<LaneDef>,
     /// The road marks of the center lane, on the line between the sides.
     center: Vec<MarkDef>,
+    /// The `<lane id>`s it skipped for having no width, in file order.
+    dropped: Vec<i32>,
 }
 
 impl SectionDef {
@@ -713,7 +740,7 @@ impl SectionDef {
     }
 
     fn parse(section: roxmltree::Node) -> Self {
-        let (mut left, mut right) = (Vec::new(), Vec::new());
+        let (mut left, mut right, mut dropped) = (Vec::new(), Vec::new(), Vec::new());
         for side in ["left", "right"] {
             let Some(side_node) = child(section, side) else {
                 continue;
@@ -724,6 +751,7 @@ impl SectionDef {
                 };
                 let widths = parse_width_cubics(lane);
                 if widths.is_empty() {
+                    dropped.push(id);
                     continue;
                 }
                 let (pred_link, succ_link) = links::lane_link(lane);
@@ -755,6 +783,7 @@ impl SectionDef {
             left,
             right,
             center,
+            dropped,
         }
     }
 }
@@ -826,12 +855,12 @@ fn attr_f64(node: roxmltree::Node, name: &str) -> Option<f64> {
 /// tunnels and bridges over its lanes in `structures`. Returns the road, for
 /// placing what the file puts on it later.
 ///
-/// A road the importer cannot interpret is *skipped*, not fatal. That covers
-/// no length, no `<planView>`, no supported geometry, and no `<lanes>`. Real
-/// exports carry the occasional junk road, and losing a whole city map to one
-/// of them is the worse failure. Individual malformed lanes are already skipped the
-/// same way. `load_str` still errors if the document as a whole yielded no
-/// lanes at all, so a thoroughly broken file is never silently accepted.
+/// A road the importer cannot interpret is *skipped*, not fatal, and the
+/// reason returned. That covers no length, no `<planView>` and no supported
+/// geometry. A road with no `<lanes>` bakes no lanes. Real exports carry the
+/// occasional junk road, and losing a whole city map to one of them is the
+/// worse failure. `load_str` still errors if the document as a whole yielded
+/// no lanes at all, so a thoroughly broken file is never silently accepted.
 fn parse_road(
     road: roxmltree::Node,
     index: &ObjectIndex,
@@ -840,10 +869,10 @@ fn parse_road(
     structures: &mut Structures,
     surfaces: &mut Vec<CrgSurface>,
     topo: &mut Topology,
-) -> Option<BakedRoad> {
+) -> Result<BakedRoad, RoadSkipReason> {
     let road_id = road.attribute("id").unwrap_or_default().to_string();
-    let length = attr_f64(road, "length")?;
-    let plan_view = child(road, "planView")?;
+    let length = attr_f64(road, "length").ok_or(RoadSkipReason::NoLength)?;
+    let plan_view = child(road, "planView").ok_or(RoadSkipReason::NoPlanView)?;
     let mut geoms: Vec<GeomRec> = Vec::new();
     for g in plan_view.children().filter(|n| n.has_tag_name("geometry")) {
         // A geometry record missing (or carrying a non-finite) pose is skipped
@@ -915,7 +944,7 @@ fn parse_road(
         geoms.push(GeomRec { s, x, y, hdg, geom });
     }
     if geoms.is_empty() {
-        return None; // nothing drivable to bake
+        return Err(RoadSkipReason::NoGeometry);
     }
     geoms.sort_by(|a, b| a.s.total_cmp(&b.s));
 
@@ -965,7 +994,7 @@ fn parse_road(
     {
         surfaces.extend(road_crg(node, &baked));
     }
-    Some(baked)
+    Ok(baked)
 }
 
 impl BakedRoad {

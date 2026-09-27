@@ -375,7 +375,7 @@
 //!   order are sorted, as lane sections are, rather than dropped.
 //! - The spec draws the marks of a lane with no `<width>` on its border,
 //!   which is then its inner border. The crate does not bake the lane, so
-//!   its marks go with it.
+//!   its marks go with it, and raises [`Warning::LaneDropped`].
 //!
 //! # Road surfaces
 //!
@@ -437,7 +437,7 @@
 //!   cross-section imports flat across its width.
 //! - A lane's `<border>`, as opposed to an object's. A lane whose extent
 //!   comes from a border rather than a width element has nothing to sample,
-//!   so the importer drops it.
+//!   so the importer drops it and raises [`Warning::LaneDropped`].
 //! - The center lane, lane 0, so it never becomes a [`Lane`]. Only its road
 //!   marks are read.
 //!
@@ -468,6 +468,21 @@
 //! document yielded no lanes at all. Non-finite attribute values are rejected
 //! at parse. Rust's float parser accepts `NaN` and turns `1e400` into
 //! infinity, and one such value poisons every point derived from it.
+//!
+//! [`Provenance::warnings`] says what the load did with a bad file. Each
+//! [`Warning`] names where in the file it happened, and prints as a
+//! sentence. The crate raises one where it drops something, or reads a file
+//! that breaks a rule of the spec:
+//!
+//! - [`Warning::RoadSkipped`] for a road with no finite `length`, no
+//!   `<planView>`, or no `<geometry>` it can bake. The [`RoadSkipReason`]
+//!   says which.
+//! - [`Warning::LaneDropped`] for a lane with no `<width>` it can read.
+//!
+//! Elements the crate does not read at all raise none. Real maps are full of
+//! them, and they would bury the rest. Other things it drops, such as a lane
+//! section under 1 mm long or a signal off the end of its road, raise none
+//! yet. The crate prints nothing. To log the warnings, print the list.
 //!
 //! # Importer contract
 //!
@@ -521,8 +536,8 @@ pub use opencrg;
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ControllerProvenance,
     ImportError, JunctionControllerProvenance, LaneHeight, LaneProvenance, ObjectProvenance,
-    Orientation, Provenance, RoadMarkProvenance, SignalProvenance, SignalReferenceProvenance,
-    StructureProvenance,
+    Orientation, Provenance, RoadMarkProvenance, RoadSkipReason, SignalProvenance,
+    SignalReferenceProvenance, StructureProvenance, Warning,
 };
 pub use road_mark::{
     LaneChange, LinePattern, LineRule, RoadMark, RoadMarkId, RoadMarkLine, RoadMarkType,

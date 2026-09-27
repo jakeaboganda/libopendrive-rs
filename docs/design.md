@@ -62,6 +62,17 @@ A road the importer cannot interpret is skipped, not fatal. Losing a city map
 to one junk road is the worse failure. `load_str` still errors if the document
 yields no lanes at all.
 
+`Provenance::warnings` says what the load did with a bad file. A `Warning` is
+data, not a log line: one enum variant per kind, naming the road, lane section
+or lane it happened at. A test can assert on it, and a caller can filter the
+kinds it doesn't care about. The crate prints nothing and depends on no
+logging crate. A clean file allocates no warnings.
+
+The crate warns where it drops something, or reads a file that breaks a rule
+of the spec. So far that is a skipped road and a lane with no `<width>`. It
+doesn't warn for elements it doesn't read, such as `<userData>`, which real
+maps are full of. [support.md](support.md) lists those.
+
 The parser rejects non-finite attribute values as it reads them. Rust's float
 parser accepts `NaN` and turns `1e400` into infinity, and one such value
 poisons every point derived from it.

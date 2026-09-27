@@ -35,7 +35,8 @@ mesh.validate()?;
 - Tunnels and bridges.
 - OpenCRG surfaces, for the height, normal and friction under a wheel.
 
-It loads a file whatever OpenDRIVE version it declares.
+It loads a file whatever OpenDRIVE version it declares. Where it drops part
+of a bad file, it says so in `Provenance::warnings`.
 [docs/support.md](docs/support.md) covers each element, and the three it
 skips that change the road's shape.
 

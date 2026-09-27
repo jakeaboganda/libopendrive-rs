@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Warnings
+
+- Breaking: `Provenance` has a new `warnings` field, so a `Provenance`
+  literal no longer compiles. It lists what a load dropped from a bad file,
+  in file order, as `Warning`s. A clean file has none.
+- `Warning` is an enum with one variant per kind, marked `#[non_exhaustive]`.
+  Each names where in the file it happened, and `Display` gives the message.
+  It derives `serde` under the feature.
+- `Warning::RoadSkipped` names a road with no finite `length`, no
+  `<planView>`, or no `<geometry>` the crate can bake. `RoadSkipReason`
+  says which.
+- `Warning::LaneDropped` names a lane with no `<width>`, which the crate
+  drops along with its road marks. The spec draws those marks.
+- Elements the crate does not read raise no warning.
+
 ## 0.3.1 - 2026-09-27
 
 ### Docs
@@ -46,10 +63,10 @@
   - A point on the border between two lanes is on the inner one, as in
     libOpenDRIVE, and a point past the outermost lane takes its outer
     height. The spec says neither.
-- The viewer's lane readout gives a raised lane's inner and outer height
-  at the hovered point.
   - An `attached` CRG over a raised lane answers at road level. The spec
     measures a height from the road including its surface.
+- The viewer's lane readout gives a raised lane's inner and outer height
+  at the hovered point.
 
 ### Road marks
 

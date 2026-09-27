@@ -6,7 +6,10 @@
 //! the routing graph) treats the imported network as sound, so this is the
 //! boundary where that has to be made true.
 
-use libopendrive::{load_file, load_str};
+use libopendrive::{
+    load_file, load_file_with_provenance, load_str, load_str_with_provenance, RoadSkipReason,
+    Warning,
+};
 
 const DATA: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/");
 /// The four full maps in `tests/data`: a hand-authored demo, an esmini
@@ -20,6 +23,20 @@ const FULL_MAPS: [&str; 4] = [
 
 fn fixture(name: &str) -> libopendrive::RoadNetwork {
     load_file(format!("{DATA}{name}")).unwrap_or_else(|e| panic!("loading {name}: {e}"))
+}
+
+fn warnings(name: &str) -> Vec<Warning> {
+    load_file_with_provenance(format!("{DATA}{name}"))
+        .unwrap_or_else(|e| panic!("loading {name}: {e}"))
+        .1
+        .warnings
+}
+
+fn skipped(road_id: &str, reason: RoadSkipReason) -> Warning {
+    Warning::RoadSkipped {
+        road_id: road_id.into(),
+        reason,
+    }
 }
 
 #[test]
@@ -154,5 +171,78 @@ fn every_full_map_tessellates_into_a_valid_trimesh() {
             mesh.normals.len() == mesh.vertices.len(),
             "{path}: normals and vertices disagree"
         );
+    }
+}
+
+#[test]
+fn a_skipped_road_raises_a_warning_naming_it() {
+    assert_eq!(
+        warnings("no_geometry.xodr"),
+        [skipped("1", RoadSkipReason::NoGeometry)]
+    );
+}
+
+#[test]
+fn non_finite_geometry_and_widths_raise_warnings() {
+    assert_eq!(
+        warnings("non_finite.xodr"),
+        [
+            skipped("1", RoadSkipReason::NoGeometry),
+            skipped("2", RoadSkipReason::NoGeometry),
+            Warning::LaneDropped {
+                road_id: "3".into(),
+                section: 0,
+                lane: -1,
+            },
+        ]
+    );
+}
+
+#[test]
+fn a_road_without_a_length_or_plan_view_raises_a_warning() {
+    let lanes = r#"<lanes><laneSection s="0"><right>
+        <lane id="-1" type="driving"><width sOffset="0" a="3"/></lane>
+      </right></laneSection></lanes>"#;
+    let plan = r#"<planView><geometry s="0" x="0" y="0" hdg="0" length="20"><line/></geometry></planView>"#;
+    let xml = format!(
+        r#"<OpenDRIVE>
+  <road id="a" length="inf">{plan}{lanes}</road>
+  <road id="b" length="20">{lanes}</road>
+  <road id="c" length="20">{plan}{lanes}</road>
+</OpenDRIVE>"#
+    );
+    let (_, prov) = load_str_with_provenance(&xml).expect("road c loads");
+    assert_eq!(
+        prov.warnings,
+        [
+            skipped("a", RoadSkipReason::NoLength),
+            skipped("b", RoadSkipReason::NoPlanView),
+        ]
+    );
+}
+
+#[test]
+fn a_warning_reads_as_a_sentence() {
+    assert_eq!(
+        skipped("7", RoadSkipReason::NoPlanView).to_string(),
+        r#"road "7" skipped: no <planView>"#
+    );
+    assert_eq!(
+        Warning::LaneDropped {
+            road_id: "7".into(),
+            section: 2,
+            lane: -3,
+        }
+        .to_string(),
+        r#"road "7", lane section 2: lane -3 dropped, it has no usable <width>"#
+    );
+}
+
+#[test]
+fn a_clean_map_raises_no_warnings() {
+    for path in FULL_MAPS {
+        let (_, prov) =
+            load_file_with_provenance(path).unwrap_or_else(|e| panic!("loading {path}: {e}"));
+        assert_eq!(prov.warnings, [], "{path}");
     }
 }

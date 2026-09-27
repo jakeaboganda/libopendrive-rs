@@ -689,6 +689,14 @@ mod tests {
         let lanes: Vec<i32> = prov.road_marks.iter().map(|p| p.od_lane_id).collect();
         assert_eq!(lanes, [-1]);
         assert_eq!(net.road_marks()[0].right, None);
+        assert_eq!(
+            prov.warnings,
+            [crate::Warning::LaneDropped {
+                road_id: "1".into(),
+                section: 0,
+                lane: -2
+            }]
+        );
     }
 
     #[test]

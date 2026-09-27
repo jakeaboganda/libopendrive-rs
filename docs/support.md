@@ -15,7 +15,7 @@ loads depends only on whether it uses the elements listed below.
 Every one of those elements is in ASAM OpenDRIVE 1.9.0, the current revision.
 1.9.0 deprecates `poly3` in favour of `paramPoly3`, and 1.8 deprecated a
 signal's `<positionRoad>` and `<positionInertial>`. The importer reads them
-like any other element and prints no warning. The test suite imports real
+like any other element and raises no warning. The test suite imports real
 files declaring 1.4, 1.6 and 1.7.
 
 ## Roads and lanes
@@ -153,6 +153,13 @@ sh examples/crg_data.sh
 cargo run --release --example crg_profile -- target/crg/country_road.xodr > profile.csv
 ```
 
+## Warnings
+
+`Provenance::warnings` lists what a load dropped from a bad file. A road with
+no finite `length`, no `<planView>` or no geometry the importer can bake
+raises `Warning::RoadSkipped`. A lane with no `<width>` raises
+`Warning::LaneDropped`. The elements below raise nothing.
+
 ## What it ignores
 
 The importer silently skips everything else in the file, `<geoReference>`
@@ -163,5 +170,5 @@ around it:
   cross-section imports flat across its width.
 - A lane's `<border>`, as opposed to an object's. A lane whose extent comes
   from a border rather than a width element has nothing to sample, so the
-  importer drops it.
+  importer drops it and raises `Warning::LaneDropped`.
 - `<center>`, so lane 0 never becomes a `Lane`.
