@@ -15,11 +15,14 @@
   #search { width: 100%; padding: 6px 8px; background: #1b1f27; border: 1px solid #2a2f3a; border-radius: 5px; color: inherit; }
   #count { color: #7c8595; font-size: 11px; margin-top: 6px; }
   #list { overflow: auto; flex: 1; padding: 4px 0; }
-  .road { padding: 4px 12px 2px; color: #8fa1b3; font-weight: 600; letter-spacing: .02em; }
-  .lane { padding: 3px 12px 3px 22px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
-  .lane:hover { background: #1b1f27; }
-  .lane.active { background: #2d4a63; }
-  .lane .tag { color: #7c8595; font-variant-numeric: tabular-nums; }
+  .road { padding: 4px 12px 2px; color: #8fa1b3; font-weight: 600; letter-spacing: .02em; cursor: pointer; }
+  .group { padding: 2px 12px 2px 22px; color: #8fa1b3; cursor: pointer; }
+  .road .tag, .group .tag { font-weight: 400; }
+  .item { padding: 3px 12px 3px 22px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+  details details .item { padding-left: 34px; }
+  .item:hover { background: #1b1f27; }
+  .item.active { background: #2d4a63; }
+  .tag { color: #7c8595; font-variant-numeric: tabular-nums; }
   #view { position: relative; min-width: 0; }
   canvas { display: block; }
   #tip { position: absolute; pointer-events: none; padding: 6px 8px; background: #0b0d11ee; border: 1px solid #3a4150;
@@ -46,8 +49,8 @@
 <div id="app">
   <aside id="sidebar">
     <header>
-      <h1>Roads &amp; lanes</h1>
-      <input id="search" placeholder="filter: road id, lane id, or lane type…" autocomplete="off" />
+      <h1>map</h1>
+      <input id="search" placeholder="filter: road, lane, object or signal…" autocomplete="off" />
       <div id="count"></div>
     </header>
     <div id="list"></div>
@@ -178,6 +181,10 @@ const SIGNAL_COLORS = { 'static': 0xf2f2f2, 'dynamic': 0x2b2f36 };
 const SIGN_SIZE = 0.6;
 const BOARD_THICKNESS = 0.05;
 
+// A sidebar group starts open when it holds at most this many entries, so a
+// small map lists everything and a big one lists its roads.
+const OPEN_BELOW = 12;
+
 // Size in metres of the marker drawn for an object with no extent, and the
 // least size an instanced box or cylinder gets. A post given only a height
 // has no footprint, and at 0 it would not draw at all.
@@ -205,7 +212,10 @@ let objects = [];
 let lanes = [];              // enriched lane records
 let spanIndex = [];          // {start,end,lane} sorted by index-range start, for picking
 let laneById = new Map();
-let activeLane = null;
+let selected = null;         // null, or {kind: 'lane' | 'object' | 'signal', record} clicked in the sidebar
+let selectionOutline;        // edges of the selected object or signal
+let selectionLink;           // dashed lines from the selected board to where it applies
+let openGroups = new Set();  // keys of the sidebar groups that are open
 let structures = [];         // tunnels and bridges
 let structureTints = {};     // kind -> mesh tinting the lanes it covers
 let crgMesh = null;          // the CRG height overlay; userData is the exported crg record
@@ -229,7 +239,10 @@ async function pickScene() {
     picker.add(new Option(name.replace(/\.json$/, ''), name, false, name === chosen));
   }
   picker.addEventListener('change', () => { location.search = '?scene=' + encodeURIComponent(picker.value); });
-  if (chosen) document.title = `${chosen.replace(/\.json$/, '')} - libopendrive viewer`;
+  if (chosen) {
+    document.title = `${chosen.replace(/\.json$/, '')} - libopendrive viewer`;
+    document.querySelector('#sidebar h1').textContent = chosen.replace(/\.json$/, '');
+  }
   return { sceneUrl: chosen, count: names.length };
 }
 
@@ -506,6 +519,7 @@ function applyMode() {
   if (roadMarkMesh) roadMarkMesh.visible = on('roadmarks');
   if (!on('objects') && !on('signals') && !on('roadmarks')) objectOutline.visible = false;
   if (!on('signals')) signalLink.visible = false;
+  drawSelection();
   if (crgMesh) crgMesh.visible = on('crg');
   badMesh.visible = on('flag');
   const n = badMesh.userData.count;
@@ -538,12 +552,28 @@ function buildObjects(data) {
   buildMarkings();
   buildBorders();
 
-  objectOutline = new THREE.LineSegments(new THREE.BufferGeometry(),
+  objectOutline = outlineLines();
+  selectionOutline = outlineLines();
+}
+
+// Edges drawn over everything around one object or signal, placed by
+// `showOutline`.
+function outlineLines() {
+  const lines = new THREE.LineSegments(new THREE.BufferGeometry(),
     new THREE.LineBasicMaterial({ color: 0xffd24a, depthTest: false }));
-  objectOutline.matrixAutoUpdate = false;
-  objectOutline.renderOrder = 4;
-  objectOutline.visible = false;
-  scene.add(objectOutline);
+  lines.matrixAutoUpdate = false;
+  lines.renderOrder = 4;
+  lines.visible = false;
+  scene.add(lines);
+  return lines;
+}
+
+// `lines` around the `{edges, matrix}` an outline() gives, or hidden for none.
+function showOutline(lines, outline) {
+  lines.visible = !!outline;
+  if (!outline) return;
+  lines.geometry = outline.edges;
+  lines.matrix.copy(outline.matrix);
 }
 
 // Every solid the object mesh leaves out, as an instance of one of three
@@ -581,11 +611,14 @@ function buildSolids(solids) {
     });
     mesh.computeBoundingSphere();
     const edges = new THREE.EdgesGeometry(geometries[shape]);
-    mesh.userData.pick = hit => {
-      const matrix = new THREE.Matrix4();
-      mesh.getMatrixAt(hit.instanceId, matrix);
-      return { record: list[hit.instanceId], edges, matrix };
-    };
+    list.forEach((o, i) => {
+      o.outline = () => {
+        const matrix = new THREE.Matrix4();
+        mesh.getMatrixAt(i, matrix);
+        return { edges, matrix };
+      };
+    });
+    mesh.userData.pick = hit => ({ record: list[hit.instanceId], ...list[hit.instanceId].outline() });
     scene.add(mesh);
     objectMeshes.push(mesh);
   }
@@ -605,6 +638,15 @@ function buildShapes(data) {
     if (!o) continue;
     c.setHex(objectColor(o));
     o.triangles = [owner.length, (span.indices[1] - span.indices[0]) / 3];
+    o.outline = () => {
+      if (!o.edges) {
+        const [first, count] = o.triangles;
+        const part = new THREE.BufferGeometry().setAttribute('position',
+          new THREE.Float32BufferAttribute(positions.slice(first * 9, (first + count) * 9), 3));
+        o.edges = new THREE.EdgesGeometry(part);
+      }
+      return { edges: o.edges, matrix: new THREE.Matrix4() };
+    };
     for (let i = span.indices[0]; i < span.indices[1]; i++) {
       const v = om.indices[i] * 3;
       positions.push(om.positions[v], om.positions[v + 1], om.positions[v + 2]);
@@ -626,16 +668,7 @@ function buildShapes(data) {
     vertexColors: true, roughness: 0.7, metalness: 0.0, side: THREE.DoubleSide,
     polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
   }));
-  mesh.userData.pick = hit => {
-    const record = owner[hit.faceIndex];
-    if (!record.edges) {
-      const [first, count] = record.triangles;
-      const part = new THREE.BufferGeometry().setAttribute('position',
-        new THREE.Float32BufferAttribute(positions.slice(first * 9, (first + count) * 9), 3));
-      record.edges = new THREE.EdgesGeometry(part);
-    }
-    return { record, edges: record.edges, matrix: new THREE.Matrix4() };
-  };
+  mesh.userData.pick = hit => ({ record: owner[hit.faceIndex], ...owner[hit.faceIndex].outline() });
   scene.add(mesh);
   objectMeshes.push(mesh);
 }
@@ -781,12 +814,8 @@ function buildStructures(data) {
 function buildSignals(data) {
   signals = data.signals ?? [];
   controllers = new Map((data.controllers ?? []).map(c => [c.controllerId, c]));
-  signalLink = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({
-    color: 0xffd24a, dashSize: 0.3, gapSize: 0.2, depthTest: false,
-  }));
-  signalLink.renderOrder = 4;
-  signalLink.visible = false;
-  scene.add(signalLink);
+  signalLink = dashedLines();
+  selectionLink = dashedLines();
   if (!signals.length) return;
 
   const board = new THREE.BoxGeometry(1, 1, 1).translate(0, 0, 0.5);
@@ -810,38 +839,52 @@ function buildSignals(data) {
   });
   mesh.computeBoundingSphere();
   const edges = new THREE.EdgesGeometry(board);
-  mesh.userData.pick = hit => {
-    const matrix = new THREE.Matrix4();
-    mesh.getMatrixAt(hit.instanceId, matrix);
-    return { record: signals[hit.instanceId], edges, matrix };
-  };
+  signals.forEach((sg, i) => {
+    sg.outline = () => {
+      const matrix = new THREE.Matrix4();
+      mesh.getMatrixAt(i, matrix);
+      return { edges, matrix };
+    };
+  });
+  mesh.userData.pick = hit => ({ record: signals[hit.instanceId], ...signals[hit.instanceId].outline() });
   scene.add(mesh);
   signalMeshes.push(mesh);
 }
 
-// A dashed line from a signal's board to each point where it applies:
-// straight down to the road under it, or across to the road it applies to
-// where the map stands it somewhere else.
-function linkSignal(sg) {
-  const positions = sg.appliesAt.flatMap(p => [...sg.position, ...p]);
-  signalLink.geometry.dispose();
-  signalLink.geometry = new THREE.BufferGeometry();
-  signalLink.geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  signalLink.computeLineDistances();
-  signalLink.visible = positions.length > 0;
+// Dashed lines drawn over everything, placed by `linkSignal`.
+function dashedLines() {
+  const lines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({
+    color: 0xffd24a, dashSize: 0.3, gapSize: 0.2, depthTest: false,
+  }));
+  lines.renderOrder = 4;
+  lines.visible = false;
+  scene.add(lines);
+  return lines;
 }
 
-// The readout for a hovered signal: what it means, where it applies, and
-// its board.
-function showSignalTip(ev, rect, hit) {
-  const { record: sg, edges, matrix } = hit.object.userData.pick(hit);
-  objectOutline.geometry = edges;
-  objectOutline.matrix.copy(matrix);
-  objectOutline.visible = true;
-  linkSignal(sg);
-  const applies = sg.lanes.map(id => laneById.get(id)).filter(Boolean);
-  if (activeLane == null) highlightLanes(applies);
+// `lines` from a signal's board to each point where it applies: straight
+// down to the road under it, or across to the road it applies to where the
+// map stands it somewhere else.
+function linkSignal(lines, sg) {
+  const positions = sg.appliesAt.flatMap(p => [...sg.position, ...p]);
+  lines.geometry.dispose();
+  lines.geometry = new THREE.BufferGeometry();
+  lines.geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  lines.computeLineDistances();
+  lines.visible = positions.length > 0;
+}
 
+// The readout for a hovered signal, its outline, and its links.
+function showSignalTip(ev, rect, hit) {
+  const { record: sg, ...outline } = hit.object.userData.pick(hit);
+  showOutline(objectOutline, outline);
+  linkSignal(signalLink, sg);
+  if (!selected) highlightLanes(lanesOf(sg.lanes));
+  placeTip(ev.clientX - rect.left, ev.clientY - rect.top, signalRows(sg));
+}
+
+// A signal's readout: what it means, where it applies, and its board.
+function signalRows(sg) {
   const deg = r => (r * 180 / Math.PI).toFixed(1) + '°';
   const flags = [sg.dynamic && 'dynamic', sg.invalidated && 'invalidated', sg.temporary && 'temporary']
     .filter(Boolean).join('  ');
@@ -864,7 +907,7 @@ function showSignalTip(ev, rect, hit) {
     rows.push(`<b>reference</b> on road ${escapeHtml(r.roadId)}  ` +
       `s ${r.s.toFixed(2)} m   t ${r.t.toFixed(2)} m   orientation ${r.orientation}`);
   }
-  rows.push(laneList(applies));
+  rows.push(laneList(lanesOf(sg.lanes)));
   const [x, y, z] = sg.position;
   const [ax, ay, az] = sg.appliesAt[0];
   if (Math.hypot(ax - x, ay - y) > 0.01) {
@@ -876,10 +919,7 @@ function showSignalTip(ev, rect, hit) {
     `heading ${deg(sg.heading)}   pitch ${deg(sg.pitch)}   roll ${deg(sg.roll)}`,
     `board ${size(sg.width)} × ${size(sg.height)} m` + (sg.length != null ? `, ${size(sg.length)} m thick` : ''),
   );
-  tip.style.display = 'block';
-  tip.style.left = (ev.clientX - rect.left + 14) + 'px';
-  tip.style.top = (ev.clientY - rect.top + 14) + 'px';
-  tip.innerHTML = rows.join('\n');
+  return rows;
 }
 
 // A row per controller a signal belongs to: its name, id and priority, the
@@ -972,12 +1012,10 @@ function buildRoadMarks(data) {
 // The readout for a hovered road mark: what it means, where it runs, and the
 // lanes either side of it, which are highlighted.
 function showRoadMarkTip(ev, rect, hit) {
-  const { record: m, edges, matrix } = hit.object.userData.pick(hit);
-  objectOutline.geometry = edges;
-  objectOutline.matrix.copy(matrix);
-  objectOutline.visible = true;
+  const { record: m, ...outline } = hit.object.userData.pick(hit);
+  showOutline(objectOutline, outline);
   const left = laneById.get(m.left), right = laneById.get(m.right);
-  if (activeLane == null) highlightLanes([left, right].filter(Boolean));
+  if (!selected) highlightLanes([left, right].filter(Boolean));
 
   const side = l => l ? `lane ${l.odLaneId} (${l.laneType})` : 'road edge';
   const rows = [`<b>road mark</b> ${m.type}  ${escapeHtml(m.color)}`];
@@ -994,10 +1032,7 @@ function showRoadMarkTip(ev, rect, hit) {
     ...m.lines.map(lineRow),
     `roadMarkId ${m.roadMarkId}`,
   );
-  tip.style.display = 'block';
-  tip.style.left = (ev.clientX - rect.left + 14) + 'px';
-  tip.style.top = (ev.clientY - rect.top + 14) + 'px';
-  tip.innerHTML = rows.join('\n');
+  placeTip(ev.clientX - rect.left, ev.clientY - rect.top, rows);
 }
 
 // One road mark line: its pattern, where it starts and sits, its width and
@@ -1015,8 +1050,6 @@ function lineRow(l) {
 }
 
 // --- Sidebar -----------------------------------------------------------------
-
-function buildSidebar() { renderSidebar(); }
 
 // Swatches for the lane types this map actually contains, so the legend names
 // what is on screen rather than every type the crate knows about.
@@ -1056,68 +1089,135 @@ function buildLegend() {
   document.getElementById('legend').replaceChildren(frag);
 }
 
+// Every road's lanes, objects and signals that match the filter `q`, by road
+// id, in the order the map lists its lanes.
+function sidebarRoads(q) {
+  const has = (...fields) => !q || fields.some(f => f != null && String(f).toLowerCase().includes(q));
+  const roads = new Map();
+  const add = (list, kind, match) => {
+    for (const x of list) {
+      if (!match(x)) continue;
+      const road = String(x.roadId ?? '(none)');
+      if (!roads.has(road)) roads.set(road, { lanes: [], objects: [], signals: [] });
+      roads.get(road)[kind].push(x);
+    }
+  };
+  add(lanes, 'lanes', l => has(l.roadId, l.odLaneId, l.laneId, l.laneType));
+  add(objects, 'objects', o => has(o.roadId, o.odId, o.objectType, o.subtype, o.name));
+  add(signals, 'signals', sg => has(sg.roadId, sg.odId, sg.name, sg.country, sg.type, sg.subtype));
+  return roads;
+}
+
+// Open the groups small enough to list whole: the roads on a map with few of
+// them, and each road's objects or signals where there are few.
+function buildSidebar() {
+  const roads = sidebarRoads('');
+  if (roads.size <= OPEN_BELOW) roads.forEach((_, road) => openGroups.add(`road ${road}`));
+  for (const [road, { objects, signals }] of roads) {
+    if (objects.length <= OPEN_BELOW) openGroups.add(`road ${road} objects`);
+    if (signals.length <= OPEN_BELOW) openGroups.add(`road ${road} signals`);
+  }
+  if (structures.length <= OPEN_BELOW) openGroups.add('structures');
+  renderSidebar();
+}
+
 function renderSidebar() {
   const q = searchEl.value.trim().toLowerCase();
-  const match = l =>
-    !q || String(l.roadId).toLowerCase().includes(q) ||
-    String(l.odLaneId).includes(q) || String(l.laneId).includes(q) ||
-    l.laneType.includes(q);
+  const roads = sidebarRoads(q);
+  const total = kind => [...roads.values()].reduce((n, r) => n + r[kind].length, 0);
+  countEl.textContent = `${total('lanes')} / ${lanes.length} lanes · ${total('objects')} / ${objects.length} objects · ` +
+    `${total('signals')} / ${signals.length} signals · ${roads.size} roads · ` +
+    `${structures.length} tunnels & bridges · ${roadMarks.length} road marks`;
 
-  const byRoad = new Map();
-  let shown = 0;
-  for (const l of lanes) {
-    if (!match(l)) continue;
-    shown++;
-    if (!byRoad.has(l.roadId)) byRoad.set(l.roadId, []);
-    byRoad.get(l.roadId).push(l);
-  }
-  countEl.textContent = `${shown} / ${lanes.length} lanes · ${byRoad.size} roads · ` +
-    `${objects.length} objects · ${structures.length} tunnels & bridges · ${signals.length} signals · ` +
-    `${roadMarks.length} road marks`;
+  // A collapsible group under `parent`, open while filtering or if the user
+  // left it open.
+  const group = (parent, key, className, html) => {
+    const d = document.createElement('details');
+    d.open = !!q || openGroups.has(key);
+    d.addEventListener('toggle', () => {
+      if (!q) d.open ? openGroups.add(key) : openGroups.delete(key);
+    });
+    const summary = document.createElement('summary');
+    summary.className = className;
+    summary.innerHTML = html;
+    d.appendChild(summary);
+    parent.appendChild(d);
+    return d;
+  };
+  const item = (parent, record, html, onclick) => {
+    const el = document.createElement('div');
+    el.className = 'item' + (selected?.record === record ? ' active' : '');
+    el.innerHTML = html;
+    el.onclick = onclick;
+    parent.appendChild(el);
+  };
+  const at = x => x.s != null ? `<span class="tag">s ${x.s.toFixed(0)} m</span>` : '';
 
   const frag = document.createDocumentFragment();
   const listed = structures.filter(s => !q || s.kind.includes(q) ||
     s.name.toLowerCase().includes(q) || String(s.roadId).toLowerCase().includes(q));
   if (listed.length) {
-    const h = document.createElement('div');
-    h.className = 'road';
-    h.textContent = 'tunnels & bridges';
-    frag.appendChild(h);
-  }
-  for (const s of listed) {
-    const el = document.createElement('div');
-    el.className = 'lane';
-    el.innerHTML = `<span>${s.kind} ${escapeHtml(s.name || '(unnamed)')} ` +
-      `<span class="tag">road ${escapeHtml(String(s.roadId))}</span></span>` +
-      `<span class="tag">${structureRange(s)}</span>`;
-    el.onclick = () => {
-      if (activeLane != null) selectLane(activeLane);
-      highlightLanes(s.lanes.map(c => laneById.get(c.laneId)).filter(Boolean));
-      // Frame the covered stretch of each lane, not the whole lane.
-      const pts = s.lanes.flatMap(c => {
-        const lane = laneById.get(c.laneId);
-        return lane ? lane.centerline.filter((_, i) => lane.cum[i] >= c.from && lane.cum[i] <= c.to) : [];
+    const g = group(frag, 'structures', 'road', `tunnels &amp; bridges <span class="tag">${listed.length}</span>`);
+    for (const s of listed) {
+      item(g, s, `<span>${s.kind} ${escapeHtml(s.name || '(unnamed)')} ` +
+        `<span class="tag">road ${escapeHtml(String(s.roadId))}</span></span>` +
+        `<span class="tag">${structureRange(s)}</span>`, () => {
+        if (selected) select(selected.kind, selected.record);
+        highlightLanes(s.lanes.map(c => laneById.get(c.laneId)).filter(Boolean));
+        // Frame the covered stretch of each lane, not the whole lane.
+        const pts = s.lanes.flatMap(c => {
+          const lane = laneById.get(c.laneId);
+          return lane ? lane.centerline.filter((_, i) => lane.cum[i] >= c.from && lane.cum[i] <= c.to) : [];
+        });
+        if (pts.length) frameOnPoints(pts, 25);
       });
-      if (pts.length) frameOnPoints(pts, 25);
-    };
-    frag.appendChild(el);
+    }
   }
-  for (const [road, group] of byRoad) {
-    const r = document.createElement('div');
-    r.className = 'road';
-    r.textContent = `road ${road}`;
-    frag.appendChild(r);
-    group.sort((a, b) => a.section - b.section || b.odLaneId - a.odLaneId);
-    for (const l of group) {
-      const el = document.createElement('div');
-      el.className = 'lane' + (activeLane === l.laneId ? ' active' : '');
-      el.innerHTML = `<span>lane ${l.odLaneId} <span class="tag">§${l.section} ${l.laneType}</span></span>` +
-        `<span class="tag">${l.length.toFixed(0)} m</span>`;
-      el.onclick = () => { selectLane(l.laneId); frameOnLane(l); };
-      frag.appendChild(el);
+  for (const [road, r] of roads) {
+    const counts = ['lanes', 'objects', 'signals'].filter(k => r[k].length).map(k => `${r[k].length} ${k}`);
+    const g = group(frag, `road ${road}`, 'road', `road ${escapeHtml(road)} <span class="tag">${counts.join(' · ')}</span>`);
+    r.lanes.sort((a, b) => a.section - b.section || b.odLaneId - a.odLaneId);
+    for (const l of r.lanes) {
+      item(g, l, `<span>lane ${l.odLaneId} <span class="tag">§${l.section} ${l.laneType}</span></span>` +
+        `<span class="tag">${l.length.toFixed(0)} m</span>`, () => { select('lane', l); frameOnLane(l); });
+    }
+    if (r.objects.length) {
+      const objectGroup = group(g, `road ${road} objects`, 'group', `objects <span class="tag">${r.objects.length}</span>`);
+      for (const o of r.objects.sort((a, b) => a.s - b.s)) {
+        const name = o.name ? ` <span class="tag">${escapeHtml(o.name)}</span>` : '';
+        item(objectGroup, o, `<span>${escapeHtml(o.objectType)}${name}</span>${at(o)}`, () => {
+          const pts = objectPoints(o);
+          frameOnPoints(pts);
+          if (select('object', o)) showSelectedTip(objectRows(o, centroid(pts)));
+          else hideTip();
+        });
+      }
+    }
+    if (r.signals.length) {
+      const signalGroup = group(g, `road ${road} signals`, 'group', `signals <span class="tag">${r.signals.length}</span>`);
+      for (const s of r.signals.sort((a, b) => a.s - b.s)) {
+        const code = [s.country, s.type, s.subtype].filter(c => c && c !== '-1').map(escapeHtml).join(' ');
+        item(signalGroup, s, `<span>${escapeHtml(s.name || 'signal')} <span class="tag">${code}</span></span>${at(s)}`, () => {
+          frameOnPoints([s.position, s.appliesAt[0]]);
+          if (select('signal', s)) showSelectedTip(signalRows(s));
+          else hideTip();
+        });
+      }
     }
   }
   listEl.replaceChildren(frag);
+}
+
+// The readout for a selection, beside the middle of the view, where the
+// camera has just framed it.
+function showSelectedTip(rows) {
+  placeTip(view.clientWidth / 2, view.clientHeight / 2, rows);
+}
+
+function centroid(pts) {
+  const c = new THREE.Vector3();
+  for (const p of pts) c.add(new THREE.Vector3(...p));
+  return c.divideScalar(pts.length);
 }
 
 // --- Hover / picking ---------------------------------------------------------
@@ -1137,7 +1237,7 @@ function onHover(ev) {
   objectOutline.visible = false;
   signalLink.visible = false;
   travelArrow.visible = false;
-  if (!hit) { hideTip(); if (!activeLane) clearHighlight(); return; }
+  if (!hit) { hideTip(); if (!selected) clearHighlight(); return; }
   if (hit.object === roadMarkMesh) return showRoadMarkTip(ev, rect, hit);
   if (signalMeshes.includes(hit.object)) return showSignalTip(ev, rect, hit);
   if (hit.object !== roadMesh) return showObjectTip(ev, rect, hit);
@@ -1146,7 +1246,7 @@ function onHover(ev) {
   if (!lane) { hideTip(); return; }
 
   const { s, t, heading, i, u } = project(lane, hit.point);
-  if (activeLane == null) setHighlight(lane);
+  if (!selected) setHighlight(lane);
   showTravel(lane, i, u, heading);
 
   const p = hit.point;
@@ -1174,22 +1274,20 @@ function onHover(ev) {
     `<span style="color:#${LINK_COLORS[link].toString(16).padStart(6, '0')}">${link}s</span>`, true);
   rows.push(linked(lane.successors, 'successor'), linked(lane.predecessors, 'predecessor'));
   rows.push(`section ${lane.section}   ${lane.direction}`, `laneId ${lane.laneId}`);
-
-  tip.style.display = 'block';
-  tip.style.left = (ev.clientX - rect.left + 14) + 'px';
-  tip.style.top = (ev.clientY - rect.top + 14) + 'px';
-  tip.innerHTML = rows.join('\n');
+  placeTip(ev.clientX - rect.left, ev.clientY - rect.top, rows);
 }
 
 // The readout for a hovered object, and an outline around it.
 function showObjectTip(ev, rect, hit) {
-  const { record: o, edges, matrix, border } = hit.object.userData.pick(hit);
-  objectOutline.geometry = edges;
-  objectOutline.matrix.copy(matrix);
-  objectOutline.visible = true;
-  const applies = (o.lanes ?? []).map(id => laneById.get(id)).filter(Boolean);
-  if (activeLane == null) highlightLanes(applies);
+  const { record: o, border, ...outline } = hit.object.userData.pick(hit);
+  showOutline(objectOutline, outline);
+  if (!selected) highlightLanes(lanesOf(o.lanes));
+  placeTip(ev.clientX - rect.left, ev.clientY - rect.top, objectRows(o, hit.point, border));
+}
 
+// An object's readout, with the point `p` on an outline or a sweep, and the
+// `border` under the cursor, if any.
+function objectRows(o, p, border) {
   const sub = o.subtype && o.subtype.toLowerCase() !== 'none' ? ` (${escapeHtml(o.subtype)})` : '';
   const rows = [`<b>${o.objectType}</b>${sub}${o.name ? '  ' + escapeHtml(o.name) : ''}` +
     (o.dynamic ? '  dynamic' : '')];
@@ -1202,7 +1300,7 @@ function showObjectTip(ev, rect, hit) {
       rows.push(`<b>reference</b> to road ${escapeHtml(o.referencedFrom)}  object ${escapeHtml(o.odId)}`);
     }
   }
-  rows.push(laneList(applies));
+  rows.push(laneList(lanesOf(o.lanes)));
   if (o.parkingSpace) {
     const { access, restrictions } = o.parkingSpace;
     rows.push(`parking ${escapeHtml(access || 'no access given')}` +
@@ -1228,16 +1326,28 @@ function showObjectTip(ev, rect, hit) {
   }
   if (o.kind === 'solid') rows.push(...solidRows(o));
   else {
-    const p = hit.point;
     rows.push(`x ${p.x.toFixed(2)}   y ${p.y.toFixed(2)}   z ${p.z.toFixed(2)}`);
     const holes = o.holes?.length ? `, ${o.holes.length} hole${o.holes.length > 1 ? 's' : ''}` : '';
     rows.push(o.kind === 'outline'
       ? `outline, ${o.corners.length} corners, ${o.closed ? 'closed' : 'open'}${holes}`
       : `sweep, ${o.sections.length} sections${o.round ? ', round' : ''}`);
   }
+  return rows;
+}
+
+// The points that bound an object: a solid's base, or every corner of an
+// outline or a sweep.
+function objectPoints(o) {
+  if (o.kind === 'solid') return [o.position];
+  if (o.kind === 'outline') return o.corners.flat();
+  return o.sections.flatMap(s => [...s.left, ...s.right]);
+}
+
+// Show the readout `rows` with its corner near `x, y` in the view.
+function placeTip(x, y, rows) {
   tip.style.display = 'block';
-  tip.style.left = (ev.clientX - rect.left + 14) + 'px';
-  tip.style.top = (ev.clientY - rect.top + 14) + 'px';
+  tip.style.left = (x + 14) + 'px';
+  tip.style.top = (y + 14) + 'px';
   tip.innerHTML = rows.join('\n');
 }
 
@@ -1482,11 +1592,26 @@ function clearHighlight() {
   highlight.visible = successorMesh.visible = predecessorMesh.visible = highlightLine.visible = false;
 }
 
-function selectLane(id) {
-  activeLane = (activeLane === id) ? null : id;
-  if (activeLane == null) clearHighlight();
-  else setHighlight(laneById.get(id));
+// Select `record`, a lane, object or signal, or clear the selection if it is
+// already selected. True if it is selected now.
+function select(kind, record) {
+  selected = selected?.record === record ? null : { kind, record };
+  drawSelection();
   renderSidebar();
+  return selected != null;
+}
+
+// Highlight the selection: a lane with its links, or an object or signal
+// with its outline and lanes, while its layer is on.
+function drawSelection() {
+  selectionOutline.visible = selectionLink.visible = false;
+  if (!selected) return clearHighlight();
+  const { kind, record } = selected;
+  if (kind === 'lane') return setHighlight(record);
+  highlightLanes(lanesOf(record.lanes));
+  if (!document.getElementById(kind + 's').checked) return;
+  showOutline(selectionOutline, record.outline?.());
+  if (kind === 'signal') linkSignal(selectionLink, record);
 }
 
 // --- Camera framing ----------------------------------------------------------

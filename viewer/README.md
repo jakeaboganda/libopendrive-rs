@@ -58,12 +58,24 @@ viewer draws, so use it to try the features below.
 | `m` | toggle road marks |
 | `c` | toggle the CRG heat map |
 | pick in the `map` list | load another baked map |
-| click a sidebar entry | highlight it and move the camera to it |
-| type in the filter box | filter lanes by road id, lane id or lane type, and tunnels and bridges by name, kind or road |
+| click a sidebar entry | select it and move the camera to it, or clear it if selected |
+| type in the filter box | filter lanes by road id, lane id or lane type, objects by type, subtype, name or id, signals by name, country, type, subtype or id, and tunnels and bridges by name, kind or road |
 
 The checkboxes along the top toggle centerlines (green), lane boundaries
 (cream), normals (a hair at every mesh vertex), objects, tunnels, bridges,
 signals, road marks, and the CRG heat map.
+
+## Sidebar
+
+The sidebar lists each road with its lanes, objects and signals, and the
+tunnels and bridges above them. A group of 12 or fewer starts open. So on a
+small map everything is listed, and on town07 you see 234 closed roads.
+Filtering opens every group that matches.
+
+Click an object or a signal to select it. The camera frames it, and the
+readout opens beside it. It stays outlined, with its lanes lit and a
+signal's dashed lines drawn, while you hover other things. Click it again
+to clear it.
 
 ## Lanes
 

@@ -150,6 +150,9 @@
   successors green and its predecessors orange, and lists them in the
   readout. `viewer_export` writes each lane's `successors` and
   `predecessors`.
+- The sidebar lists each road's objects and signals under its lanes, in
+  groups that fold. Click one to select it, frame it and read it. The
+  filter matches them too, and the header names the map.
 
 ### Breaking
 
