@@ -1,11 +1,12 @@
 //! Road marks, placed along the lane borders of each baked road.
 
 use super::{
-    attr_f64, width_at, BakedRoad, BakedSection, LaneDef, RoadMarkProvenance, MAX_REPEAT_INSTANCES,
+    attr_f64, child, width_at, BakedRoad, BakedSection, LaneDef, RoadMarkProvenance,
+    MAX_REPEAT_INSTANCES,
 };
 use crate::coords::Point;
 use crate::{
-    LaneChange, LaneId, LinePattern, RoadMark, RoadMarkId, RoadMarkLine, RoadMarkType,
+    LaneChange, LaneId, LinePattern, LineRule, RoadMark, RoadMarkId, RoadMarkLine, RoadMarkType,
     RoadMarkWeight,
 };
 
@@ -30,6 +31,63 @@ pub(super) struct MarkDef {
     width: Option<f64>,
     height: Option<f64>,
     lane_change: LaneChange,
+    /// Its `<type>`'s width, if the map gives one above 0.
+    type_width: Option<f64>,
+    /// Its `<type>`'s `<line>`s.
+    lines: Vec<LineDef>,
+}
+
+/// A line of a road mark, before it is placed: one of its `<type><line>`s,
+/// or one of the lines that stand in for its type.
+struct LineDef {
+    pattern: LinePattern,
+    s_offset: f64,
+    t_offset: f64,
+    rule: LineRule,
+    /// Its width and colour, if it has its own.
+    width: Option<f64>,
+    color: Option<String>,
+}
+
+impl LineDef {
+    /// A `<type><line>`. One with a `length` and `space` of 0 is
+    /// continuous, and a missing `rule` is `none`.
+    fn parse(line: roxmltree::Node) -> Self {
+        let length = attr_f64(line, "length").unwrap_or(0.0);
+        let space = attr_f64(line, "space").unwrap_or(0.0);
+        Self {
+            pattern: if length == 0.0 && space == 0.0 {
+                LinePattern::Continuous
+            } else {
+                LinePattern::Dashed {
+                    length: length as f32,
+                    space: space as f32,
+                }
+            },
+            s_offset: attr_f64(line, "sOffset").unwrap_or(0.0),
+            t_offset: attr_f64(line, "tOffset").unwrap_or(0.0),
+            rule: match line.attribute("rule") {
+                None | Some("none") => LineRule::None,
+                Some("no passing") => LineRule::NoPassing,
+                Some("caution") => LineRule::Caution,
+                Some(_) => LineRule::Unknown,
+            },
+            width: attr_f64(line, "width").filter(|w| *w > 0.0),
+            color: line.attribute("color").map(str::to_string),
+        }
+    }
+
+    /// A line standing in for a type, `t_offset` from the border.
+    fn stand_in(t_offset: f64, pattern: LinePattern) -> Self {
+        Self {
+            pattern,
+            s_offset: 0.0,
+            t_offset,
+            rule: LineRule::None,
+            width: None,
+            color: None,
+        }
+    }
 }
 
 /// The road marks baked so far, and the provenance of each, in step.
@@ -49,17 +107,27 @@ pub(super) fn parse(lane: roxmltree::Node) -> Vec<MarkDef> {
     let mut marks: Vec<MarkDef> = lane
         .children()
         .filter(|n| n.has_tag_name("roadMark"))
-        .map(|m| MarkDef {
-            s_offset: attr_f64(m, "sOffset").unwrap_or(0.0),
-            kind: mark_type(m.attribute("type")),
-            weight: match m.attribute("weight") {
-                Some("bold") => RoadMarkWeight::Bold,
-                _ => RoadMarkWeight::Standard,
-            },
-            color: m.attribute("color").unwrap_or("standard").to_string(),
-            width: attr_f64(m, "width").filter(|w| *w > 0.0),
-            height: attr_f64(m, "height"),
-            lane_change: lane_change(m.attribute("laneChange")),
+        .map(|m| {
+            let kind = child(m, "type");
+            MarkDef {
+                s_offset: attr_f64(m, "sOffset").unwrap_or(0.0),
+                kind: mark_type(m.attribute("type")),
+                weight: match m.attribute("weight") {
+                    Some("bold") => RoadMarkWeight::Bold,
+                    _ => RoadMarkWeight::Standard,
+                },
+                color: m.attribute("color").unwrap_or("standard").to_string(),
+                width: attr_f64(m, "width").filter(|w| *w > 0.0),
+                height: attr_f64(m, "height"),
+                lane_change: lane_change(m.attribute("laneChange")),
+                type_width: kind.and_then(|t| attr_f64(t, "width")).filter(|w| *w > 0.0),
+                lines: kind
+                    .into_iter()
+                    .flat_map(|t| t.children())
+                    .filter(|n| n.has_tag_name("line"))
+                    .map(LineDef::parse)
+                    .collect(),
+            }
         })
         .collect();
     marks.sort_by(|a, b| a.s_offset.total_cmp(&b.s_offset));
@@ -185,24 +253,36 @@ fn bake(
     id: RoadMarkId,
     (start, end): (f64, f64),
 ) -> RoadMark {
-    let width = mark.width.unwrap_or(match mark.weight {
+    let width = mark.width.or(mark.type_width).unwrap_or(match mark.weight {
         RoadMarkWeight::Standard => STANDARD_WIDTH,
         RoadMarkWeight::Bold => BOLD_WIDTH,
     });
-    let lines = stand_ins(mark.kind, width * border.inside)
-        .into_iter()
-        .map(|(t_offset, pattern)| RoadMarkLine {
-            color: mark.color.clone(),
-            width: width as f32,
-            t_offset: t_offset as f32,
-            pattern,
-            pieces: paint(
-                road,
-                section,
-                |s| border.t(road, section, s) + t_offset,
-                width / 2.0,
-                &painted(pattern, start, end),
-            ),
+    let stand_ins;
+    let defs = if mark.lines.is_empty() || mark.kind == RoadMarkType::None {
+        stand_ins = stand_in_lines(mark.kind, width * border.inside);
+        &stand_ins
+    } else {
+        &mark.lines
+    };
+    let lines = defs
+        .iter()
+        .map(|line| {
+            let width = line.width.or(mark.type_width).unwrap_or(width);
+            RoadMarkLine {
+                color: line.color.clone().unwrap_or_else(|| mark.color.clone()),
+                width: width as f32,
+                t_offset: line.t_offset as f32,
+                s_offset: line.s_offset as f32,
+                pattern: line.pattern,
+                rule: line.rule,
+                pieces: paint(
+                    road,
+                    section,
+                    |s| border.t(road, section, s) + line.t_offset,
+                    width / 2.0,
+                    &painted(line.pattern, start + line.s_offset, (start, end)),
+                ),
+            }
         })
         .collect();
     RoadMark {
@@ -220,19 +300,23 @@ fn bake(
 }
 
 /// The lines esmini draws for a mark of type `kind` with no lines of its
-/// own, each as its offset from the border and its pattern. A double type's
-/// first line is `inside` from the border, and its second as far the other
-/// way.
-fn stand_ins(kind: RoadMarkType, inside: f64) -> Vec<(f64, LinePattern)> {
+/// own. A double type's first line is `inside` from the border, and its
+/// second as far the other way.
+fn stand_in_lines(kind: RoadMarkType, inside: f64) -> Vec<LineDef> {
     let solid = LinePattern::Continuous;
     let broken = LinePattern::Dashed {
         length: BROKEN_LENGTH as f32,
         space: BROKEN_SPACE as f32,
     };
-    let double = |first, second| vec![(inside, first), (-inside, second)];
+    let double = |first, second| {
+        vec![
+            LineDef::stand_in(inside, first),
+            LineDef::stand_in(-inside, second),
+        ]
+    };
     match kind {
-        RoadMarkType::Solid => vec![(0.0, solid)],
-        RoadMarkType::Broken => vec![(0.0, broken)],
+        RoadMarkType::Solid => vec![LineDef::stand_in(0.0, solid)],
+        RoadMarkType::Broken => vec![LineDef::stand_in(0.0, broken)],
         RoadMarkType::SolidSolid => double(solid, solid),
         RoadMarkType::SolidBroken => double(solid, broken),
         RoadMarkType::BrokenSolid => double(broken, solid),
@@ -241,24 +325,28 @@ fn stand_ins(kind: RoadMarkType, inside: f64) -> Vec<(f64, LinePattern)> {
     }
 }
 
-/// The stretches of road `[start, end]` a line with `pattern` paints, from
-/// `start`. None for dashes of no length, or more than
-/// [`MAX_REPEAT_INSTANCES`] of them.
-fn painted(pattern: LinePattern, start: f64, end: f64) -> Vec<(f64, f64)> {
-    match pattern {
-        LinePattern::Continuous => vec![(start, end)],
-        LinePattern::Dashed { length, space } => {
-            let (length, space) = (f64::from(length), f64::from(space.max(0.0)));
-            if length <= 0.0 || (end - start) / (length + space) > MAX_REPEAT_INSTANCES {
-                return Vec::new();
-            }
-            (0..)
-                .map(|k| start + k as f64 * (length + space))
-                .take_while(|&a| a < end)
-                .map(|a| (a, (a + length).min(end)))
-                .collect()
-        }
+/// The stretches of road a line with `pattern` paints within its mark's
+/// `[start, end]`, starting at `from`. None for dashes of no length, or more
+/// than [`MAX_REPEAT_INSTANCES`] of them.
+fn painted(pattern: LinePattern, from: f64, (start, end): (f64, f64)) -> Vec<(f64, f64)> {
+    let LinePattern::Dashed { length, space } = pattern else {
+        return [(from.max(start), end)]
+            .into_iter()
+            .filter(|(a, b)| b - a > 1e-6)
+            .collect();
+    };
+    let length = f64::from(length);
+    let period = length + f64::from(space.max(0.0));
+    if length <= 0.0 || (end - from.min(start)) / period > MAX_REPEAT_INSTANCES {
+        return Vec::new();
     }
+    let first = ((start - from) / period).floor().max(0.0);
+    (0..)
+        .map(|k| from + (first + k as f64) * period)
+        .take_while(|&a| a < end)
+        .map(|a| (a.max(start), (a + length).min(end)))
+        .filter(|(a, b)| b - a > 1e-6)
+        .collect()
 }
 
 /// Quads `half_width` either side of the line at `t(s)`, over each stretch of
@@ -337,7 +425,9 @@ fn lane_change(value: Option<&str>) -> LaneChange {
 
 #[cfg(test)]
 mod tests {
-    use crate::{load_str_with_provenance, RoadMark, RoadMarkType, RoadMarkWeight};
+    use crate::{
+        load_str_with_provenance, LinePattern, LineRule, RoadMark, RoadMarkType, RoadMarkWeight,
+    };
 
     /// A 20 m road heading +X, or along an arc of `curvature`, with a
     /// section whose `<right>` holds `right`.
@@ -429,6 +519,86 @@ mod tests {
         let mark = r#"<roadMark sOffset="0" type="solid" weight="bold" width="0"/>"#;
         let m = only(&road(0.0, &lane(-1, mark)));
         assert_eq!((m.width, m.lines[0].width), (0.25, 0.25));
+    }
+
+    /// A mark `width` wide whose `<type>` is `type_width` wide, holding
+    /// `line`.
+    fn with_line(width: &str, type_width: &str, line: &str) -> String {
+        format!(
+            r#"<roadMark sOffset="0" type="solid" weight="bold" width="{width}">
+                 <type name="x" width="{type_width}">{line}</type>
+               </roadMark>"#
+        )
+    }
+
+    #[test]
+    fn a_line_width_of_zero_falls_back_to_the_type_then_the_mark_then_the_weight() {
+        let width = |mark: &str, kind: &str, line: &str| {
+            let line = format!(r#"<line length="0" space="0" width="{line}"/>"#);
+            let m = only(&road(0.0, &lane(-1, &with_line(mark, kind, &line))));
+            (m.width, m.lines[0].width)
+        };
+        assert_eq!(width("0.3", "0.2", "0.1"), (0.3, 0.1));
+        assert_eq!(width("0.3", "0.2", "0"), (0.3, 0.2));
+        assert_eq!(width("0.3", "0", "0"), (0.3, 0.3));
+        assert_eq!(width("0", "0.2", "0"), (0.2, 0.2));
+        assert_eq!(width("0", "0", "0"), (0.25, 0.25));
+    }
+
+    #[test]
+    fn a_line_with_no_length_or_space_is_continuous() {
+        let line = r#"<line length="0" space="0" width="0.1"/>"#;
+        let m = only(&road(0.0, &lane(-1, &with_line("0", "0", line))));
+        assert_eq!(m.lines[0].pattern, LinePattern::Continuous);
+        let ends: Vec<f32> = m.lines[0]
+            .pieces
+            .iter()
+            .flat_map(|q| [q[0].x, q[1].x])
+            .collect();
+        let (first, last) = (ends[0], ends[ends.len() - 1]);
+        assert!(first.abs() < 1e-4 && (last - 20.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn a_none_mark_paints_nothing_even_with_lines() {
+        let line = r#"<line length="0" space="0" width="0"/>"#;
+        let mark = format!(
+            r#"<roadMark sOffset="0" type="none"><type name="none">{line}</type></roadMark>"#
+        );
+        let m = only(&road(0.0, &lane(-1, &mark)));
+        assert_eq!(m.kind, RoadMarkType::None);
+        assert!(m.lines.is_empty());
+    }
+
+    #[test]
+    fn a_line_without_a_rule_has_none() {
+        let line = r#"<line length="1" space="1"/>"#;
+        let m = only(&road(0.0, &lane(-1, &with_line("0", "0", line))));
+        assert_eq!(m.lines[0].rule, LineRule::None);
+    }
+
+    #[test]
+    fn a_positive_t_offset_moves_a_line_toward_plus_t_on_either_side() {
+        let line = r#"<line length="0" space="0" tOffset="0.5" width="0.1"/>"#;
+        let mark = with_line("0", "0", line);
+        let left =
+            format!(r#"<lane id="1" type="driving"><width sOffset="0" a="3.5"/>{mark}</lane>"#);
+        let xml = road(0.0, &lane(-1, &mark)).replace(
+            r#"<center><lane id="0" type="none"/></center>"#,
+            &format!(r#"<left>{left}</left><center><lane id="0" type="none"/></center>"#),
+        );
+        let (net, prov) = load_str_with_provenance(&xml).expect("the road loads");
+        for (m, p) in net.road_marks().iter().zip(&prov.road_marks) {
+            let border = 3.5 * p.od_lane_id.signum() as f32;
+            let middle = m.lines[0].pieces[0][0].lerp(m.lines[0].pieces[0][3], 0.5);
+            assert!(
+                (middle.y - border - 0.5).abs() < 1e-4,
+                "lane {}: line at {} for a border at {border}",
+                p.od_lane_id,
+                middle.y
+            );
+        }
+        assert_eq!(prov.road_marks.len(), 2);
     }
 
     #[test]

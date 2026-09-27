@@ -6,14 +6,19 @@
 //! +X, banked at 0.05 rad, with a laneOffset of 0.5 m and lanes 3 to -3, each
 //! 3 m wide, in two sections at s = 0 and s = 50. So a lane border is at a
 //! constant `t`, and the road surface at `(s, t)` is `(s, t cos φ, t sin φ)`.
+//!
+//! Its road 1 is a flat 60 m straight from `(0, -30)` heading +X, with lanes
+//! 1 and -1 each 3 m wide, whose marks describe their lines with
+//! `<type><line>`.
 
 use libopendrive::{
-    load_file_with_provenance, LaneChange, LinePattern, Point, Provenance, RoadMark, RoadMarkLine,
-    RoadMarkProvenance, RoadMarkType, RoadMarkWeight, RoadNetwork,
+    load_file_with_provenance, LaneChange, LinePattern, LineRule, Point, Provenance, RoadMark,
+    RoadMarkLine, RoadMarkProvenance, RoadMarkType, RoadMarkWeight, RoadNetwork,
 };
 
 const ROAD_MARKS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/road_marks.xodr");
 const TOWN07: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/town07.xodr");
+const E6MINI: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/e6mini.xodr");
 
 const BANK: f32 = 0.05;
 
@@ -21,28 +26,31 @@ fn load(path: &str) -> (RoadNetwork, Provenance) {
     load_file_with_provenance(path).expect("the map loads")
 }
 
-/// The marks on `<lane id>` `od_lane_id` of `section`, in order along it.
+/// The marks on `<lane id>` `od_lane_id` of `section` of `road`, in order
+/// along it.
 fn marks<'a>(
     net: &'a RoadNetwork,
     prov: &'a Provenance,
+    road: &str,
     section: usize,
     od_lane_id: i32,
 ) -> Vec<(&'a RoadMark, &'a RoadMarkProvenance)> {
     prov.road_marks
         .iter()
-        .filter(|p| p.section == section && p.od_lane_id == od_lane_id)
+        .filter(|p| p.road_id == road && p.section == section && p.od_lane_id == od_lane_id)
         .map(|p| (net.road_mark(p.road_mark).expect("a baked mark"), p))
         .collect()
 }
 
-/// The one mark on `od_lane_id` of `section`.
+/// The one mark on `od_lane_id` of `section` of `road`.
 fn mark<'a>(
     net: &'a RoadNetwork,
     prov: &'a Provenance,
+    road: &str,
     section: usize,
     od_lane_id: i32,
 ) -> &'a RoadMark {
-    let found = marks(net, prov, section, od_lane_id);
+    let found = marks(net, prov, road, section, od_lane_id);
     assert_eq!(
         found.len(),
         1,
@@ -99,7 +107,7 @@ fn each_lane_border_gets_its_marks_with_the_lanes_either_side() {
     let (net, prov) = load(ROAD_MARKS);
     let kinds = |section| -> Vec<(i32, RoadMarkType)> {
         (-3..=3)
-            .flat_map(|id| marks(&net, &prov, section, id))
+            .flat_map(|id| marks(&net, &prov, "0", section, id))
             .map(|(m, p)| (p.od_lane_id, m.kind))
             .collect()
     };
@@ -134,7 +142,7 @@ fn each_lane_border_gets_its_marks_with_the_lanes_either_side() {
     // right. A right lane's mark is on its right, and a left lane's on its
     // left. The outermost marks have no lane beyond them.
     let sides = |id| {
-        let m = mark(&net, &prov, 1, id);
+        let m = mark(&net, &prov, "0", 1, id);
         (od_id(&prov, m.left), od_id(&prov, m.right))
     };
     assert_eq!(sides(0), (Some(1), Some(-1)));
@@ -147,7 +155,7 @@ fn each_lane_border_gets_its_marks_with_the_lanes_either_side() {
 #[test]
 fn a_mark_runs_to_the_next_mark_or_the_end_of_its_section() {
     let (net, prov) = load(ROAD_MARKS);
-    let center: Vec<(RoadMarkType, f64, f64)> = marks(&net, &prov, 0, 0)
+    let center: Vec<(RoadMarkType, f64, f64)> = marks(&net, &prov, "0", 0, 0)
         .into_iter()
         .map(|(m, p)| (m.kind, p.s, p.length))
         .collect();
@@ -158,13 +166,13 @@ fn a_mark_runs_to_the_next_mark_or_the_end_of_its_section() {
             (RoadMarkType::SolidSolid, 25.0, 25.0)
         ]
     );
-    let later = &marks(&net, &prov, 1, -1)[0].1;
+    let later = &marks(&net, &prov, "0", 1, -1)[0].1;
     assert_eq!(
         (later.s, later.length, later.road_id.as_str()),
         (50.0, 50.0, "0")
     );
 
-    let solid = &marks(&net, &prov, 0, 0)[0].0.lines[0];
+    let solid = &marks(&net, &prov, "0", 0, 0)[0].0.lines[0];
     let (first, last) = (stretches(solid)[0], *stretches(solid).last().unwrap());
     assert_close(first.0, 0.0, "solid start");
     assert_close(last.1, 25.0, "solid end");
@@ -174,7 +182,7 @@ fn a_mark_runs_to_the_next_mark_or_the_end_of_its_section() {
 fn a_line_lies_on_the_banked_road_either_side_of_its_border() {
     let (net, prov) = load(ROAD_MARKS);
     for (section, id) in [(1, -1), (1, -2), (0, 1)] {
-        let m = mark(&net, &prov, section, id);
+        let m = mark(&net, &prov, "0", section, id);
         let half = m.width / 2.0;
         let t = border(id);
         for q in &m.lines[0].pieces {
@@ -188,14 +196,14 @@ fn a_line_lies_on_the_banked_road_either_side_of_its_border() {
         }
     }
     // The solid on lane -1 is one unbroken line over its section.
-    let solid = &mark(&net, &prov, 1, -1).lines[0];
+    let solid = &mark(&net, &prov, "0", 1, -1).lines[0];
     assert_eq!(dashes(solid), [(50.0, 100.0)]);
 }
 
 #[test]
 fn a_broken_mark_alone_is_4_m_dashes_8_m_apart() {
     let (net, prov) = load(ROAD_MARKS);
-    let broken = mark(&net, &prov, 0, 1);
+    let broken = mark(&net, &prov, "0", 0, 1);
     assert_eq!(broken.lines.len(), 1);
     let line = &broken.lines[0];
     assert_eq!(
@@ -228,7 +236,7 @@ fn a_double_mark_is_two_lines_a_width_either_side_of_its_border() {
         space: 8.0,
     };
     let lines = |section, id| -> Vec<(f32, LinePattern)> {
-        mark(&net, &prov, section, id)
+        mark(&net, &prov, "0", section, id)
             .lines
             .iter()
             .map(|l| (l.t_offset, l.pattern))
@@ -239,7 +247,7 @@ fn a_double_mark_is_two_lines_a_width_either_side_of_its_border() {
     assert_eq!(lines(0, -1), [(0.12, broken), (-0.12, broken)]);
     assert_eq!(lines(0, -2), [(0.12, broken), (-0.12, solid)]);
     assert_eq!(lines(0, 2), [(-0.25, solid), (0.25, broken)]);
-    let center = &marks(&net, &prov, 0, 0)[1].0.lines;
+    let center = &marks(&net, &prov, "0", 0, 0)[1].0.lines;
     assert_eq!(center.len(), 2);
     assert_eq!((center[0].t_offset, center[1].t_offset), (0.12, -0.12));
     for l in center {
@@ -254,7 +262,7 @@ fn a_double_mark_is_two_lines_a_width_either_side_of_its_border() {
 fn marks_that_are_not_paint_have_no_lines() {
     let (net, prov) = load(ROAD_MARKS);
     for (section, id) in [(0, 3), (0, -3), (1, 0), (1, 1), (1, 2), (1, 3)] {
-        let m = mark(&net, &prov, section, id);
+        let m = mark(&net, &prov, "0", section, id);
         assert!(m.lines.is_empty(), "{} on lane {id} paints", m.kind);
     }
 }
@@ -262,25 +270,139 @@ fn marks_that_are_not_paint_have_no_lines() {
 #[test]
 fn a_mark_keeps_its_width_weight_colour_height_and_lane_change() {
     let (net, prov) = load(ROAD_MARKS);
-    let m = mark(&net, &prov, 1, -1);
+    let m = mark(&net, &prov, "0", 1, -1);
     assert_eq!((m.width, m.lane_change), (0.2, LaneChange::Increase));
     assert_eq!(m.lines[0].width, 0.2);
-    let m = mark(&net, &prov, 1, -2);
+    let m = mark(&net, &prov, "0", 1, -2);
     assert_eq!(
         (m.color.as_str(), m.lane_change),
         ("yellow", LaneChange::Decrease)
     );
     assert_eq!(m.lines[0].color, "yellow");
-    let m = mark(&net, &prov, 0, 2);
+    let m = mark(&net, &prov, "0", 0, 2);
     assert_eq!((m.weight, m.width), (RoadMarkWeight::Bold, 0.25));
-    let m = mark(&net, &prov, 1, -3);
+    let m = mark(&net, &prov, "0", 1, -3);
     assert_eq!((m.height, m.lane_change), (Some(0.02), LaneChange::Both));
-    let m = marks(&net, &prov, 0, 0)[0].0;
+    let m = marks(&net, &prov, "0", 0, 0)[0].0;
     assert_eq!(
         (m.weight, m.width, m.height),
         (RoadMarkWeight::Standard, 0.12, None)
     );
     assert_eq!(m.lane_change, LaneChange::None);
+}
+
+/// Each of a line's dashes' `(from, to)`, rounded to the millimetre.
+fn dashes_mm(line: &RoadMarkLine) -> Vec<(i32, i32)> {
+    dashes(line)
+        .into_iter()
+        .map(|(a, b)| ((a * 1000.0).round() as i32, (b * 1000.0).round() as i32))
+        .collect()
+}
+
+#[test]
+fn a_marks_lines_replace_what_its_type_stands_for() {
+    let (net, prov) = load(ROAD_MARKS);
+    let center = mark(&net, &prov, "1", 0, 0);
+    assert_eq!(
+        (center.kind, center.width),
+        (RoadMarkType::SolidBroken, 0.35)
+    );
+    let [solid, broken] = center.lines.as_slice() else {
+        panic!("two lines, got {}", center.lines.len());
+    };
+    assert_eq!(
+        (solid.pattern, solid.rule, solid.color.as_str()),
+        (LinePattern::Continuous, LineRule::NoPassing, "yellow")
+    );
+    assert_eq!(
+        (solid.width, solid.t_offset, solid.s_offset),
+        (0.12, 0.12, 0.0)
+    );
+    assert_eq!(dashes_mm(solid), [(0, 60000)]);
+    assert_eq!(
+        (broken.pattern, broken.rule, broken.color.as_str()),
+        (
+            LinePattern::Dashed {
+                length: 3.0,
+                space: 9.0
+            },
+            LineRule::Caution,
+            "standard"
+        )
+    );
+    assert_eq!(
+        (broken.width, broken.t_offset, broken.s_offset),
+        (0.1, -0.12, 2.0)
+    );
+    assert_eq!(
+        dashes_mm(broken),
+        [
+            (2000, 5000),
+            (14000, 17000),
+            (26000, 29000),
+            (38000, 41000),
+            (50000, 53000)
+        ]
+    );
+
+    // A `solid` mark whose line is dashed paints dashes.
+    let right = &mark(&net, &prov, "1", 0, -1).lines[0];
+    assert_eq!(right.rule, LineRule::None);
+    assert_eq!(
+        dashes_mm(right),
+        [(0, 6000), (18000, 24000), (36000, 42000), (54000, 60000)]
+    );
+}
+
+#[test]
+fn a_lines_t_offset_moves_it_off_the_border() {
+    let (net, prov) = load(ROAD_MARKS);
+    // Lane 1's border is 3 m left of the reference line at y = -30, and its
+    // blue dashes are 0.3 m further out, 0.2 m wide.
+    let line = &mark(&net, &prov, "1", 0, 1).lines[0];
+    assert_eq!((line.color.as_str(), line.width), ("blue", 0.2));
+    assert_eq!(dashes(line).len(), 30);
+    for p in line.pieces.iter().flatten() {
+        let t = p.y + 30.0;
+        assert!(
+            (t - 3.2).abs() < 1e-4 || (t - 3.4).abs() < 1e-4,
+            "an edge at t {t}"
+        );
+    }
+    // The center lane's dashed line is 0.12 m right of the reference line.
+    let center = &mark(&net, &prov, "1", 0, 0).lines[1];
+    for p in center.pieces.iter().flatten() {
+        let t = p.y + 30.0;
+        assert!(
+            (t + 0.07).abs() < 1e-4 || (t + 0.17).abs() < 1e-4,
+            "an edge at t {t}"
+        );
+    }
+}
+
+#[test]
+fn e6minis_lines_are_esmini_s_solid_and_6_m_dashes() {
+    let (net, _) = load(E6MINI);
+    let lines: Vec<&RoadMarkLine> = net.road_marks().iter().flat_map(|m| &m.lines).collect();
+    assert_eq!(lines.len(), 8);
+    let solid = lines
+        .iter()
+        .filter(|l| l.pattern == LinePattern::Continuous)
+        .count();
+    let dashed = lines
+        .iter()
+        .filter(|l| {
+            l.pattern
+                == LinePattern::Dashed {
+                    length: 6.0,
+                    space: 12.0,
+                }
+        })
+        .count();
+    assert_eq!((solid, dashed), (4, 4));
+    assert!(lines
+        .iter()
+        .all(|l| [0.15, 0.3].contains(&l.width) && !l.pieces.is_empty()));
 }
 
 #[test]

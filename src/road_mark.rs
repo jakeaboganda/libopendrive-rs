@@ -139,11 +139,46 @@ impl std::fmt::Display for LaneChange {
     }
 }
 
+/// What a line tells traffic about crossing it from the inside of the road,
+/// or from the left on the line between the two sides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum LineRule {
+    /// Crossing is not allowed.
+    NoPassing,
+    /// Cross with care.
+    Caution,
+    /// No rule.
+    None,
+    /// A rule this crate does not recognise.
+    Unknown,
+}
+
+impl LineRule {
+    /// A stable lowercase name, for a legend, a log line, or a viewer readout.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::NoPassing => "no-passing",
+            Self::Caution => "caution",
+            Self::None => "none",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+impl std::fmt::Display for LineRule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// How a road mark's line is broken up along the road.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LinePattern {
-    /// One unbroken line.
+    /// One unbroken line. The OpenDRIVE spec makes a line's `length` the
+    /// part painted, so a line with a `length` and a `space` of 0 paints
+    /// nothing. It is continuous here, as esmini writes it for a solid line.
     Continuous,
     /// Dashes `length` metres long with `space` metres between them, from
     /// the start of the line. The OpenDRIVE spec does not say what they are
@@ -163,15 +198,27 @@ pub enum LinePattern {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RoadMarkLine {
     /// The colour the map names, such as `white`, or `standard`, meaning
-    /// white. Free text.
+    /// white. Free text. The mark's colour where the line gives none.
     pub color: String,
-    /// Metres across.
+    /// Metres across. The line's own width, or its `<type>`'s, or the
+    /// mark's [`width`](RoadMark::width), the first given above 0. The
+    /// OpenDRIVE spec says each is above 0, and esmini writes 0 on all three.
     pub width: f32,
     /// How far the middle of the line is from the lane border, in metres,
-    /// toward the left of the road's reference direction.
+    /// toward the left of the road's reference direction. The OpenDRIVE spec
+    /// says only that it is a lateral offset from the border. This reads it
+    /// along +t on either side of the road, as libOpenDRIVE and esmini do, so
+    /// a positive offset moves a right lane's line inward and a left lane's
+    /// outward.
     pub t_offset: f32,
+    /// How far along the road the line starts after the start of its mark,
+    /// in metres.
+    pub s_offset: f32,
     /// Whether it is solid or dashed.
     pub pattern: LinePattern,
+    /// What it tells traffic about crossing it. `None` where the map gives
+    /// no rule, which the OpenDRIVE spec gives no default for.
+    pub rule: LineRule,
     /// The painted pieces, in order along the road, in the network's frame.
     /// Each is four corners going anticlockwise seen from above, lying in the
     /// road surface: a dash, or the part of one between two of the lane's
@@ -203,10 +250,11 @@ pub struct RoadMark {
     /// white. Free text. The OpenDRIVE spec requires one. A mark the map
     /// gives none is `standard`, as libOpenDRIVE and esmini read it.
     pub color: String,
-    /// Metres across. The map's width, or 0.12 for a standard weight and
-    /// 0.25 for a bold one where it gives none, as libOpenDRIVE has them. The
-    /// OpenDRIVE spec says a width is above 0, and a width of 0 counts as
-    /// none, since esmini writes one on every mark.
+    /// Metres across. The mark's width, or its `<type>`'s, or 0.12 for a
+    /// standard weight and 0.25 for a bold one where it gives neither, as
+    /// libOpenDRIVE has them. The OpenDRIVE spec says a width is above 0,
+    /// and a width of 0 counts as none, since esmini writes one on every
+    /// mark.
     pub width: f32,
     /// The paint's thickness in metres, if the map gives it.
     pub height: Option<f32>,
@@ -220,7 +268,10 @@ pub struct RoadMark {
     pub right: Option<LaneId>,
     /// Its painted lines. Empty for a mark that paints nothing.
     ///
-    /// The OpenDRIVE spec does not say how a type looks. A mark the map
+    /// A mark with `<type><line>`s paints those, whatever its type, except
+    /// a mark of type `None`, which paints nothing. The OpenDRIVE spec gives
+    /// no exception, but esmini writes a line of no width under every `none`
+    /// mark and does not draw it. The spec does not say how a type looks. A mark the map
     /// describes by its type alone gets the lines esmini draws for it: one
     /// continuous line for `Solid`, dashes 4 m long with 8 m between for
     /// `Broken`, and for a double type two lines, one width either side of

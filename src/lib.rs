@@ -62,6 +62,8 @@
 //! | `<lane>` | `id`, `type` |
 //! | `<lane><width>` | `sOffset`, `a`, `b`, `c`, `d` |
 //! | `<lane><roadMark>` | `sOffset`, `type`, `weight`, `color`, `width`, `height`, `laneChange` |
+//! | `<roadMark><type>` | `width` |
+//! | `<type><line>` | `length`, `space`, `tOffset`, `sOffset`, `rule`, `width`, `color` |
 //! | `<lane><link>` | `id` |
 //! | `<junction>` | `id` |
 //! | `<connection>` | `incomingRoad`, `connectingRoad`, `contactPoint` |
@@ -254,10 +256,15 @@
 //! its [`RoadMarkProvenance`].
 //!
 //! Each of its [`RoadMark::lines`] is quads lying in the road surface, placed
-//! at the lane's own stations, so the paint lies on the lane mesh. The type
-//! alone decides the lines: one for `solid` and `broken`, two for a double
-//! type, and none for the rest. The marks of a lane section too short to
-//! bake do not bake either.
+//! at the lane's own stations, so the paint lies on the lane mesh. A mark's
+//! `<type><line>`s are its lines, whatever its `type` other than `none`.
+//! Each is a
+//! [`RoadMarkLine`] with its own width, colour, [`LinePattern`] and
+//! [`LineRule`], repeating from its `sOffset` to the end of the mark,
+//! `tOffset` from the border. A mark with no lines gets stand-ins for its
+//! type: one line for `solid` and `broken`, two for a double type, and none
+//! for the rest. The marks of a lane section too short to bake do not bake
+//! either.
 //!
 //! The crate departs from the OpenDRIVE 1.9 spec here:
 //!
@@ -265,8 +272,23 @@
 //!   `standard`, `none` or 0, as libOpenDRIVE reads it. A `type` this crate
 //!   does not know is [`RoadMarkType::Unknown`].
 //! - The spec gives no default `weight`. A mark missing one is standard.
-//! - The spec says a width is above 0. A width of 0 counts as none, and
-//!   esmini writes one on every mark.
+//! - The spec says a mark's, a `<type>`'s and a `<line>`'s width are above
+//!   0. A width of 0 counts as none, so the next in line applies: the
+//!   line's, then the type's, then the mark's, then the weight's. esmini
+//!   writes 0 on all three.
+//! - The spec makes a line's `length` the part painted, so a line with a
+//!   `length` and a `space` of 0 paints nothing. The crate reads it as one
+//!   continuous line, as esmini means it. Without this, every mark in
+//!   esmini's `multi_intersections.xodr` vanishes.
+//! - The spec lets a `none` mark have lines. It paints none, since esmini
+//!   writes a line of no width under each of its `none` marks and draws
+//!   nothing there.
+//! - The spec says only that `tOffset` is a lateral offset from the border.
+//!   The crate adds it along +t on either side, as libOpenDRIVE and esmini
+//!   both do. So a positive `tOffset` moves a right lane's line inward and a
+//!   left lane's outward.
+//! - The spec gives no default `rule`. A line without one has
+//!   [`LineRule::None`].
 //! - The spec does not say how wide a line of each weight is, or how a type
 //!   looks. A line is 0.12 m wide, or 0.25 m bold, as libOpenDRIVE has it.
 //!   `broken` is dashes 4 m long with 8 m between, and a double type's lines
@@ -331,8 +353,8 @@
 //! `<junctionGroup>`, `<station>`, an object's
 //! `<surface>`, and road `<type>` with its `<speed>`. Of signals, it ignores
 //! a signal's `<userData>`, the boards `<staticBoard>` and `<vmsBoard>`, and
-//! `<semantics>`. Of road marks, it ignores `material`, and the `<type>`,
-//! `<explicit>` and `<sway>` of a road mark.
+//! `<semantics>`. Of road marks, it ignores `material`, a `<type>`'s `name`,
+//! and a road mark's `<explicit>` and `<sway>`.
 //!
 //! Three omissions change the road you get back, rather than only dropping
 //! detail around it:
@@ -429,7 +451,8 @@ pub use parse::{
     StructureProvenance,
 };
 pub use road_mark::{
-    LaneChange, LinePattern, RoadMark, RoadMarkId, RoadMarkLine, RoadMarkType, RoadMarkWeight,
+    LaneChange, LinePattern, LineRule, RoadMark, RoadMarkId, RoadMarkLine, RoadMarkType,
+    RoadMarkWeight,
 };
 pub use signal::{
     Control, Controller, ControllerId, Dependency, Reference, Referenced, Signal, SignalId, Unit,

@@ -17,13 +17,22 @@
   8 m apart for `broken`, and two lines one width either side of the border
   for a double type. The other types paint nothing. A line is 0.12 m wide,
   or 0.25 m bold, as in libOpenDRIVE. The spec gives none of these.
+- A mark's `<type><line>`s replace its stand-ins. Each `RoadMarkLine`
+  keeps its width, colour, `LinePattern`, `sOffset`, `tOffset` and
+  `LineRule`. A line without a width or colour takes its type's or mark's.
 - `RoadMarkProvenance` gives each mark's road, lane section, `<lane id>`,
   `s` and length.
 - Where the crate departs from the spec: a mark without a `color` is
   `standard`, one without a `type` is `none`, and one without an `sOffset`
   starts at its section, where the spec requires all three. One without a
-  `weight` is standard, which the spec gives no default for. A width of 0
-  counts as none, where the spec says it is above 0. Dashes are measured
+  `weight` is standard, and a line without a `rule` has none, which the
+  spec gives no default for. A width of 0 counts as none, where the spec
+  says it is above 0, so the line's, the type's, the mark's and the
+  weight's apply in turn. A line with a `length` and `space` of 0 is
+  continuous, as esmini means it, where the spec would paint nothing. A
+  `none` mark paints nothing even with lines, as esmini draws it.
+  `tOffset` points along +t on both sides of the road, which the spec
+  does not say. Dashes are measured
   along the reference line, which the spec does not say. Marks out of
   order are sorted rather than dropped. A lane with no `<width>` does not
   bake, so its marks go too, where the spec would draw them on its inner

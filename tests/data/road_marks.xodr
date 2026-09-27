@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <OpenDRIVE>
-    <header name="road_marks" revMajor="1" revMinor="5" date="2026-09-27 13:40:39.171890" north="0.0" south="0.0" east="0.0" west="0.0"/>
+    <header name="road_marks" revMajor="1" revMinor="5" date="2026-09-27 14:57:11.143088" north="0.0" south="0.0" east="0.0" west="0.0"/>
     <road rule="RHT" id="0" junction="-1" length="100">
         <link/>
         <planView>
@@ -94,6 +94,52 @@
                         <link/>
                         <width a="3" b="0" c="0" d="0" sOffset="0"/>
                         <roadMark sOffset="0" type="broken" weight="standard" color="standard" height="0.02"/>
+                    </lane>
+                </right>
+            </laneSection>
+        </lanes>
+    </road>
+    <road rule="RHT" id="1" junction="-1" length="60">
+        <link/>
+        <planView>
+            <geometry s="0" x="0" y="-30" hdg="0" length="60">
+                <line/>
+            </geometry>
+        </planView>
+        <elevationProfile/>
+        <lateralProfile/>
+        <lanes>
+            <laneSection s="0">
+                <left>
+                    <lane id="1" type="driving" level="false">
+                        <link/>
+                        <width a="3" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="custom" weight="standard" color="standard">
+                            <type name="custom" width="0.2">
+                                <line length="1" space="1" tOffset="0.3" color="blue" width="0.2" sOffset="0"/>
+                            </type>
+                        </roadMark>
+                    </lane>
+                </left>
+                <center>
+                    <lane id="0" type="none" level="false">
+                        <roadMark sOffset="0" type="solid broken" weight="standard" color="standard" width="0.35">
+                            <type name="solid broken" width="0.35">
+                                <line length="0" space="0" tOffset="0.12" color="yellow" width="0.12" sOffset="0" rule="no passing"/>
+                                <line length="3" space="9" tOffset="-0.12" width="0.1" sOffset="2" rule="caution"/>
+                            </type>
+                        </roadMark>
+                    </lane>
+                </center>
+                <right>
+                    <lane id="-1" type="driving" level="false">
+                        <link/>
+                        <width a="3" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard">
+                            <type name="solid" width="0.15">
+                                <line length="6" space="12" tOffset="0" width="0.15" sOffset="0" rule="none"/>
+                            </type>
+                        </roadMark>
                     </lane>
                 </right>
             </laneSection>
