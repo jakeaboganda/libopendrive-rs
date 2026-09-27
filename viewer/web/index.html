@@ -38,6 +38,7 @@
   #tools select { background: #1b1f27; color: inherit; border: 1px solid #2a2f3a; border-radius: 4px; padding: 2px 4px; }
   #flagcount { color: #e88; font-variant-numeric: tabular-nums; }
   #err { position: absolute; inset: 0; display: none; place-content: center; text-align: center; padding: 40px; color: #e88; }
+  #err.prompt { color: #8fa1b3; }
   #err code { color: #d8dee9; background: #1b1f27; padding: 2px 6px; border-radius: 4px; }
 </style>
 </head>
@@ -200,23 +201,36 @@ let signalLink;              // dashed lines from the hovered board to where it 
 
 init().catch(showError);
 
-// The scene named by ?scene=, else the one the exporter wrote last, from its
-// scenes.json. Fills the map picker, which reloads the page on the pick.
+// Fill the map picker from the exporter's scenes.json, and return the scene
+// ?scene= names, or null for none. Picking one reloads the page on it.
 async function pickScene() {
-  const list = await fetch('scenes.json').then(r => r.ok ? r.json() : {}).catch(() => ({}));
-  const names = list.scenes ?? [];
-  const chosen = new URLSearchParams(location.search).get('scene') || list.latest || 'scene.json';
+  const names = await fetch('scenes.json').then(r => r.ok ? r.json() : []).catch(() => []);
+  const chosen = new URLSearchParams(location.search).get('scene');
   const picker = document.getElementById('map');
-  for (const name of names.includes(chosen) ? names : [chosen, ...names]) {
+  if (!chosen) picker.add(Object.assign(new Option('choose...', '', true, true), { disabled: true }));
+  for (const name of !chosen || names.includes(chosen) ? names : [chosen, ...names]) {
     picker.add(new Option(name.replace(/\.json$/, ''), name, false, name === chosen));
   }
   picker.addEventListener('change', () => { location.search = '?scene=' + encodeURIComponent(picker.value); });
-  document.title = `${chosen.replace(/\.json$/, '')} - libopendrive viewer`;
-  return chosen;
+  if (chosen) document.title = `${chosen.replace(/\.json$/, '')} - libopendrive viewer`;
+  return { sceneUrl: chosen, count: names.length };
+}
+
+// What the page shows before a map is picked.
+function showPrompt(count) {
+  const el = document.getElementById('err');
+  el.classList.add('prompt');
+  el.style.display = 'grid';
+  el.innerHTML = count
+    ? `<div><p>Pick one of the ${count} baked maps from the <strong>map</strong> list.</p></div>`
+    : `<div><p>No baked maps here yet. Bake one with</p>` +
+      `<p><code>cargo run --example viewer_export --features serde -- map.xodr</code></p>` +
+      `<p>and serve this folder over HTTP.</p></div>`;
 }
 
 async function init() {
-  const sceneUrl = await pickScene();
+  const { sceneUrl, count } = await pickScene();
+  if (!sceneUrl) return showPrompt(count);
   let data;
   try {
     data = await (await fetch(sceneUrl)).json();

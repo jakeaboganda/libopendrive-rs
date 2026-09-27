@@ -58,9 +58,10 @@
 
 ### Viewer
 
-- A `map` picker in the toolbar switches between every map you have baked,
-  and the page opens on the last one. `viewer_export` names its output
-  after the map when you give no output path, instead of `scene.json`.
+- A `map` picker in the toolbar switches between every map you have baked.
+  The page opens on the map `?scene=` names, and asks for one without it.
+- `viewer_export` takes any number of maps, such as `tests/data/*.xodr`,
+  and names each output after its map instead of `scene.json`.
 
 ### Breaking
 

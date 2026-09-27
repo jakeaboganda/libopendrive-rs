@@ -12,8 +12,9 @@ rendering.
 
 ## Run it
 
-1. Bake a map to JSON. With no second argument, this writes
-   `viewer/web/town07.json`, named after the map.
+1. Bake maps to JSON. Each goes to `viewer/web/`, named after its map, so
+   this writes `viewer/web/town07.json`. Name as many maps as you like, such
+   as `tests/data/*.xodr`.
 
    ```sh
    cargo run --example viewer_export --features serde -- tests/data/town07.xodr
@@ -26,18 +27,22 @@ rendering.
    cd viewer/web && python3 -m http.server 8000
    ```
 
-3. Open <http://localhost:8000>. It shows the map you baked last.
+3. Open <http://localhost:8000> and pick a map from the `map` list in the
+   toolbar.
 
-Each bake adds its map to the `map` picker in the toolbar, so bake as many as
-you like and switch between them there. The URL names the map on screen, as
-`?scene=town07.json`, so a link opens the same one.
+The list holds every map baked into `viewer/web/`. The URL names the map on
+screen, as `?scene=town07.json`, so a link opens the same one. To bake to
+another path, give one map and the output:
 
 ```sh
-cargo run --example viewer_export --features serde -- tests/data/objects.xodr
+cargo run --example viewer_export --features serde -- tests/data/objects.xodr /tmp/objects.json
 ```
 
-`objects.xodr` is a small test map with one of everything the viewer draws,
-so use it to try the features below.
+A map that fails to load is reported, the others still bake, and the
+exporter exits with an error.
+
+`tests/data/objects.xodr` is a small test map with one of everything the
+viewer draws, so use it to try the features below.
 
 ## Controls
 

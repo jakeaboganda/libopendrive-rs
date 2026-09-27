@@ -5,9 +5,11 @@
 //!     tests/data/testtrack.xodr viewer/web/testtrack.json
 //! ```
 //!
-//! With no output path, it writes `viewer/web/<map name>.json`. Either way it
-//! then lists every scene in the output's folder in `scenes.json`, which the
-//! viewer's map picker reads, and notes this one as the latest.
+//! With no output path, it writes `viewer/web/<map name>.json`, and it takes
+//! any number of maps that way, such as `tests/data/*.xodr`. A map that fails
+//! to load is reported and the rest still export. It then lists every scene
+//! in each output folder in `scenes.json`, which the viewer's map picker
+//! reads.
 //!
 //! The output is one object: a merged surface mesh (flat position/normal/index
 //! buffers, ready for a three.js `BufferGeometry`), a per-lane table, and an
@@ -50,38 +52,78 @@ use libopendrive::{
 use serde_json::{json, Map, Value};
 
 fn main() -> ExitCode {
-    let mut args = env::args().skip(1);
-    let (Some(input), output) = (args.next(), args.next()) else {
-        eprintln!("usage: viewer_export <input.xodr> [output.json]");
-        return ExitCode::FAILURE;
-    };
-    let output = output.unwrap_or_else(|| {
-        let stem = Path::new(&input).file_stem().unwrap_or_default();
-        format!("viewer/web/{}.json", stem.to_string_lossy())
-    });
-
-    let (net, provenance) = match load_file_with_provenance(&input) {
-        Ok(pair) => pair,
-        Err(e) => {
-            eprintln!("import failed: {e}");
+    let args: Vec<String> = env::args().skip(1).collect();
+    let jobs: Vec<(String, String)> = match args.as_slice() {
+        [input, output] if output.ends_with(".json") => vec![(input.clone(), output.clone())],
+        inputs if !inputs.is_empty() && !inputs.iter().any(|a| a.ends_with(".json")) => inputs
+            .iter()
+            .map(|input| {
+                let stem = Path::new(input).file_stem().unwrap_or_default();
+                let output = format!("viewer/web/{}.json", stem.to_string_lossy());
+                (input.clone(), output)
+            })
+            .collect(),
+        _ => {
+            eprintln!("usage: viewer_export <input.xodr> [output.json]");
+            eprintln!("       viewer_export <input.xodr>...");
             return ExitCode::FAILURE;
         }
     };
 
+    let mut failed = 0;
+    let mut written: HashMap<&str, &str> = HashMap::new();
+    for (input, output) in &jobs {
+        if let Some(first) = written.get(output.as_str()) {
+            eprintln!("skipping {input}: {first} already wrote {output}");
+            failed += 1;
+            continue;
+        }
+        match export(input, output) {
+            Ok(()) => {
+                written.insert(output, input);
+            }
+            Err(e) => {
+                eprintln!("{input}: {e}");
+                failed += 1;
+            }
+        }
+    }
+
+    let folders: HashSet<&Path> = written
+        .keys()
+        .map(|output| Path::new(output).parent().unwrap_or(Path::new("")))
+        .collect();
+    for folder in folders {
+        if let Err(e) = write_scene_list(folder) {
+            eprintln!("warning: listing scenes in {}: {e}", folder.display());
+        }
+    }
+    if failed > 0 {
+        eprintln!("{failed} of {} maps not exported", jobs.len());
+        return ExitCode::FAILURE;
+    }
+    ExitCode::SUCCESS
+}
+
+/// Bake one map and write its viewer scene to `output`.
+fn export(input: &str, output: &str) -> Result<(), String> {
+    let (net, provenance) =
+        load_file_with_provenance(input).map_err(|e| format!("import failed: {e}"))?;
+
     let mesh = net.surface_mesh();
     if let Err(e) = mesh.validate() {
         // A degenerate map still renders; warn but keep going.
-        eprintln!("warning: mesh is not a valid trimesh: {e}");
+        eprintln!("warning: {input}: mesh is not a valid trimesh: {e}");
     }
 
     let object_mesh = net.object_mesh();
     if !object_mesh.objects.is_empty() {
         if let Err(e) = object_mesh.validate() {
-            eprintln!("warning: object mesh is not a valid trimesh: {e}");
+            eprintln!("warning: {input}: object mesh is not a valid trimesh: {e}");
         }
     }
 
-    let dir = Path::new(&input).parent().unwrap_or(Path::new("."));
+    let dir = Path::new(input).parent().unwrap_or(Path::new("."));
     let mut loaded: HashMap<String, f64> = HashMap::new();
     let surface = RoadSurface::new(&net, &mesh, |file| {
         match CrgGrid::from_path(dir.join(file)) {
@@ -99,10 +141,7 @@ fn main() -> ExitCode {
     let mut scene = build_scene(&net, &mesh, &object_mesh, &provenance);
     scene["crg"] = crg_overlay(&net, &mesh, &surface, &loaded);
     let bytes = serde_json::to_vec(&scene).expect("scene serializes");
-    if let Err(e) = fs::write(&output, &bytes) {
-        eprintln!("writing {output}: {e}");
-        return ExitCode::FAILURE;
-    }
+    fs::write(output, &bytes).map_err(|e| format!("writing {output}: {e}"))?;
 
     eprintln!(
         "wrote {output}: {} lanes, {} objects, {} signals, {} vertices, {} triangles, {} CRG files ({} KiB)",
@@ -114,17 +153,12 @@ fn main() -> ExitCode {
         loaded.len(),
         bytes.len() / 1024,
     );
-    let folder = Path::new(&output).parent().unwrap_or(Path::new("."));
-    let latest = Path::new(&output).file_name().unwrap_or_default();
-    if let Err(e) = write_scene_list(folder, &latest.to_string_lossy()) {
-        eprintln!("warning: listing scenes in {}: {e}", folder.display());
-    }
-    ExitCode::SUCCESS
+    Ok(())
 }
 
-/// Write `scenes.json` in `folder`: `scenes`, the sorted names of the other
-/// `.json` files there, and `latest`, the one just written.
-fn write_scene_list(folder: &Path, latest: &str) -> std::io::Result<()> {
+/// Write `scenes.json` in `folder`: the sorted names of the other `.json`
+/// files there.
+fn write_scene_list(folder: &Path) -> std::io::Result<()> {
     let folder = if folder.as_os_str().is_empty() {
         Path::new(".")
     } else {
@@ -140,7 +174,7 @@ fn write_scene_list(folder: &Path, latest: &str) -> std::io::Result<()> {
     names.sort_by_key(|n| n.to_lowercase());
     fs::write(
         folder.join("scenes.json"),
-        serde_json::to_vec(&json!({ "latest": latest, "scenes": names })).expect("list serializes"),
+        serde_json::to_vec(&names).expect("names serialize"),
     )
 }
 
