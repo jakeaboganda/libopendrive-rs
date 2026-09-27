@@ -1,8 +1,8 @@
 # OpenDRIVE viewer
 
 A three.js page that draws a map baked by `libopendrive`. Hover a lane, an
-object, a tunnel, a bridge or a CRG heat map to read what the crate knows
-about it.
+object, a signal, a tunnel, a bridge or a CRG heat map to read what the
+crate knows about it.
 
 The viewer has two parts. `examples/viewer_export.rs` bakes an `.xodr` into
 JSON, and `web/index.html` draws that JSON. The crate itself does no
@@ -49,13 +49,14 @@ features below.
 | `w` | cycle the wireframe |
 | `n` | toggle normals |
 | `o` | toggle objects |
+| `s` | toggle signals |
 | `c` | toggle the CRG heat map |
 | click a sidebar entry | highlight it and move the camera to it |
 | type in the filter box | filter lanes by road id, lane id or lane type, and tunnels and bridges by name, kind or road |
 
 The checkboxes along the top toggle centerlines (green), lane boundaries
 (cream), normals (a hair at every mesh vertex), objects, tunnels, bridges,
-and the CRG heat map.
+signals, and the CRG heat map.
 
 ## Lanes
 
@@ -122,6 +123,34 @@ bridge's name, type and `s` range to the readout.
 
 The sidebar lists tunnels and bridges above the lanes. Click one to
 highlight its lanes and frame the stretch it covers.
+
+## Signals
+
+Each signal is a board of its `width` and `height`, standing on the middle
+of its bottom edge. Its front, the face turned to the traffic it addresses,
+is drawn flat in the board's colour, and its back and sides are grey. A
+static sign is white and a dynamic signal, such as a traffic light, is a
+dark box. A board the map gives no size is 0.6 m square. There is no post,
+since the map doesn't say how a signal is mounted. A pole is a separate
+`<object>` when the map has one.
+
+Hover a signal to outline it, light up the lanes it applies to, and draw a
+dashed line from the board down to the road where it takes effect. The
+readout shows:
+
+- its name, and whether it is dynamic, invalidated or temporary
+- its country, `type` and `subtype`, as the map spells them
+- its value and unit, and its text
+- its road, OpenDRIVE id, `s`, `t` and orientation
+- the lanes it applies to, by lane section and OpenDRIVE lane id
+- the board's position, heading, pitch, roll and size
+
+`tests/data/signals.xodr` has signs and lights with every feature the viewer
+draws:
+
+```sh
+cargo run --example viewer_export --features serde -- tests/data/signals.xodr viewer/web/signals.json
+```
 
 ## OpenCRG surfaces
 

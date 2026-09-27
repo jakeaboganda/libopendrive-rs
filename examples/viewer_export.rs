@@ -16,7 +16,9 @@
 //! for a solid, or world-space corners for an outline or a sweep. The object
 //! mesh from [`RoadNetwork::object_mesh`] comes too, in the same flat buffers
 //! with each object's slice of it. A structure table lists the tunnels and
-//! bridges, each with the stretch of every lane it covers.
+//! bridges, each with the stretch of every lane it covers. A signal table
+//! gives each signal's meaning, the lanes it applies to, and its board's
+//! pose and size.
 //!
 //! Where the map lays OpenCRG files on its roads, the exporter loads them from
 //! beside the `.xodr` and samples [`RoadSurface`] over every lane they cover:
@@ -37,8 +39,8 @@ use libopendrive::opencrg::CrgGrid;
 use libopendrive::{
     load_file_with_provenance, Corner, CrgMode, CrgPurpose, CrgSurface, Direction, Extent, LaneId,
     LaneProvenance, LaneSpan, Marking, Mesh, Object, ObjectProvenance, Orientation, Point,
-    Provenance, RoadNetwork, RoadSurface, Shape, Structure, StructureKind, StructureProvenance,
-    SurfaceHint,
+    Provenance, RoadNetwork, RoadSurface, Shape, Signal, SignalProvenance, Structure,
+    StructureKind, StructureProvenance, SurfaceHint,
 };
 use serde_json::{json, Map, Value};
 
@@ -95,9 +97,10 @@ fn main() -> ExitCode {
     }
 
     eprintln!(
-        "wrote {output}: {} lanes, {} objects, {} vertices, {} triangles, {} CRG files ({} KiB)",
+        "wrote {output}: {} lanes, {} objects, {} signals, {} vertices, {} triangles, {} CRG files ({} KiB)",
         mesh.lanes.len(),
         net.objects().len(),
+        net.signals().len(),
         mesh.vertices.len(),
         mesh.indices.len() / 3,
         loaded.len(),
@@ -107,7 +110,7 @@ fn main() -> ExitCode {
 }
 
 /// Assemble the viewer scene: flat mesh buffers, the lane table, the object
-/// table, and the object mesh.
+/// table, the object mesh, and the structure and signal tables.
 fn build_scene(
     net: &RoadNetwork,
     mesh: &Mesh,
@@ -136,6 +139,12 @@ fn build_scene(
         })
         .collect();
 
+    let signals: Vec<Value> = net
+        .signals()
+        .iter()
+        .map(|s| signal_entry(s, provenance.signals.iter().find(|p| p.signal == s.id)))
+        .collect();
+
     let mut object_buffers = buffers(object_mesh);
     object_buffers["spans"] = object_mesh
         .objects
@@ -156,6 +165,7 @@ fn build_scene(
         "objects": objects,
         "objectMesh": object_buffers,
         "structures": structures,
+        "signals": signals,
     })
 }
 
@@ -231,11 +241,6 @@ fn object_entry(object: &Object, prov: Option<&ObjectProvenance>) -> Value {
                 .collect::<Vec<_>>(),
         }),
     };
-    let orientation = |o: Orientation| match o {
-        Orientation::Positive => "+",
-        Orientation::Negative => "-",
-        Orientation::Both => "none",
-    };
     json!({
         "objectId": object.id.0,
         "objectType": object.kind.as_str(),
@@ -272,6 +277,51 @@ fn object_entry(object: &Object, prov: Option<&ObjectProvenance>) -> Value {
         "referencedFrom": prov.and_then(|p| p.referenced_from.as_deref()),
         "shape": shape,
     })
+}
+
+/// One signal's viewer record: what it means, its OpenDRIVE provenance, the
+/// lanes it applies to, and its board. `appliesAt` is the points on the road
+/// where it takes effect. The board's `position` is the middle of its bottom
+/// edge, and its angles are in radians, applied yaw, then pitch, then roll.
+/// `length`, `width` and `height` are null where the map gives none.
+fn signal_entry(s: &Signal, prov: Option<&SignalProvenance>) -> Value {
+    json!({
+        "signalId": s.id.0,
+        "name": s.name,
+        "dynamic": s.dynamic,
+        "country": s.country,
+        "countryRevision": s.country_revision,
+        "type": s.kind,
+        "subtype": s.subtype,
+        "value": s.value,
+        "unit": s.unit.map(|u| u.as_str()),
+        "text": s.text,
+        "invalidated": s.invalidated,
+        "temporary": s.temporary,
+        "lanes": s.lanes.iter().map(|l| l.0).collect::<Vec<_>>(),
+        "appliesAt": s.applies_at.iter().map(|p| p.to_array()).collect::<Vec<_>>(),
+        "position": s.position.to_array(),
+        "heading": s.heading,
+        "pitch": s.pitch,
+        "roll": s.roll,
+        "length": s.length,
+        "width": s.width,
+        "height": s.height,
+        "roadId": prov.map(|p| p.road_id.as_str()),
+        "odId": prov.map(|p| p.od_id.as_str()),
+        "s": prov.map(|p| p.s),
+        "t": prov.map(|p| p.t),
+        "orientation": prov.map(|p| orientation(p.orientation)),
+    })
+}
+
+/// How the file spells an orientation.
+fn orientation(o: Orientation) -> &'static str {
+    match o {
+        Orientation::Positive => "+",
+        Orientation::Negative => "-",
+        Orientation::Both => "none",
+    }
 }
 
 /// One tunnel's or bridge's viewer record: what it is, its OpenDRIVE

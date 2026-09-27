@@ -68,10 +68,11 @@
       <label><input type="checkbox" id="objects" checked> objects</label>
       <label><input type="checkbox" id="tunnels" checked> tunnels</label>
       <label><input type="checkbox" id="bridges" checked> bridges</label>
+      <label><input type="checkbox" id="signals" checked> signals</label>
       <label id="crglabel"><input type="checkbox" id="crg" checked> CRG heights</label>
       <label><input type="checkbox" id="flag"> flag bad tris <span id="flagcount"></span></label>
     </div>
-    <div id="hint">drag: orbit · scroll: zoom · right-drag: pan · [w] cycles wireframe · [n] toggles normals · [o] toggles objects · [c] toggles CRG heights · hover a lane or object for coordinates</div>
+    <div id="hint">drag: orbit · scroll: zoom · right-drag: pan · [w] cycles wireframe · [n] toggles normals · [o] toggles objects · [s] toggles signals · [c] toggles CRG heights · hover a lane, object or signal for coordinates</div>
     <div id="err"></div>
   </div>
 </div>
@@ -158,6 +159,15 @@ const STRUCTURE_COLORS = { 'tunnel': 0xb388ff, 'bridge': 0x4dd0e1 };
 
 const BORDER_COLORS = { 'curb': 0xd8d2c4, 'concrete': 0x9e9e9e, 'paint': 0xf5f5f5 };
 
+// Board colour for a static signal and a dynamic one, such as a traffic
+// light. The front of a board is drawn in it and the rest darker.
+const SIGNAL_COLORS = { 'static': 0xf2f2f2, 'dynamic': 0x2b2f36 };
+
+// A signal board's size in metres where the map gives none: its width and
+// height, and its thickness.
+const SIGN_SIZE = 0.6;
+const BOARD_THICKNESS = 0.05;
+
 // Size in metres of the marker drawn for an object with no extent, and the
 // least size an instanced box or cylinder gets. A post given only a height
 // has no footprint, and at 0 it would not draw at all.
@@ -183,6 +193,9 @@ let activeLane = null;
 let structures = [];         // tunnels and bridges
 let structureTints = {};     // kind -> mesh tinting the lanes it covers
 let crgMesh = null;          // the CRG height overlay; userData is the exported crg record
+let signals = [];            // the exported signal table
+let signalMeshes = [];       // the boards; userData.pick(hit) is the hovered record
+let signalLink;              // dashed lines from the hovered board to where it applies
 
 init().catch(showError);
 
@@ -221,13 +234,14 @@ async function init() {
   buildOverlays(data);
   buildObjects(data);
   buildStructures(data);
+  buildSignals(data);
   buildCrg(data);
   buildSidebar();
   buildLegend();
   frameOn(roadMesh);
 
   applyMode();
-  for (const id of ['mode', 'flag', 'centerlines', 'boundaries', 'normals', 'objects', 'tunnels', 'bridges', 'crg']) {
+  for (const id of ['mode', 'flag', 'centerlines', 'boundaries', 'normals', 'objects', 'tunnels', 'bridges', 'signals', 'crg']) {
     document.getElementById(id).addEventListener('change', applyMode);
   }
 
@@ -242,8 +256,8 @@ async function init() {
       const order = ['solid', 'wire', 'both'];
       sel.value = order[(order.indexOf(sel.value) + 1) % order.length];
       applyMode();
-    } else if (e.key === 'n' || e.key === 'o' || e.key === 'c') {
-      const box = document.getElementById({ n: 'normals', o: 'objects', c: 'crg' }[e.key]);
+    } else if (e.key === 'n' || e.key === 'o' || e.key === 's' || e.key === 'c') {
+      const box = document.getElementById({ n: 'normals', o: 'objects', s: 'signals', c: 'crg' }[e.key]);
       box.checked = !box.checked;
       applyMode();
     }
@@ -415,7 +429,9 @@ function applyMode() {
   for (const m of objectMeshes) m.visible = on('objects');
   if (markingMesh) markingMesh.visible = on('objects');
   for (const [kind, mesh] of Object.entries(structureTints)) mesh.visible = on(kind + 's');
-  if (!on('objects')) objectOutline.visible = false;
+  for (const m of signalMeshes) m.visible = on('signals');
+  if (!on('objects') && !on('signals')) objectOutline.visible = false;
+  if (!on('signals')) signalLink.visible = false;
   if (crgMesh) crgMesh.visible = on('crg');
   badMesh.visible = on('flag');
   const n = badMesh.userData.count;
@@ -681,6 +697,105 @@ function buildStructures(data) {
   }
 }
 
+// --- Signals -------------------------------------------------------------------
+
+// Every signal as a board: a box of its width and height standing on the
+// middle of its bottom edge, which is where the crate puts its position. The
+// front, the face turned to the traffic it addresses, is in the signal's
+// colour, and the rest is darker, so which way a board faces reads at a
+// glance. No post, since the map does not say how a signal is mounted.
+function buildSignals(data) {
+  signals = data.signals ?? [];
+  signalLink = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({
+    color: 0xffd24a, dashSize: 0.3, gapSize: 0.2, depthTest: false,
+  }));
+  signalLink.renderOrder = 4;
+  signalLink.visible = false;
+  scene.add(signalLink);
+  if (!signals.length) return;
+
+  const board = new THREE.BoxGeometry(1, 1, 1).translate(0, 0, 0.5);
+  // BoxGeometry's faces come in groups +x, -x, +y, -y, +z, -z, and +x is the
+  // board's heading. The front is unlit, so it shows its colour from any
+  // side the light is on.
+  const front = new THREE.MeshBasicMaterial();
+  const rest = new THREE.MeshStandardMaterial({ color: 0x606060, roughness: 0.8, metalness: 0.0 });
+  const mesh = new THREE.InstancedMesh(board, [front, rest, rest, rest, rest, rest], signals.length);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color();
+  const euler = new THREE.Euler(0, 0, 0, 'ZYX');
+  const pos = new THREE.Vector3(), scale = new THREE.Vector3();
+  signals.forEach((sg, i) => {
+    const width = sg.width || sg.height || SIGN_SIZE;
+    const height = sg.height || sg.width || SIGN_SIZE;
+    scale.set(sg.length || BOARD_THICKNESS, width, height);
+    euler.set(sg.roll, sg.pitch, sg.heading);
+    m.compose(pos.fromArray(sg.position), q.setFromEuler(euler), scale);
+    mesh.setMatrixAt(i, m);
+    mesh.setColorAt(i, c.setHex(SIGNAL_COLORS[sg.dynamic ? 'dynamic' : 'static']));
+  });
+  mesh.computeBoundingSphere();
+  const edges = new THREE.EdgesGeometry(board);
+  mesh.userData.pick = hit => {
+    const matrix = new THREE.Matrix4();
+    mesh.getMatrixAt(hit.instanceId, matrix);
+    return { record: signals[hit.instanceId], edges, matrix };
+  };
+  scene.add(mesh);
+  signalMeshes.push(mesh);
+}
+
+// A dashed line from a signal's board to each point where it applies.
+function linkSignal(sg) {
+  const positions = sg.appliesAt.flatMap(p => [...sg.position, ...p]);
+  signalLink.geometry.dispose();
+  signalLink.geometry = new THREE.BufferGeometry();
+  signalLink.geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  signalLink.computeLineDistances();
+  signalLink.visible = positions.length > 0;
+}
+
+// The readout for a hovered signal: what it means, where it applies, and
+// its board.
+function showSignalTip(ev, rect, hit) {
+  const { record: sg, edges, matrix } = hit.object.userData.pick(hit);
+  objectOutline.geometry = edges;
+  objectOutline.matrix.copy(matrix);
+  objectOutline.visible = true;
+  linkSignal(sg);
+  const applies = sg.lanes.map(id => laneById.get(id)).filter(Boolean);
+  if (activeLane == null) highlightLanes(applies);
+
+  const deg = r => (r * 180 / Math.PI).toFixed(1) + '°';
+  const flags = [sg.dynamic && 'dynamic', sg.invalidated && 'invalidated', sg.temporary && 'temporary']
+    .filter(Boolean).join('  ');
+  const catalogue = [sg.country || 'no country', sg.countryRevision].filter(Boolean).map(escapeHtml).join(' ');
+  const rows = [
+    `<b>signal</b> ${escapeHtml(sg.name || '(unnamed)')}${flags ? '  ' + flags : ''}`,
+    `${catalogue}   type ${escapeHtml(sg.type || '(none)')}   subtype ${escapeHtml(sg.subtype || '(none)')}`,
+  ];
+  const shows = [];
+  if (sg.value != null) shows.push(`value ${sg.value}${sg.unit ? ' ' + escapeHtml(sg.unit) : ''}`);
+  if (sg.text) shows.push(`text "${escapeHtml(sg.text)}"`);
+  if (shows.length) rows.push(shows.join('   '));
+  if (sg.roadId != null) {
+    rows.push(`road ${escapeHtml(sg.roadId)}  signal ${escapeHtml(sg.odId)}  ` +
+      `s ${sg.s.toFixed(2)} m   t ${sg.t.toFixed(2)} m`);
+    rows.push(`orientation ${sg.orientation}   signalId ${sg.signalId}`);
+  }
+  rows.push(laneList(applies));
+  const [x, y, z] = sg.position;
+  const size = v => v == null ? '?' : v.toFixed(2);
+  rows.push(
+    `x ${x.toFixed(2)}   y ${y.toFixed(2)}   z ${z.toFixed(2)}`,
+    `heading ${deg(sg.heading)}   pitch ${deg(sg.pitch)}   roll ${deg(sg.roll)}`,
+    `board ${size(sg.width)} × ${size(sg.height)} m` + (sg.length != null ? `, ${size(sg.length)} m thick` : ''),
+  );
+  tip.style.display = 'block';
+  tip.style.left = (ev.clientX - rect.left + 14) + 'px';
+  tip.style.top = (ev.clientY - rect.top + 14) + 'px';
+  tip.innerHTML = rows.join('\n');
+}
+
 // --- Sidebar -----------------------------------------------------------------
 
 function buildSidebar() { renderSidebar(); }
@@ -705,6 +820,7 @@ function buildLegend() {
   group('lanes', lanes.map(l => l.laneType), LANE_COLORS, FALLBACK_COLOR);
   group('objects', objects.map(o => o.objectType), OBJECT_COLORS, OBJECT_FALLBACK_COLOR);
   group('structures', structures.map(s => s.kind), STRUCTURE_COLORS, FALLBACK_COLOR);
+  group('signals', signals.map(s => s.dynamic ? 'dynamic' : 'static'), SIGNAL_COLORS, FALLBACK_COLOR);
   group('parking access', objects.filter(o => o.parkingSpace).map(o => o.parkingSpace.access),
     PARKING_COLORS, OBJECT_COLORS['parking-space']);
   if (crgMesh) {
@@ -736,7 +852,7 @@ function renderSidebar() {
     byRoad.get(l.roadId).push(l);
   }
   countEl.textContent = `${shown} / ${lanes.length} lanes · ${byRoad.size} roads · ` +
-    `${objects.length} objects · ${structures.length} tunnels & bridges`;
+    `${objects.length} objects · ${structures.length} tunnels & bridges · ${signals.length} signals`;
 
   const frag = document.createDocumentFragment();
   const listed = structures.filter(s => !q || s.kind.includes(q) ||
@@ -791,10 +907,12 @@ function onHover(ev) {
     ((ev.clientX - rect.left) / rect.width) * 2 - 1,
     -((ev.clientY - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
-  const pickable = [roadMesh, ...objectMeshes.filter(m => m.visible)];
+  const pickable = [roadMesh, ...[...objectMeshes, ...signalMeshes].filter(m => m.visible)];
   const hit = raycaster.intersectObjects(pickable, false)[0];
   objectOutline.visible = false;
+  signalLink.visible = false;
   if (!hit) { hideTip(); if (!activeLane) clearHighlight(); return; }
+  if (signalMeshes.includes(hit.object)) return showSignalTip(ev, rect, hit);
   if (hit.object !== roadMesh) return showObjectTip(ev, rect, hit);
 
   const lane = laneForFace(hit.faceIndex);

@@ -16,6 +16,9 @@
   lanes its `<validity>` ranges name.
 - `SignalProvenance` gives each signal's road, OpenDRIVE id, `(s, t)` and
   orientation.
+- The viewer draws each signal as a board, white when static and dark when
+  dynamic, with its front lit. Hover one to read it, see its lanes, and
+  follow a dashed line to where it applies. `s` toggles signals.
 
 ### OpenCRG road surfaces
 
