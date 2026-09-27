@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Signals
+
+- Each `<signal>` imports as a `Signal` on `RoadNetwork::signals`, with a
+  `SignalId`. It keeps the file's `country`, `countryRevision`, `type`,
+  `subtype`, `value`, `unit`, `text`, and the 1.9 flags `invalidated` and
+  `temporary`. `type` and `subtype` stay the file's strings.
+- A signal's board stands `zOffset` straight above the road at its
+  `(s, t)`, faces the traffic its `orientation` names, and is turned by
+  `hOffset`. Pitch and roll are against the horizontal, so a board on a
+  banked road stays upright. Angles wrap into `(-π, π]`.
+- `Signal::lanes` is the side of the road its `orientation` names, or the
+  lanes its `<validity>` ranges name.
+- `SignalProvenance` gives each signal's road, OpenDRIVE id, `(s, t)` and
+  orientation.
+
 ### OpenCRG road surfaces
 
 - Each `<CRG>` under a road's or a junction's `<surface>` imports as a
@@ -27,6 +42,9 @@
 
 - The minimum Rust version is 1.85, up from 1.82, for the `opencrg`
   dependency.
+- `Provenance` has a new `signals` field, so a `Provenance` literal needs it
+  or `..Default::default()`. The `serde` form of `RoadNetwork` has a new
+  `signals` key, so JSON written before does not load.
 
 ## 0.2.1 - 2026-09-26
 

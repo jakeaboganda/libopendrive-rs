@@ -16,10 +16,12 @@ use crate::object::orient;
 use crate::{
     Border, Corner, Coverage, CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface, Direction,
     Extent, Lane, LaneId, LaneType, Marking, Material, Object, ObjectId, ObjectType, ParkingSpace,
-    Polyline, RoadNetwork, Section, Shape, Structure, StructureId, StructureKind, UserData,
+    Polyline, RoadNetwork, Section, Shape, SignalId, Structure, StructureId, StructureKind,
+    UserData,
 };
 
 mod links;
+mod signals;
 use links::{LaneMeta, RoadInfo, Topology};
 
 /// The furthest apart, in metres, a lane's centerline samples get, on
@@ -131,7 +133,7 @@ pub struct ObjectProvenance {
     pub referenced_from: Option<String>,
 }
 
-/// Which direction of its road an object applies to, from its
+/// Which direction of its road an object or a signal applies to, from its
 /// `orientation`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -165,6 +167,31 @@ pub struct StructureProvenance {
     pub length: f64,
 }
 
+/// The OpenDRIVE identity of one baked signal: which road and `<signal>` it
+/// came from, and where on that road it takes effect.
+///
+/// Kept apart from [`Signal`](crate::Signal) as [`ObjectProvenance`] is from
+/// [`Object`].
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SignalProvenance {
+    /// The baked signal this record describes.
+    pub signal: SignalId,
+    /// The `<road id>` the signal is on.
+    pub road_id: String,
+    /// The `<signal id>` it came from. Empty if the file gives none. Meant to
+    /// be unique, but real files repeat them.
+    pub od_id: String,
+    /// Where on the road it takes effect, in metres along the reference
+    /// line.
+    pub s: f64,
+    /// The lateral offset from the reference line there, in metres, positive
+    /// to the left.
+    pub t: f64,
+    /// Which direction of the road it applies to.
+    pub orientation: Orientation,
+}
+
 /// The OpenDRIVE identity of everything a load baked, from
 /// [`load_str_with_provenance`] or [`load_file_with_provenance`].
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -176,6 +203,8 @@ pub struct Provenance {
     pub objects: Vec<ObjectProvenance>,
     /// One per baked tunnel or bridge, in baked-structure order.
     pub structures: Vec<StructureProvenance>,
+    /// One per baked signal, in baked-signal order.
+    pub signals: Vec<SignalProvenance>,
 }
 
 /// Load an OpenDRIVE file from disk and bake it into a `RoadNetwork`.
@@ -189,8 +218,8 @@ pub fn load_str(xml: &str) -> Result<RoadNetwork, ImportError> {
 }
 
 /// Like [`load_file`], but also returns the OpenDRIVE [`Provenance`] of
-/// every baked lane, object and structure, for a viewer or editor that must name the
-/// road and original id each one came from.
+/// every baked lane, object, structure and signal, for a viewer or editor
+/// that must name the road and original id each one came from.
 pub fn load_file_with_provenance(
     path: impl AsRef<std::path::Path>,
 ) -> Result<(RoadNetwork, Provenance), ImportError> {
@@ -200,8 +229,8 @@ pub fn load_file_with_provenance(
 }
 
 /// Like [`load_str`], but also returns the OpenDRIVE [`Provenance`] of
-/// every baked lane, object and structure. Each record carries the
-/// [`LaneId`], [`ObjectId`] or [`StructureId`] it describes.
+/// every baked lane, object, structure and signal. Each record carries the
+/// [`LaneId`], [`ObjectId`], [`StructureId`] or [`SignalId`] it describes.
 pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), ImportError> {
     let cleaned = sanitize(xml);
     let doc = roxmltree::Document::parse(cleaned.as_ref())?;
@@ -212,8 +241,9 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     let mut surfaces = Vec::new();
     let mut topo = Topology::default();
     let index = object_index(root);
+    let mut roads = Vec::new();
     for road in root.children().filter(|n| n.has_tag_name("road")) {
-        parse_road(
+        let baked = parse_road(
             road,
             &index,
             &mut lanes,
@@ -222,11 +252,13 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             &mut surfaces,
             &mut topo,
         );
+        roads.extend(baked.map(|baked| (road, baked)));
     }
     if lanes.is_empty() {
         return Err(ImportError::Malformed("no lanes found".into()));
     }
     surfaces.extend(junction_crgs(root, &topo));
+    let signals = signals::place(&roads);
     // Resolve connectivity once all lanes exist and are registered.
     topo.junctions = links::junctions(root);
     links::resolve(&mut lanes, &topo);
@@ -245,11 +277,13 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             .collect(),
         objects: objects.provenance,
         structures: structures.provenance,
+        signals: signals.provenance,
     };
     Ok((
         RoadNetwork::new(lanes)
             .with_objects(objects.baked)
             .with_structures(structures.baked)
+            .with_signals(signals.baked)
             .with_crg_surfaces(surfaces),
         provenance,
     ))
@@ -547,7 +581,8 @@ fn attr_f64(node: roxmltree::Node, name: &str) -> Option<f64> {
 
 /// Bakes one `<road>`'s lanes into `out`, places its objects in `objects`,
 /// looking up what its `<objectReference>`s name in `index`, and puts its
-/// tunnels and bridges over its lanes in `structures`.
+/// tunnels and bridges over its lanes in `structures`. Returns the road, for
+/// placing what the file puts on it later.
 ///
 /// A road the importer cannot interpret is *skipped*, not fatal. That covers
 /// no length, no `<planView>`, no supported geometry, and no `<lanes>`. Real
@@ -563,15 +598,10 @@ fn parse_road(
     structures: &mut Structures,
     surfaces: &mut Vec<CrgSurface>,
     topo: &mut Topology,
-) {
+) -> Option<BakedRoad> {
     let road_id = road.attribute("id").unwrap_or_default().to_string();
-    let Some(length) = attr_f64(road, "length") else {
-        return;
-    };
-
-    let Some(plan_view) = child(road, "planView") else {
-        return;
-    };
+    let length = attr_f64(road, "length")?;
+    let plan_view = child(road, "planView")?;
     let mut geoms: Vec<GeomRec> = Vec::new();
     for g in plan_view.children().filter(|n| n.has_tag_name("geometry")) {
         // A geometry record missing (or carrying a non-finite) pose is skipped
@@ -643,7 +673,7 @@ fn parse_road(
         geoms.push(GeomRec { s, x, y, hdg, geom });
     }
     if geoms.is_empty() {
-        return; // nothing drivable to bake
+        return None; // nothing drivable to bake
     }
     geoms.sort_by(|a, b| a.s.total_cmp(&b.s));
 
@@ -667,43 +697,33 @@ fn parse_road(
         topo,
     );
     let baked = BakedRoad {
-        id: &road_id,
+        id: road_id,
         length,
-        sections: &sections,
-        surface: &|s, t| surface_at(&geoms, &elevations, &superelevations, s, t),
-        axes: &|s| road_axes(&geoms, &elevations, &superelevations, s),
+        geoms,
+        elevations,
+        superelevations,
+        sections,
     };
     if let Some(objects_node) = child(road, "objects") {
         place_objects(objects_node, index, &baked, objects);
         place_structures(objects_node, &baked, out, structures);
     }
-    let line = RefLine {
-        geoms: &geoms,
-        elevations: &elevations,
-        superelevations: &superelevations,
-    };
     for node in child(road, "surface")
         .into_iter()
         .flat_map(|n| n.children())
         .filter(|n| n.has_tag_name("CRG"))
     {
-        surfaces.extend(road_crg(node, &baked, &line));
+        surfaces.extend(road_crg(node, &baked));
     }
+    Some(baked)
 }
 
-/// A road's reference line and the profiles along it.
-struct RefLine<'a> {
-    geoms: &'a [GeomRec],
-    elevations: &'a [Cubic],
-    superelevations: &'a [Cubic],
-}
-
-impl RefLine<'_> {
+impl BakedRoad {
     /// The reference line at `s`.
     fn station(&self, s: f64) -> RefPoint {
-        let (x, y, heading) = geom_at(self.geoms, s).pose(s);
-        let elevation = active(self.elevations, s);
-        let bank = active(self.superelevations, s);
+        let (x, y, heading) = geom_at(&self.geoms, s).pose(s);
+        let elevation = active(&self.elevations, s);
+        let bank = active(&self.superelevations, s);
         RefPoint {
             s,
             x,
@@ -724,7 +744,7 @@ const CRG_STEP: f64 = 0.25;
 
 /// A road `<CRG>`, or `None` if it lacks a file, a known mode, or a stretch
 /// of road to lie on.
-fn road_crg(node: roxmltree::Node, road: &BakedRoad, line: &RefLine) -> Option<CrgSurface> {
+fn road_crg(node: roxmltree::Node, road: &BakedRoad) -> Option<CrgSurface> {
     let from = attr_f64(node, "sStart")?.max(0.0);
     let to = attr_f64(node, "sEnd")?.min(road.length);
     if to <= from {
@@ -740,7 +760,7 @@ fn road_crg(node: roxmltree::Node, road: &BakedRoad, line: &RefLine) -> Option<C
         "attached" => CrgMode::Attached(along),
         "attached0" => CrgMode::Attached0(along),
         "genuine" => {
-            let at = line.station(along.s_offset);
+            let at = road.station(along.s_offset);
             let t = along.t_offset * at.bank.cos();
             let (sin, cos) = at.heading.sin_cos();
             CrgMode::Genuine {
@@ -756,7 +776,7 @@ fn road_crg(node: roxmltree::Node, road: &BakedRoad, line: &RefLine) -> Option<C
     };
     let steps = ((to - from) / CRG_STEP).ceil().max(1.0) as usize;
     let stations = (0..=steps)
-        .map(|k| line.station(from + (to - from) * k as f64 / steps as f64))
+        .map(|k| road.station(from + (to - from) * k as f64 / steps as f64))
         .collect();
     Some(crg_surface(
         node,
@@ -843,19 +863,29 @@ fn is_valid(od_id: i32, validity: &[(i32, i32)]) -> bool {
             .any(|&(a, b)| (a.min(b)..=a.max(b)).contains(&od_id))
 }
 
-/// What placing an object needs to know about the road it is on.
-struct BakedRoad<'a> {
-    id: &'a str,
+/// A baked road: its reference line with the profiles along it, and its lane
+/// sections. What placing an object or a signal on it needs.
+struct BakedRoad {
+    id: String,
     length: f64,
-    sections: &'a [BakedSection],
-    /// The road surface at a station `(s, t)`, and the reference line's
-    /// heading there.
-    surface: &'a dyn Fn(f64, f64) -> (Point, f64),
-    /// The road's own axes at station `s`, from [`road_axes`].
-    axes: &'a dyn Fn(f64) -> [[f64; 3]; 3],
+    geoms: Vec<GeomRec>,
+    elevations: Vec<Cubic>,
+    superelevations: Vec<Cubic>,
+    sections: Vec<BakedSection>,
 }
 
-impl BakedRoad<'_> {
+impl BakedRoad {
+    /// The road surface at a station `(s, t)`, and the reference line's
+    /// heading there.
+    fn surface(&self, s: f64, t: f64) -> (Point, f64) {
+        surface_at(&self.geoms, &self.elevations, &self.superelevations, s, t)
+    }
+
+    /// The road's own axes at station `s`, from [`road_axes`].
+    fn axes(&self, s: f64) -> [[f64; 3]; 3] {
+        road_axes(&self.geoms, &self.elevations, &self.superelevations, s)
+    }
+
     fn on_road(&self, s: f64) -> bool {
         (0.0..=self.length).contains(&s)
     }
@@ -1538,7 +1568,7 @@ fn place_structures(
         }
         let validity = validity(node);
         let mut covered = Vec::new();
-        for sec in road.sections {
+        for sec in &road.sections {
             let (from, to) = (s.max(sec.start), (s + length).min(sec.end));
             if to - from < 1e-6 {
                 continue;
@@ -1561,7 +1591,7 @@ fn place_structures(
         });
         out.provenance.push(StructureProvenance {
             structure: id,
-            road_id: road.id.to_string(),
+            road_id: road.id.clone(),
             od_id: text("id"),
             s,
             length,
@@ -1755,8 +1785,8 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
     let pitch = attr_f64(node, "pitch").unwrap_or(0.0);
     let roll = attr_f64(node, "roll").unwrap_or(0.0);
     let frame = |st: &Station| {
-        let (on_surface, _) = (road.surface)(st.s, st.t);
-        let axes = (road.axes)(st.s);
+        let (on_surface, _) = road.surface(st.s, st.t);
+        let axes = road.axes(st.s);
         let raise = axes[2].map(|c| (c * st.z_offset) as f32);
         let origin = on_surface + Vector::from_array(raise);
         Frame::on_road(origin, axes, (hdg, pitch, roll))
@@ -1856,7 +1886,7 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
         });
         out.provenance.push(ObjectProvenance {
             object: id,
-            road_id: road.id.to_string(),
+            road_id: road.id.clone(),
             od_id: text("id"),
             s: part.s,
             t: part.t,
@@ -2042,7 +2072,7 @@ fn sweep(repeat: &Repeat, base: &Station, road: &BakedRoad) -> Option<(Shape, St
             ),
         };
         let corner = |t| {
-            let (mut base, _) = (road.surface)(s, t);
+            let (mut base, _) = road.surface(s, t);
             base.z += st.z_offset as f32;
             Corner {
                 base,
@@ -2154,13 +2184,13 @@ fn outline(
                 return None;
             }
             spans(s);
-            let (mut base, _) = (road.surface)(s, t);
+            let (mut base, _) = road.surface(s, t);
             base.z += attr_f64(c, "dz").unwrap_or(0.0) as f32;
             let corner = Corner {
                 base,
                 top: base + Vector::Z * height as f32,
             };
-            Some((corner, normal((road.axes)(s))))
+            Some((corner, normal(road.axes(s))))
         } else {
             let frame = frame?;
             spans(s);

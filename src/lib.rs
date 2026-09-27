@@ -68,7 +68,8 @@
 //! | `<objects><objectReference>` | `id`, `s`, `t`, `zOffset`, `orientation`, `validLength` |
 //! | `<objects><tunnel>` | `id`, `name`, `type`, `s`, `length`, `lighting`, `daylight` |
 //! | `<objects><bridge>` | `id`, `name`, `type`, `s`, `length` |
-//! | `<validity>`, under `<object>`, `<objectReference>`, `<tunnel>` and `<bridge>` | `fromLane`, `toLane` |
+//! | `<signals><signal>` | `id`, `name`, `dynamic`, `orientation`, `s`, `t`, `zOffset`, `hOffset`, `pitch`, `roll`, `country`, `countryRevision`, `type`, `subtype`, `value`, `unit`, `text`, `length`, `width`, `height`, `invalidated`, `temporary` |
+//! | `<validity>`, under `<object>`, `<objectReference>`, `<signal>`, `<tunnel>` and `<bridge>` | `fromLane`, `toLane` |
 //! | `<object><parkingSpace>` | `access`, `restrictions` |
 //! | `<object><material>` | `surface`, `friction`, `roughness` |
 //! | `<object><userData>` | `code`, `value` |
@@ -179,6 +180,25 @@
 //! through a tunnel or over a bridge. Its road id, id, `s` and `length` are
 //! in its [`StructureProvenance`].
 //!
+//! Each `<signal>` bakes to a [`Signal`] in [`RoadNetwork::signals`]. It
+//! keeps the catalogue codes the file gives, `country`, `type`, `subtype`,
+//! `value`, `unit` and `text`, and looks nothing up in a catalogue. Its board
+//! stands `zOffset` straight above the road surface at its `(s, t)`, the
+//! point in [`Signal::applies_at`]. A `+` signal faces back along the road,
+//! toward traffic running along `+s`. A `-` or `none` signal faces along it.
+//! `hOffset` turns it counter-clockwise from there. `pitch` and `roll` are
+//! against the horizontal, as the spec has them, so unlike an object, a board
+//! on a banked road stays upright. Angles wrap into `(-π, π]`, since real
+//! files give `hOffset`s of several turns.
+//!
+//! [`Signal::lanes`] is the lanes at `s` on the side of the road its
+//! `orientation` names: negative ids for `+`, positive ids for `-`, and both
+//! for `none`. Its `<validity>` ranges replace that side rather than narrow
+//! it. The spec says they must lie within it, but esmini's maps give `+`
+//! signals validities on both sides. The road id, `<signal id>`, `(s, t)` and
+//! `orientation` are in its [`SignalProvenance`]. A signal missing `s` or
+//! `t`, or off the ends of its road, is skipped.
+//!
 //! # Road surfaces
 //!
 //! Each `<CRG>` under a road's or a junction's `<surface>` becomes a
@@ -226,9 +246,11 @@
 //! # What the importer ignores
 //!
 //! Everything else in the file, silently. That includes `<geoReference>`,
-//! `<signals>`, `<roadMark>`, `<controller>`, `<junctionGroup>`,
-//! `<station>`, an object's `<surface>`, and road `<type>` with its
-//! `<speed>`.
+//! `<roadMark>`, `<controller>`, `<junctionGroup>`, `<station>`, an object's
+//! `<surface>`, and road `<type>` with its `<speed>`. Of signals, it ignores
+//! `<signalReference>`, a signal's `<positionRoad>`, `<positionInertial>`,
+//! `<dependency>`, `<reference>` and `<userData>`, the boards
+//! `<staticBoard>` and `<vmsBoard>`, and `<semantics>`.
 //!
 //! Three omissions change the road you get back, rather than only dropping
 //! detail around it:
@@ -295,6 +317,7 @@ mod object;
 mod object_mesh;
 mod parse;
 mod route;
+mod signal;
 mod structure;
 
 #[cfg(test)]
@@ -317,6 +340,8 @@ pub use object_mesh::ObjectSpan;
 pub use opencrg;
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ImportError,
-    LaneProvenance, ObjectProvenance, Orientation, Provenance, StructureProvenance,
+    LaneProvenance, ObjectProvenance, Orientation, Provenance, SignalProvenance,
+    StructureProvenance,
 };
+pub use signal::{Signal, SignalId, Unit};
 pub use structure::{Coverage, Structure, StructureId, StructureKind};

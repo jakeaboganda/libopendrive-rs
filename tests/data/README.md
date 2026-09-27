@@ -9,12 +9,15 @@ Fixtures for the integration tests. They are excluded from the published crate
 | --- | --- | --- |
 | `town07.xodr` | CARLA [opendrive-test-files], `Town07.xodr` | MIT, notice preserved in the file |
 | `e6mini.xodr` | esmini, `resources/xodr/e6mini.xodr` | MPL-2.0 |
+| `straight_500m_signs.xodr` | esmini, `resources/xodr/straight_500m_signs.xodr` at `61b44a7` | MPL-2.0 |
 
 [opendrive-test-files]: https://github.com/carla-simulator/opendrive-test-files
 
 `town07.xodr` is the exercise for real exports: 234 roads, 31 junctions, 673
 driving lanes, `laneOffset`, many lane sections, no spirals. `e6mini.xodr` is a
-highway built from `paramPoly3`.
+highway built from `paramPoly3`. `straight_500m_signs.xodr` is a straight
+road with 19 speed and warning signs from four catalogues. Two of its ids
+repeat, and some of its validities contradict their orientation.
 
 ## Written here
 
@@ -37,5 +40,11 @@ with [scenariogeneration], so the object fixture comes from a writer other than
 this crate. Regenerate with
 
     uv run --with scenariogeneration==0.16.6 tests/data/objects.py
+
+`signals.xodr` comes from `signals.py` the same way. It has signs and
+traffic lights on three straight roads, with signal references and
+controllers. Regenerate with
+
+    uv run --with scenariogeneration==0.16.6 tests/data/signals.py
 
 [scenariogeneration]: https://github.com/pyoscx/scenariogeneration

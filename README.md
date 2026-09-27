@@ -86,6 +86,12 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
 - `<tunnel>`s and `<bridge>`s, from `RoadNetwork::structures`, as the stretch
   of each lane they cover. Call `structures_over(lane)` to find out whether a
   lane runs through a tunnel or over a bridge, and where.
+- `<signal>`s, from `RoadNetwork::signals`: each sign or light's catalogue
+  codes, `value`, `unit` and `text` as the file gives them, the lanes it
+  applies to, and the pose and size of its board. A board stands upright
+  even on a banked road, and faces the traffic it addresses.
+  `load_*_with_provenance` gives its road, OpenDRIVE id, `(s, t)` and
+  orientation.
 
 - `<surface><CRG>` on roads and junctions, in all four modes, for elevation
   and friction. The importer keeps the records. `RoadSurface` loads the
@@ -125,8 +131,8 @@ Geometry is cross-checked against the reference C++
 
 ## What it ignores
 
-Everything else in the file, silently, including `<signals>`, `<roadMark>`,
-and `<geoReference>`. Three omissions change the road you get back, not only
+Everything else in the file, silently, including `<roadMark>`,
+`<geoReference>`, and signal boards and semantics. Three omissions change the road you get back, not only
 the detail around it:
 
 - `<shape>`, the other lateralProfile child, so a crowned or cambered
@@ -181,8 +187,9 @@ per object.
 The optional `serde` feature serializes the network and its mesh. The example
 at `examples/viewer_export.rs` uses it to bake a map straight to the JSON the
 viewer reads. You can also use it to cache an import. A `RoadNetwork`
-serializes its lanes, objects, structures and CRG records, and rebuilds its
-index when deserialized, so the result behaves like a freshly imported map.
+serializes its lanes, objects, structures, signals and CRG records, and
+rebuilds its index when deserialized, so the result behaves like a freshly
+imported map.
 
 ```toml
 libopendrive = { version = "0.2", features = ["serde"] }

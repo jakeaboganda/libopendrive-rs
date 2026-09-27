@@ -1,0 +1,128 @@
+//! Signals: the traffic signs, traffic lights and road paint that tell
+//! traffic what to do. Like objects, they don't depend on the file format. A
+//! signal keeps the catalogue codes the map gives it and looks nothing up.
+
+use crate::coords::Point;
+use crate::LaneId;
+
+/// An opaque signal identifier. Not a position in
+/// [`RoadNetwork::signals`](crate::RoadNetwork::signals), so look signals up
+/// with [`RoadNetwork::signal`](crate::RoadNetwork::signal).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SignalId(pub usize);
+
+/// The unit of a signal's [`value`](Signal::value).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Unit {
+    /// Metres, `m`.
+    Metre,
+    /// Kilometres, `km`.
+    Kilometre,
+    /// Feet, `ft`.
+    Foot,
+    /// Miles, `mile`.
+    Mile,
+    /// Metres per second, `m/s`.
+    MetrePerSecond,
+    /// Miles per hour, `mph`.
+    MilePerHour,
+    /// Kilometres per hour, `km/h`.
+    KilometrePerHour,
+    /// Kilograms, `kg`.
+    Kilogram,
+    /// Metric tons, `t`.
+    Tonne,
+    /// A percentage, such as a grade, `%`.
+    Percent,
+    /// A unit this crate does not recognise.
+    Unknown,
+}
+
+impl Unit {
+    /// The unit's usual symbol, such as `km/h`, or `unknown`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Metre => "m",
+            Self::Kilometre => "km",
+            Self::Foot => "ft",
+            Self::Mile => "mile",
+            Self::MetrePerSecond => "m/s",
+            Self::MilePerHour => "mph",
+            Self::KilometrePerHour => "km/h",
+            Self::Kilogram => "kg",
+            Self::Tonne => "t",
+            Self::Percent => "%",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+impl std::fmt::Display for Unit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// One signal: what it means, the lanes it applies to, and the board it is.
+///
+/// Where a signal applies and where it stands can differ. A sign on a gantry
+/// over one road can apply to another. `lanes` and `applies_at` say where it
+/// applies, and the pose says where the board is.
+///
+/// The board is a box in its own frame: `length` along its heading, `width`
+/// across it, and `height` up from its origin. The origin is the middle of
+/// its bottom edge.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Signal {
+    /// This signal's identity.
+    pub id: SignalId,
+    /// The name the map gives it. Empty if it has none.
+    pub name: String,
+    /// Whether it can change what it shows, such as a traffic light.
+    pub dynamic: bool,
+    /// The country whose catalogue `kind` and `subtype` come from, such as
+    /// `DE`. Free text, since maps also use names such as `OpenDRIVE` for a
+    /// generic catalogue. Empty if the map gives none.
+    pub country: String,
+    /// The year of that country's rules. Empty if the map gives none.
+    pub country_revision: String,
+    /// The signal's type in the country's catalogue, such as `274` for a
+    /// German speed limit. Free text.
+    pub kind: String,
+    /// The subtype within `kind`. Free text, and often `-1` for none.
+    pub subtype: String,
+    /// A number the signal shows, such as a speed limit.
+    pub value: Option<f64>,
+    /// The unit of `value`, if the map gives one.
+    pub unit: Option<Unit>,
+    /// Text the signal shows, such as a town name. Empty if it has none.
+    pub text: String,
+    /// Whether the signal has been struck out, such as a crossed-out sign.
+    pub invalidated: bool,
+    /// Whether the signal is temporary, such as a sign at road works.
+    pub temporary: bool,
+    /// The lanes the signal applies to.
+    pub lanes: Vec<LaneId>,
+    /// The points on the road surface where the signal takes effect.
+    pub applies_at: Vec<Point>,
+    /// The middle of the board's bottom edge.
+    pub position: Point,
+    /// The direction the board faces, toward the traffic it addresses: yaw
+    /// about +Z, counter-clockwise from +X, in radians in `(-π, π]`.
+    pub heading: f32,
+    /// Pitch about the turned Y, in radians, nose down for a positive angle.
+    pub pitch: f32,
+    /// Roll about the turned X, in radians, left side up for a positive
+    /// angle.
+    pub roll: f32,
+    /// The board's thickness along its heading, in metres, if the map gives
+    /// it.
+    pub length: Option<f32>,
+    /// Metres across, if the map gives it.
+    pub width: Option<f32>,
+    /// Metres up from the origin, if the map gives it.
+    pub height: Option<f32>,
+}

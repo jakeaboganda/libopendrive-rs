@@ -8,12 +8,14 @@
 
 const PARSER: &str = include_str!("../src/parse/mod.rs");
 const LINKS: &str = include_str!("../src/parse/links.rs");
+const SIGNALS: &str = include_str!("../src/parse/signals.rs");
 const CRATE_DOCS: &str = include_str!("../src/lib.rs");
 
 /// Tags read in one place and ignored in another, which a scan of tag names
 /// alone cannot tell apart. An object's `<border>` is read, a lane's is not.
-/// A road's `<surface>` is read, an object's is not.
-const READ_IN_ANOTHER_PLACE: [&str; 2] = ["border", "surface"];
+/// A road's `<surface>` is read, an object's is not. An object's
+/// `<userData>` is read, a signal's is not.
+const READ_IN_ANOTHER_PLACE: [&str; 3] = ["border", "surface", "userData"];
 
 /// `<left>` and `<right>` reach `child()` through a loop variable rather than
 /// a literal, so no scan of the source can see them.
@@ -22,7 +24,7 @@ const LOOKED_UP_BY_VARIABLE: [&str; 2] = ["left", "right"];
 /// Every XML tag name the parser asks for by literal.
 fn tags_the_parser_reads() -> Vec<String> {
     let mut found: Vec<String> = Vec::new();
-    for source in [PARSER, LINKS] {
+    for source in [PARSER, LINKS, SIGNALS] {
         // Each of these takes the tag as its first (or only) string literal.
         for marker in ["has_tag_name(", "child(", "cubics_in("] {
             let mut rest = source;

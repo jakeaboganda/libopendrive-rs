@@ -8,6 +8,7 @@ use crate::crg::CrgSurface;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
 use crate::object::{Object, ObjectId};
+use crate::signal::{Signal, SignalId};
 use crate::structure::{Coverage, Structure, StructureId};
 
 /// An opaque lane identifier. **Not** a vector index into `RoadNetwork.lanes`.
@@ -232,9 +233,9 @@ pub struct Lane {
 /// to go stale. A map that changed under its own index would answer
 /// `nearest_lane` with a lane that is no longer there.
 ///
-/// Serializes as its lanes, objects and structures; the index is rebuilt on the way back
-/// in, so a network that crossed a process boundary is indistinguishable from
-/// one that was just imported.
+/// Serializes as its lanes, objects, structures, signals and CRG surfaces; the
+/// index is rebuilt on the way back in, so a network that crossed a process
+/// boundary is indistinguishable from one that was just imported.
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(
     feature = "serde",
@@ -245,6 +246,7 @@ pub struct RoadNetwork {
     lanes: Vec<Lane>,
     objects: Vec<Object>,
     structures: Vec<Structure>,
+    signals: Vec<Signal>,
     crg: Vec<CrgSurface>,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
     /// [`Self::nearest_lane`]. Derived from `lanes`, so it takes no part in
@@ -252,13 +254,14 @@ pub struct RoadNetwork {
     index: LaneIndex,
 }
 
-/// Two networks are equal when their lanes, objects, structures and CRG
-/// surfaces are; the index is a function of the lanes.
+/// Two networks are equal when their lanes, objects, structures, signals and
+/// CRG surfaces are; the index is a function of the lanes.
 impl PartialEq for RoadNetwork {
     fn eq(&self, other: &Self) -> bool {
         self.lanes == other.lanes
             && self.objects == other.objects
             && self.structures == other.structures
+            && self.signals == other.signals
             && self.crg == other.crg
     }
 }
@@ -270,6 +273,7 @@ struct NetworkData {
     lanes: Vec<Lane>,
     objects: Vec<Object>,
     structures: Vec<Structure>,
+    signals: Vec<Signal>,
     crg: Vec<CrgSurface>,
 }
 
@@ -279,6 +283,7 @@ impl From<NetworkData> for RoadNetwork {
         Self::new(data.lanes)
             .with_objects(data.objects)
             .with_structures(data.structures)
+            .with_signals(data.signals)
             .with_crg_surfaces(data.crg)
     }
 }
@@ -290,6 +295,7 @@ impl From<RoadNetwork> for NetworkData {
             lanes: net.lanes,
             objects: net.objects,
             structures: net.structures,
+            signals: net.signals,
             crg: net.crg,
         }
     }
@@ -403,6 +409,7 @@ impl RoadNetwork {
             lanes,
             objects: Vec::new(),
             structures: Vec::new(),
+            signals: Vec::new(),
             crg: Vec::new(),
             index,
         }
@@ -417,6 +424,12 @@ impl RoadNetwork {
     /// This network with `structures` over its lanes, replacing any it had.
     pub fn with_structures(mut self, structures: Vec<Structure>) -> Self {
         self.structures = structures;
+        self
+    }
+
+    /// This network with `signals` on its roads, replacing any it had.
+    pub fn with_signals(mut self, signals: Vec<Signal>) -> Self {
+        self.signals = signals;
         self
     }
 
@@ -477,6 +490,20 @@ impl RoadNetwork {
         match self.objects.get(id.0) {
             Some(object) if object.id == id => Some(object),
             _ => self.objects.iter().find(|o| o.id == id),
+        }
+    }
+
+    /// Every signal, in the order the importer emitted them.
+    pub fn signals(&self) -> &[Signal] {
+        &self.signals
+    }
+
+    /// The signal with this id, by identity (not position), the same way as
+    /// [`Self::lane`].
+    pub fn signal(&self, id: SignalId) -> Option<&Signal> {
+        match self.signals.get(id.0) {
+            Some(signal) if signal.id == id => Some(signal),
+            _ => self.signals.iter().find(|s| s.id == id),
         }
     }
 
