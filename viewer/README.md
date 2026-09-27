@@ -190,6 +190,9 @@ The readout shows:
 - which way traffic may cross it
 - the lanes on its left and right, looking along the road's `+s`, or the
   road edge where there is none
+- each of its lines: continuous or its dash and gap lengths, how far along
+  the mark it starts and how far off the border it sits if not 0, its
+  width and colour, and its rule unless that is `none`
 
 ![Hovering the double center line of the road mark test map](road-marks.png)
 

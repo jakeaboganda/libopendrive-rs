@@ -958,12 +958,26 @@ function showRoadMarkTip(ev, rect, hit) {
       (m.height != null ? `   height ${m.height.toFixed(3)} m` : ''),
     `lane change ${m.laneChange}`,
     `left ${side(left)}   right ${side(right)}`,
+    ...m.lines.map(lineRow),
     `roadMarkId ${m.roadMarkId}`,
   );
   tip.style.display = 'block';
   tip.style.left = (ev.clientX - rect.left + 14) + 'px';
   tip.style.top = (ev.clientY - rect.top + 14) + 'px';
   tip.innerHTML = rows.join('\n');
+}
+
+// One road mark line: its pattern, where it starts and sits, its width and
+// colour, and its rule.
+function lineRow(l) {
+  const p = l.pattern;
+  const pattern = p.kind === 'dashed' ? `${p.length} m on ${p.space} m off` : 'continuous';
+  const parts = [pattern];
+  if (l.sOffset) parts.push(`from +${l.sOffset.toFixed(2)} m`);
+  if (l.tOffset) parts.push(`tOffset ${l.tOffset.toFixed(2)} m`);
+  parts.push(`${l.width.toFixed(2)} m`, escapeHtml(l.color));
+  if (l.rule !== 'none') parts.push(l.rule);
+  return '<b>line</b> ' + parts.join(', ');
 }
 
 // --- Sidebar -----------------------------------------------------------------

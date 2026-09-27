@@ -38,7 +38,8 @@
   bake, so its marks go too, where the spec would draw them on its inner
   border.
 - The viewer paints each road mark's lines in their colour. Hover one to
-  read the mark and light up the lanes either side. `m` toggles road marks.
+  read the mark, each of its lines with its pattern and rule, and light up
+  the lanes either side. `m` toggles road marks.
 
 ### Signals
 
