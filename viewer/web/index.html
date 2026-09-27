@@ -1278,7 +1278,7 @@ function onHover(ev) {
     `<b>road ${lane.roadId}</b>  lane ${lane.odLaneId}  <b>${lane.laneType}</b>`,
     `x ${p.x.toFixed(2)}   y ${p.y.toFixed(2)}   z ${p.z.toFixed(2)}`,
     `s ${s.toFixed(2)} m   t ${t.toFixed(2)} m`,
-    `heading ${vec3(heading)}`,
+    `width ${laneWidth(lane, i, u).toFixed(2)} m   heading ${vec3(heading)}`,
   ];
   const raised = laneHeight(lane, i, u);
   if (raised) {
@@ -1540,6 +1540,14 @@ function heading(lane, i, u) {
 // The lane's height off the road at its inner and outer border, a fraction
 // `u` along segment `i`, lerped between the segment's two vertices. Null for a
 // lane level with the road.
+// The lane's width at segment `i`, fraction `u` along it, as
+// `Lane::width_at` gives it.
+function laneWidth(lane, i, u) {
+  const w = lane.widths;
+  if (!w || !w.length) return lane.width;
+  return w[i] + (w[Math.min(i + 1, w.length - 1)] - w[i]) * u;
+}
+
 function laneHeight(lane, i, u) {
   const a = lane.heights && lane.heights[i], b = lane.heights && lane.heights[i + 1];
   if (!a || !b) return null;

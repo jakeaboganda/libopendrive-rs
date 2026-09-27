@@ -41,6 +41,7 @@
   - A border without `a` is skipped, and a missing `sOffset`, `b`, `c` or
     `d` is 0, as for a width. The spec requires all five.
   - Borders out of order are sorted rather than dropped.
+- The viewer's lane readout gives the lane's width at the hovered point.
 
 ## 0.3.1 - 2026-09-27
 

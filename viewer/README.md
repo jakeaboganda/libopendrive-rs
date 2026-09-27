@@ -93,6 +93,8 @@ lit as you hover others. The readout shows:
 
 - the road id, the OpenDRIVE lane id and the lane type
 - the surface point `x, y, z`, and `s` and `t` along the lane
+- the lane's width at that point, which grows along a lane that opens out
+  of nothing, whether its widths or its `<border>`s shape it
 - the lane's heading
 - on a lane raised by its `<height>`s, such as a sidewalk, how far it stands
   off the road at its inner and outer border at that point

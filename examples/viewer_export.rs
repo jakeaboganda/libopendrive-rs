@@ -606,6 +606,11 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
         })),
     );
     entry.insert("width".into(), json!(lane.map(|l| l.width)));
+    // Parallel to `centerline`, or empty for a lane of constant `width`.
+    entry.insert(
+        "widths".into(),
+        json!(lane.map(|l| l.widths.clone()).unwrap_or_default()),
+    );
     let ids = |ids: &[LaneId]| ids.iter().map(|l| l.0).collect::<Vec<_>>();
     entry.insert(
         "successors".into(),
