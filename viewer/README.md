@@ -1,12 +1,12 @@
 # OpenDRIVE viewer
 
-A three.js page that draws a map baked by `libopendrive`. Hover a lane, an
+A three.js page that draws maps baked by `libopendrive`. Hover a lane, an
 object, a signal, a tunnel, a bridge or a CRG heat map to read what the
 crate knows about it.
 
-The viewer has two parts. `examples/viewer_export.rs` bakes an `.xodr` into
-JSON, and `web/index.html` draws that JSON. The crate itself does no
-rendering.
+The viewer has two parts. `examples/viewer_export.rs` bakes `.xodr` maps
+into JSON in `web/`, and lists them in `web/scenes.json`. `web/index.html`
+draws the one you pick. The crate itself does no rendering.
 
 ![Town07 in the viewer](town07.png)
 
@@ -165,10 +165,10 @@ up with the rest, and another dashed line runs to it. The readout shows:
 ![Hovering a traffic light that also applies on another road](signals.png)
 
 `tests/data/signals.xodr` has signs and lights with every feature the viewer
-draws:
+draws. Bake it and pick `signals`:
 
 ```sh
-cargo run --example viewer_export --features serde -- tests/data/signals.xodr viewer/web/signals.json
+cargo run --example viewer_export --features serde -- tests/data/signals.xodr
 ```
 
 ## OpenCRG surfaces
@@ -191,18 +191,18 @@ The grid is as fine as the finest CRG file, or coarser to keep to about
 250,000 cells per file.
 
 `tests/data/crg.xodr` lays the same generated file on four roads, one per
-mode, and a friction file on the first:
+mode, and a friction file on the first. Bake it and pick `crg`:
 
 ```sh
-cargo run --example viewer_export --features serde -- tests/data/crg.xodr viewer/web/crg.json
+cargo run --example viewer_export --features serde -- tests/data/crg.xodr
 ```
 
 ![The CRG test map from above](crg.png)
 
 For measured surfaces, `examples/crg_data.sh` downloads five CRG files, writes
 a map for each, and exports it to `viewer/web/NAME.json`. The scenes are 12
-to 38 MB each. Pick `belgian_block` for a scan of cobbles, or
-`country_road` for 569 m of a country road.
+to 38 MB each. Pick `belgian_block` for a scan of cobbles, or `country_road`
+for 569 m of a country road.
 
 ```sh
 sh examples/crg_data.sh

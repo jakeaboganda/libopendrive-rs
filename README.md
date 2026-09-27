@@ -172,8 +172,16 @@ infinity, and one such value poisons every point derived from it.
 ## Visualization
 
 The crate doesn't render anything. [`viewer/`](viewer/README.md) has a
-three.js page that draws a baked map with its objects, tunnels, bridges and
-OpenCRG surfaces. Hover anything to read what the crate knows about it.
+three.js page that draws a baked map with its objects, signals, tunnels,
+bridges and OpenCRG surfaces. Hover anything to read what the crate knows
+about it.
+
+```sh
+cargo run --example viewer_export --features serde -- tests/data/*.xodr
+cd viewer/web && python3 -m http.server 8000
+```
+
+Then open <http://localhost:8000> and pick a map from the `map` list.
 
 ![A traffic island's details in the viewer](viewer/objects.png)
 
@@ -193,7 +201,7 @@ sweep tessellated into one mesh of outward-facing faces, with an `ObjectSpan`
 per object.
 
 The optional `serde` feature serializes the network and its mesh. The example
-at `examples/viewer_export.rs` uses it to bake a map straight to the JSON the
+at `examples/viewer_export.rs` uses it to bake maps straight to the JSON the
 viewer reads. You can also use it to cache an import. A `RoadNetwork`
 serializes its lanes, objects, structures, signals and CRG records, and
 rebuilds its index when deserialized, so the result behaves like a freshly
