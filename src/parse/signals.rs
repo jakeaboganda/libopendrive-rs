@@ -1,9 +1,10 @@
 //! Signals, placed once every road is baked.
 
+use std::collections::HashMap;
 use std::f64::consts::PI;
 
 use super::{attr_f64, child, orientation, validity, BakedRoad, Orientation, SignalProvenance};
-use crate::coords::Vector;
+use crate::coords::{Point, Vector};
 use crate::{Signal, SignalId, Unit};
 
 /// The signals baked so far, and the provenance of each, in step.
@@ -16,41 +17,54 @@ pub(super) struct Signals {
 /// Bake every `<signal>` of every road. `roads` pairs each baked road with
 /// its `<road>`.
 pub(super) fn place(roads: &[(roxmltree::Node, BakedRoad)]) -> Signals {
+    let mut by_id = HashMap::new();
+    for (_, road) in roads {
+        by_id.entry(road.id.as_str()).or_insert(road);
+    }
     let mut out = Signals::default();
     for (node, road) in roads {
         let Some(signals) = child(*node, "signals") else {
             continue;
         };
         for signal in signals.children().filter(|n| n.has_tag_name("signal")) {
-            place_signal(signal, road, &mut out);
+            place_signal(signal, road, &by_id, &mut out);
         }
     }
     out
 }
 
-/// Bake one `<signal>` on `road` into `out`. One missing `s` or `t`, or off
-/// the ends of the road, is skipped.
-///
-/// The board stands `zOffset` straight above the road surface at `(s, t)`.
-/// It faces the traffic its `orientation` names, against `+s` for `+` and
-/// along it otherwise, turned `hOffset` counter-clockwise. `pitch` and
-/// `roll` are against the horizontal, not the road, so a board on a banked
-/// road stays upright.
-fn place_signal(node: roxmltree::Node, road: &BakedRoad, out: &mut Signals) {
+/// Where a signal's board stands, and how it is turned.
+struct Board {
+    position: Point,
+    heading: f64,
+    pitch: f64,
+    roll: f64,
+}
+
+/// Bake one `<signal>` on `road` into `out`. `roads` finds the road a
+/// `<positionRoad>` names. One missing `s` or `t`, or off the ends of the
+/// road, is skipped.
+fn place_signal(
+    node: roxmltree::Node,
+    road: &BakedRoad,
+    roads: &HashMap<&str, &BakedRoad>,
+    out: &mut Signals,
+) {
     let (Some(s), Some(t)) = (attr_f64(node, "s"), attr_f64(node, "t")) else {
         return;
     };
-    if !road.on_road(s) {
-        return;
-    }
     let orientation = orientation(node);
-    let number = |name| attr_f64(node, name).unwrap_or(0.0);
-    let (ground, road_heading) = road.surface(s, t);
-    let facing = match orientation {
-        Orientation::Positive => PI,
-        Orientation::Negative | Orientation::Both => 0.0,
+    let Some(own) = standing(node, road, orientation) else {
+        return;
     };
-    let raise = Vector::new(0.0, 0.0, number("zOffset") as f32);
+    let elsewhere = || {
+        let at = child(node, "positionRoad")?;
+        standing(at, roads.get(at.attribute("roadId")?)?, orientation)
+    };
+    let board = child(node, "positionInertial")
+        .and_then(inertial)
+        .or_else(elsewhere)
+        .unwrap_or(own);
     let text = |name| node.attribute(name).unwrap_or_default().to_string();
     let flag = |name| matches!(node.attribute(name), Some("true" | "1"));
     let size = |name| attr_f64(node, name).map(|v| v as f32);
@@ -69,11 +83,11 @@ fn place_signal(node: roxmltree::Node, road: &BakedRoad, out: &mut Signals) {
         invalidated: flag("invalidated"),
         temporary: flag("temporary"),
         lanes: road.lanes((s, s), &lane_ranges(orientation, validity(node))),
-        applies_at: vec![ground],
-        position: ground + raise,
-        heading: wrap(road_heading + facing + number("hOffset")) as f32,
-        pitch: wrap(number("pitch")) as f32,
-        roll: wrap(number("roll")) as f32,
+        applies_at: vec![road.surface(s, t).0],
+        position: board.position,
+        heading: wrap(board.heading) as f32,
+        pitch: wrap(board.pitch) as f32,
+        roll: wrap(board.roll) as f32,
         length: size("length"),
         width: size("width"),
         height: size("height"),
@@ -86,6 +100,50 @@ fn place_signal(node: roxmltree::Node, road: &BakedRoad, out: &mut Signals) {
         t,
         orientation,
     });
+}
+
+/// A board standing `zOffset` straight above `road`'s surface at the `s` and
+/// `t` of `node`, a `<signal>` or a `<positionRoad>`, or `None` if it is
+/// missing either or off the ends of the road.
+///
+/// The board faces the traffic `orientation` names, against `+s` for `+`
+/// and along it otherwise, turned `hOffset` counter-clockwise. `pitch` and
+/// `roll` are against the horizontal, not the road, so a board on a banked
+/// road stays upright.
+fn standing(node: roxmltree::Node, road: &BakedRoad, orientation: Orientation) -> Option<Board> {
+    let (s, t) = (attr_f64(node, "s")?, attr_f64(node, "t")?);
+    if !road.on_road(s) {
+        return None;
+    }
+    let number = |name| attr_f64(node, name).unwrap_or(0.0);
+    let (ground, road_heading) = road.surface(s, t);
+    let facing = match orientation {
+        Orientation::Positive => PI,
+        Orientation::Negative | Orientation::Both => 0.0,
+    };
+    Some(Board {
+        position: ground + Vector::new(0.0, 0.0, number("zOffset") as f32),
+        heading: road_heading + facing + number("hOffset"),
+        pitch: number("pitch"),
+        roll: number("roll"),
+    })
+}
+
+/// A board at a `<positionInertial>`, facing its `hdg`, or `None` if it is
+/// missing `x`, `y` or `z`.
+fn inertial(node: roxmltree::Node) -> Option<Board> {
+    let number = |name| attr_f64(node, name).unwrap_or(0.0);
+    let (x, y, z) = (
+        attr_f64(node, "x")?,
+        attr_f64(node, "y")?,
+        attr_f64(node, "z")?,
+    );
+    Some(Board {
+        position: Point::new(x as f32, y as f32, z as f32),
+        heading: number("hdg"),
+        pitch: number("pitch"),
+        roll: number("roll"),
+    })
 }
 
 /// The `<lane id>` ranges a signal applies to: its `<validity>` ranges if it
@@ -166,6 +224,25 @@ mod tests {
         );
         assert_eq!(signals.len(), 1);
         assert_eq!(signals[0].position, crate::Point::new(20.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn a_position_that_cannot_be_placed_leaves_the_board_at_its_station() {
+        let signals = signals_of(
+            r#"<signal s="5" t="-2" zOffset="1" orientation="-">
+                 <positionRoad roadId="9" s="1" t="0" zOffset="0" hOffset="0"/>
+               </signal>
+               <signal s="5" t="-2" zOffset="1" orientation="-">
+                 <positionInertial x="1" y="2" hdg="0"/>
+               </signal>
+               <signal s="5" t="-2" zOffset="1" orientation="-">
+                 <positionRoad roadId="1" s="30" t="0" zOffset="0" hOffset="0"/>
+               </signal>"#,
+        );
+        for signal in &signals {
+            assert_eq!(signal.position, crate::Point::new(5.0, -2.0, 1.0));
+        }
+        assert_eq!(signals.len(), 3);
     }
 
     #[test]

@@ -38,8 +38,9 @@
 //! loads depends only on whether it uses the elements below.
 //!
 //! Every one of those elements is in ASAM OpenDRIVE 1.9.0, the current
-//! revision. `poly3` is deprecated there, still specified, and still read
-//! here. The test suite imports real files declaring 1.4, 1.6 and 1.7.
+//! revision. `poly3`, and a signal's `<positionRoad>` and
+//! `<positionInertial>`, are deprecated there, still specified, and still
+//! read here. The test suite imports real files declaring 1.4, 1.6 and 1.7.
 //!
 //! # Which elements
 //!
@@ -69,6 +70,8 @@
 //! | `<objects><tunnel>` | `id`, `name`, `type`, `s`, `length`, `lighting`, `daylight` |
 //! | `<objects><bridge>` | `id`, `name`, `type`, `s`, `length` |
 //! | `<signals><signal>` | `id`, `name`, `dynamic`, `orientation`, `s`, `t`, `zOffset`, `hOffset`, `pitch`, `roll`, `country`, `countryRevision`, `type`, `subtype`, `value`, `unit`, `text`, `length`, `width`, `height`, `invalidated`, `temporary` |
+//! | `<signal><positionRoad>` | `roadId`, `s`, `t`, `zOffset`, `hOffset`, `pitch`, `roll` |
+//! | `<signal><positionInertial>` | `x`, `y`, `z`, `hdg`, `pitch`, `roll` |
 //! | `<validity>`, under `<object>`, `<objectReference>`, `<signal>`, `<tunnel>` and `<bridge>` | `fromLane`, `toLane` |
 //! | `<object><parkingSpace>` | `access`, `restrictions` |
 //! | `<object><material>` | `surface`, `friction`, `roughness` |
@@ -191,6 +194,14 @@
 //! on a banked road stays upright. Angles wrap into `(-π, π]`, since real
 //! files give `hOffset`s of several turns.
 //!
+//! A `<positionRoad>` stands the board on the road it names instead, the same
+//! way, with its own `s`, `t`, `zOffset`, `hOffset`, `pitch` and `roll`, and
+//! still facing the traffic the signal's `orientation` names. A
+//! `<positionInertial>` stands it at `(x, y, z)`, facing `hdg`. Either moves
+//! only the board. The signal still takes effect at its own `(s, t)`, and
+//! applies to the lanes there. One that names no road, or is missing a
+//! coordinate, leaves the board at the signal's station.
+//!
 //! [`Signal::lanes`] is the lanes at `s` on the side of the road its
 //! `orientation` names: negative ids for `+`, positive ids for `-`, and both
 //! for `none`. Its `<validity>` ranges replace that side rather than narrow
@@ -248,9 +259,9 @@
 //! Everything else in the file, silently. That includes `<geoReference>`,
 //! `<roadMark>`, `<controller>`, `<junctionGroup>`, `<station>`, an object's
 //! `<surface>`, and road `<type>` with its `<speed>`. Of signals, it ignores
-//! `<signalReference>`, a signal's `<positionRoad>`, `<positionInertial>`,
-//! `<dependency>`, `<reference>` and `<userData>`, the boards
-//! `<staticBoard>` and `<vmsBoard>`, and `<semantics>`.
+//! `<signalReference>`, a signal's `<dependency>`, `<reference>` and
+//! `<userData>`, the boards `<staticBoard>` and `<vmsBoard>`, and
+//! `<semantics>`.
 //!
 //! Three omissions change the road you get back, rather than only dropping
 //! detail around it:

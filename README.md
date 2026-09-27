@@ -36,8 +36,9 @@ loads depends only on whether it uses the elements listed below, not on the
 revision it declares.
 
 Every one of those elements is in ASAM OpenDRIVE 1.9.0, the current revision.
-`poly3` is deprecated there in favor of `paramPoly3`, but the importer reads
-it the same as any current element and prints no warning for using it. The
+`poly3` is deprecated there in favor of `paramPoly3`, and a signal's
+`<positionRoad>` and `<positionInertial>` since 1.8. The importer reads them
+the same as any current element and prints no warning for using them. The
 test suite imports real files declaring 1.4, 1.6 and 1.7.
 
 ## What it imports
@@ -89,7 +90,9 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
 - `<signal>`s, from `RoadNetwork::signals`: each sign or light's catalogue
   codes, `value`, `unit` and `text` as the file gives them, the lanes it
   applies to, and the pose and size of its board. A board stands upright
-  even on a banked road, and faces the traffic it addresses.
+  even on a banked road, and faces the traffic it addresses. A
+  `<positionRoad>` or `<positionInertial>` moves the board, such as onto a
+  gantry, and the signal still applies where its `(s, t)` says.
   `load_*_with_provenance` gives its road, OpenDRIVE id, `(s, t)` and
   orientation.
 

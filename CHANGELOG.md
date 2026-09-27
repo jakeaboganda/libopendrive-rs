@@ -14,6 +14,9 @@
   banked road stays upright. Angles wrap into `(-π, π]`.
 - `Signal::lanes` is the side of the road its `orientation` names, or the
   lanes its `<validity>` ranges name.
+- A `<positionRoad>` or `<positionInertial>` moves the board, and the signal
+  still applies at its own `(s, t)`. `Signal::applies_at` is where it takes
+  effect.
 - `SignalProvenance` gives each signal's road, OpenDRIVE id, `(s, t)` and
   orientation.
 - The viewer draws each signal as a board, white when static and dark when

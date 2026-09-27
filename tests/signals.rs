@@ -166,6 +166,35 @@ fn a_board_on_a_banked_road_stays_upright() {
 }
 
 #[test]
+fn a_position_road_stands_the_board_beside_another_road() {
+    let (net, prov) = load(SIGNALS);
+    let (sign, _) = find(&net, &prov, "7");
+    assert_near(
+        sign.position,
+        Point::new(30.0, 36.0, 2.5),
+        "board by road 2",
+    );
+    assert_angle(
+        sign.heading,
+        0.2 - PI,
+        "faces back along road 2, turned 0.2",
+    );
+    assert_eq!(sign.applies_at, vec![Point::new(100.0, -7.0, 2.0)]);
+    assert_eq!(lanes(&prov, sign), on("0", &[-1, -2]));
+}
+
+#[test]
+fn a_position_inertial_stands_the_board_where_it_says() {
+    let (net, prov) = load(SIGNALS);
+    let (gantry, _) = find(&net, &prov, "8");
+    assert_near(gantry.position, Point::new(110.0, -1.5, 7.2), "gantry");
+    assert_angle(gantry.heading, PI, "hdg");
+    assert_angle(gantry.pitch, 0.05, "pitch");
+    assert_eq!(gantry.applies_at, vec![Point::new(110.0, -7.0, 2.2)]);
+    assert_eq!(lanes(&prov, gantry), on("0", &[-1, -2]));
+}
+
+#[test]
 fn a_signal_applies_to_the_lanes_its_orientation_names_unless_its_validity_says() {
     let (net, prov) = load(SIGNALS);
     let applies = |id| lanes(&prov, find(&net, &prov, id).0);
