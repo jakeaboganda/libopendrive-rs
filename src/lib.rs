@@ -73,6 +73,9 @@
 //! | `<signal><positionRoad>` | `roadId`, `s`, `t`, `zOffset`, `hOffset`, `pitch`, `roll` |
 //! | `<signal><positionInertial>` | `x`, `y`, `z`, `hdg`, `pitch`, `roll` |
 //! | `<signals><signalReference>` | `id`, `s`, `t`, `orientation` |
+//! | `<controller>`, at the top level | `id`, `name`, `sequence` |
+//! | `<controller><control>` | `signalId`, `type` |
+//! | `<junction><controller>` | `id`, `type`, `sequence` |
 //! | `<validity>`, under `<object>`, `<objectReference>`, `<signal>`, `<signalReference>`, `<tunnel>` and `<bridge>` | `fromLane`, `toLane` |
 //! | `<object><parkingSpace>` | `access`, `restrictions` |
 //! | `<object><material>` | `surface`, `friction`, `roughness` |
@@ -219,6 +222,14 @@
 //! `orientation`. Where two signals share an id, a reference applies the
 //! first. A reference to an id no signal has is skipped.
 //!
+//! Each top-level `<controller>` bakes to a [`Controller`] in
+//! [`RoadNetwork::controllers`], with the signals its `<control>`s name, and
+//! each of those signals lists it in [`Signal::controllers`]. A control that
+//! names no signal is skipped, and its controller kept. A `<junction>`'s own
+//! `<controller>` list names controllers that switch in step there. The
+//! baked network has no junctions, so each entry is in the
+//! [`ControllerProvenance`] of the controller it names.
+//!
 //! # Road surfaces
 //!
 //! Each `<CRG>` under a road's or a junction's `<surface>` becomes a
@@ -266,7 +277,7 @@
 //! # What the importer ignores
 //!
 //! Everything else in the file, silently. That includes `<geoReference>`,
-//! `<roadMark>`, `<controller>`, `<junctionGroup>`, `<station>`, an object's
+//! `<roadMark>`, `<junctionGroup>`, `<station>`, an object's
 //! `<surface>`, and road `<type>` with its `<speed>`. Of signals, it ignores
 //! a signal's `<dependency>`, `<reference>` and `<userData>`, the boards
 //! `<staticBoard>` and `<vmsBoard>`, and `<semantics>`.
@@ -358,9 +369,9 @@ pub use object_mesh::ObjectSpan;
 /// The OpenCRG reader, for loading the files a [`RoadSurface`] evaluates.
 pub use opencrg;
 pub use parse::{
-    load_file, load_file_with_provenance, load_str, load_str_with_provenance, ImportError,
-    LaneProvenance, ObjectProvenance, Orientation, Provenance, SignalProvenance,
-    SignalReferenceProvenance, StructureProvenance,
+    load_file, load_file_with_provenance, load_str, load_str_with_provenance, ControllerProvenance,
+    ImportError, JunctionControllerProvenance, LaneProvenance, ObjectProvenance, Orientation,
+    Provenance, SignalProvenance, SignalReferenceProvenance, StructureProvenance,
 };
-pub use signal::{Signal, SignalId, Unit};
+pub use signal::{Control, Controller, ControllerId, Signal, SignalId, Unit};
 pub use structure::{Coverage, Structure, StructureId, StructureKind};

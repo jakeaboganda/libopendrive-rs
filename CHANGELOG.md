@@ -19,6 +19,10 @@
   effect.
 - A `<signalReference>` adds its road's lanes and its point to the signal it
   names. `SignalProvenance::references` records each one.
+- Each top-level `<controller>` imports as a `Controller` on
+  `RoadNetwork::controllers`, with the signals it controls.
+  `Signal::controllers` names a signal's controllers, and
+  `ControllerProvenance` lists the junctions that sync each one.
 - `SignalProvenance` gives each signal's road, OpenDRIVE id, `(s, t)` and
   orientation.
 - The viewer draws each signal as a board, white when static and dark when
@@ -52,9 +56,10 @@
 
 - The minimum Rust version is 1.85, up from 1.82, for the `opencrg`
   dependency.
-- `Provenance` has a new `signals` field, so a `Provenance` literal needs it
-  or `..Default::default()`. The `serde` form of `RoadNetwork` has a new
-  `signals` key, so JSON written before does not load.
+- `Provenance` has new `signals` and `controllers` fields, so a `Provenance`
+  literal needs them or `..Default::default()`. The `serde` form of
+  `RoadNetwork` has new `signals` and `controllers` keys, so JSON written
+  before does not load.
 
 ## 0.2.1 - 2026-09-26
 

@@ -4,23 +4,29 @@ use std::collections::HashMap;
 use std::f64::consts::PI;
 
 use super::{
-    attr_f64, child, orientation, validity, BakedRoad, Orientation, SignalProvenance,
-    SignalReferenceProvenance,
+    attr_f64, child, orientation, validity, BakedRoad, ControllerProvenance,
+    JunctionControllerProvenance, Orientation, SignalProvenance, SignalReferenceProvenance,
 };
 use crate::coords::{Point, Vector};
-use crate::{Signal, SignalId, Unit};
+use crate::{Control, Controller, ControllerId, Signal, SignalId, Unit};
 
-/// The signals baked so far, and the provenance of each, in step.
+/// The signals and controllers baked so far, and the provenance of each, in
+/// step.
 #[derive(Default)]
 pub(super) struct Signals {
     pub baked: Vec<Signal>,
     pub provenance: Vec<SignalProvenance>,
+    pub controllers: Vec<Controller>,
+    pub controller_provenance: Vec<ControllerProvenance>,
 }
 
 /// Bake every `<signal>` of every road, then apply each to the roads whose
-/// `<signalReference>`s name it. `roads` pairs each baked road with its
-/// `<road>`.
-pub(super) fn place(roads: &[(roxmltree::Node, BakedRoad)]) -> Signals {
+/// `<signalReference>`s name it, and bake the `<controller>`s over them.
+/// `roads` pairs each baked road with its `<road>`.
+///
+/// References and controls name a signal by its id. Where two signals share
+/// one, they name the first. One naming an id no signal has is skipped.
+pub(super) fn place(root: roxmltree::Node, roads: &[(roxmltree::Node, BakedRoad)]) -> Signals {
     let mut by_id = HashMap::new();
     for (_, road) in roads {
         by_id.entry(road.id.as_str()).or_insert(road);
@@ -47,7 +53,60 @@ pub(super) fn place(roads: &[(roxmltree::Node, BakedRoad)]) -> Signals {
         };
         apply_reference(reference, road, &mut out.baked[i], &mut out.provenance[i]);
     }
+    place_controllers(root, &placed, &mut out);
     out
+}
+
+/// Bake every top-level `<controller>` into `out`, and tell each signal it
+/// controls. Then add each `<junction>`'s `<controller>` list to the
+/// provenance of the controllers it names. `placed` finds a signal by its id.
+fn place_controllers(root: roxmltree::Node, placed: &HashMap<String, usize>, out: &mut Signals) {
+    let sequence = |node: roxmltree::Node| node.attribute("sequence")?.parse().ok();
+    let text = |node: roxmltree::Node, name| node.attribute(name).unwrap_or_default().to_string();
+    let mut by_id = HashMap::new();
+    for node in root.children().filter(|n| n.has_tag_name("controller")) {
+        let id = ControllerId(out.controllers.len());
+        let mut signals = Vec::new();
+        for control in node.children().filter(|n| n.has_tag_name("control")) {
+            let Some(&i) = control.attribute("signalId").and_then(|s| placed.get(s)) else {
+                continue;
+            };
+            signals.push(Control {
+                signal: out.baked[i].id,
+                kind: text(control, "type"),
+            });
+            if !out.baked[i].controllers.contains(&id) {
+                out.baked[i].controllers.push(id);
+            }
+        }
+        out.controllers.push(Controller {
+            id,
+            name: text(node, "name"),
+            sequence: sequence(node),
+            signals,
+        });
+        let od_id = text(node, "id");
+        by_id.entry(od_id.clone()).or_insert(id.0);
+        out.controller_provenance.push(ControllerProvenance {
+            controller: id,
+            od_id,
+            junctions: Vec::new(),
+        });
+    }
+    for junction in root.children().filter(|n| n.has_tag_name("junction")) {
+        for node in junction.children().filter(|n| n.has_tag_name("controller")) {
+            let Some(&i) = node.attribute("id").and_then(|id| by_id.get(id)) else {
+                continue;
+            };
+            out.controller_provenance[i]
+                .junctions
+                .push(JunctionControllerProvenance {
+                    junction_id: text(junction, "id"),
+                    kind: text(node, "type"),
+                    sequence: sequence(node),
+                });
+        }
+    }
 }
 
 /// Apply `signal` where the `<signalReference>` `node` on `road` says too: add
@@ -129,6 +188,7 @@ fn place_signal(
         text: text("text"),
         invalidated: flag("invalidated"),
         temporary: flag("temporary"),
+        controllers: Vec::new(),
         lanes: road.lanes((s, s), &lane_ranges(orientation, validity(node))),
         applies_at: vec![road.surface(s, t).0],
         position: board.position,

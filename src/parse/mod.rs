@@ -14,10 +14,10 @@ use crate::coords::{Point, Vector};
 use crate::crg::{RefPoint, Stretch};
 use crate::object::orient;
 use crate::{
-    Border, Corner, Coverage, CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface, Direction,
-    Extent, Lane, LaneId, LaneType, Marking, Material, Object, ObjectId, ObjectType, ParkingSpace,
-    Polyline, RoadNetwork, Section, Shape, SignalId, Structure, StructureId, StructureKind,
-    UserData,
+    Border, ControllerId, Corner, Coverage, CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface,
+    Direction, Extent, Lane, LaneId, LaneType, Marking, Material, Object, ObjectId, ObjectType,
+    ParkingSpace, Polyline, RoadNetwork, Section, Shape, SignalId, Structure, StructureId,
+    StructureKind, UserData,
 };
 
 mod links;
@@ -213,6 +213,36 @@ pub struct SignalReferenceProvenance {
     pub orientation: Orientation,
 }
 
+/// The OpenDRIVE identity of one baked signal controller: the top-level
+/// `<controller>` it came from, and the junctions that list it.
+///
+/// Kept apart from [`Controller`](crate::Controller) as
+/// [`SignalProvenance`] is from [`Signal`](crate::Signal).
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ControllerProvenance {
+    /// The baked controller this record describes.
+    pub controller: ControllerId,
+    /// The `<controller id>` it came from. Empty if the file gives none.
+    pub od_id: String,
+    /// Each `<junction>` whose own `<controller>` list names it, in file
+    /// order. A junction's controllers are meant to switch in step.
+    pub junctions: Vec<JunctionControllerProvenance>,
+}
+
+/// One entry of a `<junction>`'s `<controller>` list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct JunctionControllerProvenance {
+    /// The `<junction id>`.
+    pub junction_id: String,
+    /// How the junction uses the controller. Free text, and empty if the
+    /// file gives none.
+    pub kind: String,
+    /// Its priority among the junction's controllers, if the file gives one.
+    pub sequence: Option<u32>,
+}
+
 /// The OpenDRIVE identity of everything a load baked, from
 /// [`load_str_with_provenance`] or [`load_file_with_provenance`].
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -226,6 +256,8 @@ pub struct Provenance {
     pub structures: Vec<StructureProvenance>,
     /// One per baked signal, in baked-signal order.
     pub signals: Vec<SignalProvenance>,
+    /// One per baked controller, in baked-controller order.
+    pub controllers: Vec<ControllerProvenance>,
 }
 
 /// Load an OpenDRIVE file from disk and bake it into a `RoadNetwork`.
@@ -239,8 +271,8 @@ pub fn load_str(xml: &str) -> Result<RoadNetwork, ImportError> {
 }
 
 /// Like [`load_file`], but also returns the OpenDRIVE [`Provenance`] of
-/// every baked lane, object, structure and signal, for a viewer or editor
-/// that must name the road and original id each one came from.
+/// every baked lane, object, structure, signal and controller, for a viewer
+/// or editor that must name the road and original id each one came from.
 pub fn load_file_with_provenance(
     path: impl AsRef<std::path::Path>,
 ) -> Result<(RoadNetwork, Provenance), ImportError> {
@@ -250,8 +282,8 @@ pub fn load_file_with_provenance(
 }
 
 /// Like [`load_str`], but also returns the OpenDRIVE [`Provenance`] of
-/// every baked lane, object, structure and signal. Each record carries the
-/// [`LaneId`], [`ObjectId`], [`StructureId`] or [`SignalId`] it describes.
+/// every baked lane, object, structure, signal and controller. Each record
+/// carries the id of what it describes.
 pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), ImportError> {
     let cleaned = sanitize(xml);
     let doc = roxmltree::Document::parse(cleaned.as_ref())?;
@@ -279,7 +311,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
         return Err(ImportError::Malformed("no lanes found".into()));
     }
     surfaces.extend(junction_crgs(root, &topo));
-    let signals = signals::place(&roads);
+    let signals = signals::place(root, &roads);
     // Resolve connectivity once all lanes exist and are registered.
     topo.junctions = links::junctions(root);
     links::resolve(&mut lanes, &topo);
@@ -299,12 +331,14 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
         objects: objects.provenance,
         structures: structures.provenance,
         signals: signals.provenance,
+        controllers: signals.controller_provenance,
     };
     Ok((
         RoadNetwork::new(lanes)
             .with_objects(objects.baked)
             .with_structures(structures.baked)
             .with_signals(signals.baked)
+            .with_controllers(signals.controllers)
             .with_crg_surfaces(surfaces),
         provenance,
     ))

@@ -11,8 +11,8 @@
 use std::f32::consts::PI;
 
 use libopendrive::{
-    load_file_with_provenance, Orientation, Point, Provenance, RoadNetwork, Signal,
-    SignalProvenance, SignalReferenceProvenance, Unit,
+    load_file_with_provenance, Control, JunctionControllerProvenance, Orientation, Point,
+    Provenance, RoadNetwork, Signal, SignalProvenance, SignalReferenceProvenance, Unit,
 };
 
 const SIGNALS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/signals.xodr");
@@ -241,6 +241,69 @@ fn a_signal_reference_moves_no_board_and_one_to_no_signal_is_skipped() {
 }
 
 #[test]
+fn a_controller_groups_its_signals_and_each_signal_names_it() {
+    let (net, prov) = load(SIGNALS);
+    assert_eq!(net.controllers().len(), 2);
+    let approach = &net.controllers()[0];
+    assert_eq!(approach.name, "Approach");
+    assert_eq!(approach.sequence, Some(1));
+    let (light, _) = find(&net, &prov, "4");
+    let (side, _) = find(&net, &prov, "21");
+    assert_eq!(
+        approach.signals,
+        vec![
+            Control {
+                signal: light.id,
+                kind: "0".into()
+            },
+            Control {
+                signal: side.id,
+                kind: "0".into()
+            },
+        ]
+    );
+    assert_eq!(light.controllers, vec![approach.id]);
+    assert_eq!(side.controllers, vec![approach.id]);
+    assert_eq!(net.controller(approach.id), Some(approach));
+    let (limit, _) = find(&net, &prov, "1");
+    assert!(limit.controllers.is_empty());
+}
+
+#[test]
+fn a_control_of_no_signal_is_skipped_and_its_controller_kept() {
+    let (net, prov) = load(SIGNALS);
+    let ghost = &net.controllers()[1];
+    assert_eq!((ghost.name.as_str(), ghost.sequence), ("Ghost", None));
+    assert!(ghost.signals.is_empty());
+    assert_eq!(prov.controllers[1].od_id, "101");
+}
+
+#[test]
+fn a_junction_lists_the_controllers_it_syncs() {
+    let (_, prov) = load(SIGNALS);
+    let junctions: Vec<_> = prov
+        .controllers
+        .iter()
+        .map(|c| c.junctions.clone())
+        .collect();
+    assert_eq!(
+        junctions,
+        vec![
+            vec![JunctionControllerProvenance {
+                junction_id: "500".into(),
+                kind: "sync".into(),
+                sequence: Some(2),
+            }],
+            vec![JunctionControllerProvenance {
+                junction_id: "500".into(),
+                kind: String::new(),
+                sequence: None,
+            }],
+        ]
+    );
+}
+
+#[test]
 fn a_signal_applies_to_the_lanes_its_orientation_names_unless_its_validity_says() {
     let (net, prov) = load(SIGNALS);
     let applies = |id| lanes(&prov, find(&net, &prov, id).0);
@@ -287,5 +350,6 @@ fn signals_survive_a_round_trip() {
     let json = serde_json::to_string(&net).expect("serialize");
     let back: RoadNetwork = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(back.signals(), net.signals());
+    assert_eq!(back.controllers(), net.controllers());
     assert_eq!(back, net);
 }

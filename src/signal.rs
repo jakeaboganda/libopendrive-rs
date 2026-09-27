@@ -12,6 +12,14 @@ use crate::LaneId;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SignalId(pub usize);
 
+/// An opaque controller identifier. Not a position in
+/// [`RoadNetwork::controllers`](crate::RoadNetwork::controllers), so look
+/// controllers up with
+/// [`RoadNetwork::controller`](crate::RoadNetwork::controller).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ControllerId(pub usize);
+
 /// The unit of a signal's [`value`](Signal::value).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -104,6 +112,8 @@ pub struct Signal {
     pub invalidated: bool,
     /// Whether the signal is temporary, such as a sign at road works.
     pub temporary: bool,
+    /// The controllers the signal belongs to. Usually none, or one.
+    pub controllers: Vec<ControllerId>,
     /// The lanes the signal applies to, on every road the map applies it
     /// to. A lane appears once.
     pub lanes: Vec<LaneId>,
@@ -127,4 +137,30 @@ pub struct Signal {
     pub width: Option<f32>,
     /// Metres up from the origin, if the map gives it.
     pub height: Option<f32>,
+}
+
+/// A group of signals that always show the same state, such as the lights of
+/// one approach to a junction. The map does not say what they show, or when.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Controller {
+    /// This controller's identity.
+    pub id: ControllerId,
+    /// The name the map gives it. Empty if it has none.
+    pub name: String,
+    /// Its priority among the other controllers, if the map gives one.
+    pub sequence: Option<u32>,
+    /// The signals it controls, in the order the map gives them.
+    pub signals: Vec<Control>,
+}
+
+/// One signal a [`Controller`] controls.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Control {
+    /// The signal.
+    pub signal: SignalId,
+    /// How the controller controls it. Free text, and empty if the map gives
+    /// none.
+    pub kind: String,
 }

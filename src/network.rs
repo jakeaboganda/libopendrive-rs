@@ -8,7 +8,7 @@ use crate::crg::CrgSurface;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
 use crate::object::{Object, ObjectId};
-use crate::signal::{Signal, SignalId};
+use crate::signal::{Controller, ControllerId, Signal, SignalId};
 use crate::structure::{Coverage, Structure, StructureId};
 
 /// An opaque lane identifier. **Not** a vector index into `RoadNetwork.lanes`.
@@ -233,9 +233,10 @@ pub struct Lane {
 /// to go stale. A map that changed under its own index would answer
 /// `nearest_lane` with a lane that is no longer there.
 ///
-/// Serializes as its lanes, objects, structures, signals and CRG surfaces; the
-/// index is rebuilt on the way back in, so a network that crossed a process
-/// boundary is indistinguishable from one that was just imported.
+/// Serializes as its lanes, objects, structures, signals, controllers and CRG
+/// surfaces; the index is rebuilt on the way back in, so a network that
+/// crossed a process boundary is indistinguishable from one that was just
+/// imported.
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(
     feature = "serde",
@@ -247,6 +248,7 @@ pub struct RoadNetwork {
     objects: Vec<Object>,
     structures: Vec<Structure>,
     signals: Vec<Signal>,
+    controllers: Vec<Controller>,
     crg: Vec<CrgSurface>,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
     /// [`Self::nearest_lane`]. Derived from `lanes`, so it takes no part in
@@ -254,14 +256,15 @@ pub struct RoadNetwork {
     index: LaneIndex,
 }
 
-/// Two networks are equal when their lanes, objects, structures, signals and
-/// CRG surfaces are; the index is a function of the lanes.
+/// Two networks are equal when their lanes, objects, structures, signals,
+/// controllers and CRG surfaces are; the index is a function of the lanes.
 impl PartialEq for RoadNetwork {
     fn eq(&self, other: &Self) -> bool {
         self.lanes == other.lanes
             && self.objects == other.objects
             && self.structures == other.structures
             && self.signals == other.signals
+            && self.controllers == other.controllers
             && self.crg == other.crg
     }
 }
@@ -274,6 +277,7 @@ struct NetworkData {
     objects: Vec<Object>,
     structures: Vec<Structure>,
     signals: Vec<Signal>,
+    controllers: Vec<Controller>,
     crg: Vec<CrgSurface>,
 }
 
@@ -284,6 +288,7 @@ impl From<NetworkData> for RoadNetwork {
             .with_objects(data.objects)
             .with_structures(data.structures)
             .with_signals(data.signals)
+            .with_controllers(data.controllers)
             .with_crg_surfaces(data.crg)
     }
 }
@@ -296,6 +301,7 @@ impl From<RoadNetwork> for NetworkData {
             objects: net.objects,
             structures: net.structures,
             signals: net.signals,
+            controllers: net.controllers,
             crg: net.crg,
         }
     }
@@ -410,6 +416,7 @@ impl RoadNetwork {
             objects: Vec::new(),
             structures: Vec::new(),
             signals: Vec::new(),
+            controllers: Vec::new(),
             crg: Vec::new(),
             index,
         }
@@ -430,6 +437,13 @@ impl RoadNetwork {
     /// This network with `signals` on its roads, replacing any it had.
     pub fn with_signals(mut self, signals: Vec<Signal>) -> Self {
         self.signals = signals;
+        self
+    }
+
+    /// This network with `controllers` over its signals, replacing any it
+    /// had.
+    pub fn with_controllers(mut self, controllers: Vec<Controller>) -> Self {
+        self.controllers = controllers;
         self
     }
 
@@ -504,6 +518,20 @@ impl RoadNetwork {
         match self.signals.get(id.0) {
             Some(signal) if signal.id == id => Some(signal),
             _ => self.signals.iter().find(|s| s.id == id),
+        }
+    }
+
+    /// Every signal controller, in the order the importer emitted them.
+    pub fn controllers(&self) -> &[Controller] {
+        &self.controllers
+    }
+
+    /// The controller with this id, by identity (not position), the same way
+    /// as [`Self::lane`].
+    pub fn controller(&self, id: ControllerId) -> Option<&Controller> {
+        match self.controllers.get(id.0) {
+            Some(controller) if controller.id == id => Some(controller),
+            _ => self.controllers.iter().find(|c| c.id == id),
         }
     }
 
