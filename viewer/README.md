@@ -8,7 +8,7 @@ The viewer has two parts. `examples/viewer_export.rs` bakes `.xodr` maps
 into JSON in `web/`, and lists them in `web/scenes.json`. `web/index.html`
 draws the one you pick. The crate itself does no rendering.
 
-![Town07 in the viewer](town07.png)
+![Hovering a lane in Town07, with its successor in green and its predecessor in orange](town07.png)
 
 ## Run it
 
