@@ -146,6 +146,8 @@ up with the rest, and another dashed line runs to it. The readout shows:
 - its country, `type` and `subtype`, as the map spells them
 - its value and unit, and its text
 - its road, OpenDRIVE id, `s`, `t` and orientation
+- each controller it belongs to, with its priority, the junctions that sync
+  it, and the other signals it switches together with this one
 - the road, `s`, `t` and orientation of each `<signalReference>`
 - the lanes it applies to, by road where there are several, lane section
   and OpenDRIVE lane id

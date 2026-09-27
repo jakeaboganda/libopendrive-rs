@@ -194,6 +194,7 @@ let structures = [];         // tunnels and bridges
 let structureTints = {};     // kind -> mesh tinting the lanes it covers
 let crgMesh = null;          // the CRG height overlay; userData is the exported crg record
 let signals = [];            // the exported signal table
+let controllers = new Map(); // controllerId -> the exported controller record
 let signalMeshes = [];       // the boards; userData.pick(hit) is the hovered record
 let signalLink;              // dashed lines from the hovered board to where it applies
 
@@ -706,6 +707,7 @@ function buildStructures(data) {
 // glance. No post, since the map does not say how a signal is mounted.
 function buildSignals(data) {
   signals = data.signals ?? [];
+  controllers = new Map((data.controllers ?? []).map(c => [c.controllerId, c]));
   signalLink = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({
     color: 0xffd24a, dashSize: 0.3, gapSize: 0.2, depthTest: false,
   }));
@@ -784,6 +786,7 @@ function showSignalTip(ev, rect, hit) {
       `s ${sg.s.toFixed(2)} m   t ${sg.t.toFixed(2)} m`);
     rows.push(`orientation ${sg.orientation}   signalId ${sg.signalId}`);
   }
+  rows.push(...controllerRows(sg));
   for (const r of sg.references ?? []) {
     rows.push(`<b>reference</b> on road ${escapeHtml(r.roadId)}  ` +
       `s ${r.s.toFixed(2)} m   t ${r.t.toFixed(2)} m   orientation ${r.orientation}`);
@@ -804,6 +807,30 @@ function showSignalTip(ev, rect, hit) {
   tip.style.left = (ev.clientX - rect.left + 14) + 'px';
   tip.style.top = (ev.clientY - rect.top + 14) + 'px';
   tip.innerHTML = rows.join('\n');
+}
+
+// A row per controller a signal belongs to: its name, id and priority, the
+// junctions that sync it, and the other signals it switches with this one.
+function controllerRows(sg) {
+  const byId = new Map(signals.map(s => [s.signalId, s]));
+  const rows = [];
+  for (const id of sg.controllers ?? []) {
+    const c = controllers.get(id);
+    if (!c) continue;
+    const name = escapeHtml(c.name || '(unnamed)') + (c.odId != null ? ` ${escapeHtml(c.odId)}` : '');
+    const parts = [`<b>controller</b> ${name}`];
+    if (c.sequence != null) parts.push(`sequence ${c.sequence}`);
+    for (const j of c.junctions) {
+      parts.push(`junction ${escapeHtml(j.junctionId)}` + (j.type ? ` (${escapeHtml(j.type)})` : ''));
+    }
+    rows.push(parts.join('   '));
+    const others = c.signals.filter(s => s.signalId !== sg.signalId).map(s => {
+      const o = byId.get(s.signalId);
+      return o ? `${escapeHtml(o.name || '(unnamed)')} ${escapeHtml(o.odId ?? '')}` : `#${s.signalId}`;
+    });
+    rows.push('  with ' + (others.length ? others.join(', ') : 'no other signal'));
+  }
+  return rows;
 }
 
 // --- Sidebar -----------------------------------------------------------------

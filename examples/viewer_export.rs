@@ -18,7 +18,8 @@
 //! with each object's slice of it. A structure table lists the tunnels and
 //! bridges, each with the stretch of every lane it covers. A signal table
 //! gives each signal's meaning, the lanes it applies to, and its board's
-//! pose and size.
+//! pose and size. A controller table lists the signals each controller
+//! switches together.
 //!
 //! Where the map lays OpenCRG files on its roads, the exporter loads them from
 //! beside the `.xodr` and samples [`RoadSurface`] over every lane they cover:
@@ -37,10 +38,10 @@ use std::process::ExitCode;
 
 use libopendrive::opencrg::CrgGrid;
 use libopendrive::{
-    load_file_with_provenance, Corner, CrgMode, CrgPurpose, CrgSurface, Direction, Extent, LaneId,
-    LaneProvenance, LaneSpan, Marking, Mesh, Object, ObjectProvenance, Orientation, Point,
-    Provenance, RoadNetwork, RoadSurface, Shape, Signal, SignalProvenance, Structure,
-    StructureKind, StructureProvenance, SurfaceHint,
+    load_file_with_provenance, Controller, ControllerProvenance, Corner, CrgMode, CrgPurpose,
+    CrgSurface, Direction, Extent, LaneId, LaneProvenance, LaneSpan, Marking, Mesh, Object,
+    ObjectProvenance, Orientation, Point, Provenance, RoadNetwork, RoadSurface, Shape, Signal,
+    SignalProvenance, Structure, StructureKind, StructureProvenance, SurfaceHint,
 };
 use serde_json::{json, Map, Value};
 
@@ -110,7 +111,7 @@ fn main() -> ExitCode {
 }
 
 /// Assemble the viewer scene: flat mesh buffers, the lane table, the object
-/// table, the object mesh, and the structure and signal tables.
+/// table, the object mesh, and the structure, signal and controller tables.
 fn build_scene(
     net: &RoadNetwork,
     mesh: &Mesh,
@@ -145,6 +146,17 @@ fn build_scene(
         .map(|s| signal_entry(s, provenance.signals.iter().find(|p| p.signal == s.id)))
         .collect();
 
+    let controllers: Vec<Value> = net
+        .controllers()
+        .iter()
+        .map(|c| {
+            controller_entry(
+                c,
+                provenance.controllers.iter().find(|p| p.controller == c.id),
+            )
+        })
+        .collect();
+
     let mut object_buffers = buffers(object_mesh);
     object_buffers["spans"] = object_mesh
         .objects
@@ -166,6 +178,7 @@ fn build_scene(
         "objectMesh": object_buffers,
         "structures": structures,
         "signals": signals,
+        "controllers": controllers,
     })
 }
 
@@ -299,6 +312,7 @@ fn signal_entry(s: &Signal, prov: Option<&SignalProvenance>) -> Value {
         "text": s.text,
         "invalidated": s.invalidated,
         "temporary": s.temporary,
+        "controllers": s.controllers.iter().map(|c| c.0).collect::<Vec<_>>(),
         "lanes": s.lanes.iter().map(|l| l.0).collect::<Vec<_>>(),
         "appliesAt": s.applies_at.iter().map(|p| p.to_array()).collect::<Vec<_>>(),
         "position": s.position.to_array(),
@@ -323,6 +337,28 @@ fn signal_entry(s: &Signal, prov: Option<&SignalProvenance>) -> Value {
                 "t": r.t,
                 "orientation": orientation(r.orientation),
             }))
+            .collect::<Vec<_>>(),
+    })
+}
+
+/// One controller's viewer record: its name, the signals it controls, and
+/// the junctions that sync it.
+fn controller_entry(c: &Controller, prov: Option<&ControllerProvenance>) -> Value {
+    json!({
+        "controllerId": c.id.0,
+        "name": c.name,
+        "sequence": c.sequence,
+        "signals": c
+            .signals
+            .iter()
+            .map(|s| json!({ "signalId": s.signal.0, "type": s.kind }))
+            .collect::<Vec<_>>(),
+        "odId": prov.map(|p| p.od_id.as_str()),
+        "junctions": prov
+            .map(|p| p.junctions.as_slice())
+            .unwrap_or_default()
+            .iter()
+            .map(|j| json!({ "junctionId": j.junction_id, "type": j.kind, "sequence": j.sequence }))
             .collect::<Vec<_>>(),
     })
 }

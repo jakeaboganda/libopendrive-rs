@@ -28,7 +28,7 @@
 - The viewer draws each signal as a board, white when static and dark when
   dynamic, with its front lit. Hover one to read it, see its lanes, and
   follow a dashed line to each place it applies, which may be on another
-  road.
+  road. The readout names its controllers and the other signals in each.
   `s` toggles signals.
 
 ### OpenCRG road surfaces
