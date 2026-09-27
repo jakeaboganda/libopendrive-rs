@@ -27,7 +27,8 @@ mesh.validate()?;
 ## What it reads
 
 - Road geometry, elevation and superelevation.
-- Lanes of every type, with their widths, offsets, heights and sections.
+- Lanes of every type, with their widths, borders, offsets, heights and
+  sections.
 - Links and junctions, as a lane graph.
 - Objects, with repeats, outlines, markings and borders.
 - Signals and the controllers that group them.
@@ -37,7 +38,7 @@ mesh.validate()?;
 
 It loads a file whatever OpenDRIVE version it declares. Where it drops part
 of a bad file, it says so in `Provenance::warnings`.
-[docs/support.md](docs/support.md) covers each element, and the three it
+[docs/support.md](docs/support.md) covers each element, and the two it
 skips that change the road's shape.
 
 ## Viewer

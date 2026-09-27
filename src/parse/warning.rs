@@ -8,7 +8,7 @@ use std::fmt;
 /// Each variant names where in the file it happened, and `Display` gives the
 /// message. New kinds are not a breaking change. Elements the crate does not
 /// read at all, such as `<userData>` on a road, raise no warning.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum Warning {
@@ -19,9 +19,9 @@ pub enum Warning {
         /// What it lacked.
         reason: RoadSkipReason,
     },
-    /// A `<lane>` with no `<width>` the crate could read. It has no extent,
-    /// so it did not bake, and neither did its road marks. A lane outside it
-    /// stacks on the lane inside it.
+    /// A `<lane>` with no `<width>` or `<border>` the crate could read. It
+    /// has no extent, so it did not bake, and neither did its road marks. A
+    /// lane outside it stacks on the lane inside it.
     LaneDropped {
         /// The `<road id>` it is on.
         road_id: String,
@@ -30,6 +30,46 @@ pub enum Warning {
         section: usize,
         /// Its `<lane id>`.
         lane: i32,
+    },
+    /// A `<lane>` with `<border>`s, in a lane section that also has
+    /// `<width>`s, on it or on another lane. The spec makes the two
+    /// exclusive, and uses the widths where a section has both, so read
+    /// literally a lane with only borders there has no extent. The crate
+    /// reads each lane on its own: its widths if it has any, and its borders
+    /// if not.
+    WidthAndBorder {
+        /// The `<road id>` it is on.
+        road_id: String,
+        /// The zero-based lane-section index.
+        section: usize,
+        /// Its `<lane id>`.
+        lane: i32,
+    },
+    /// A `<lane>` that takes its extent from `<border>`s, on a road whose
+    /// `<laneOffset>` is not 0 in its lane section. The spec forbids the two
+    /// together. The crate measures the border from the reference line and
+    /// ignores the offset for it.
+    BorderWithLaneOffset {
+        /// The `<road id>` it is on.
+        road_id: String,
+        /// The zero-based lane-section index.
+        section: usize,
+        /// Its `<lane id>`.
+        lane: i32,
+    },
+    /// A `<lane>` whose `<border>` lies inside its inner neighbour's outer
+    /// border, which the spec forbids. The crate gives the lane 0 width
+    /// there. Checked at the lane's stations.
+    BorderCrossesInnerLane {
+        /// The `<road id>` it is on.
+        road_id: String,
+        /// The zero-based lane-section index.
+        section: usize,
+        /// Its `<lane id>`.
+        lane: i32,
+        /// The first station where it crosses, in metres along the
+        /// reference line.
+        s: f64,
     },
 }
 
@@ -48,6 +88,19 @@ pub enum RoadSkipReason {
     NoGeometry,
 }
 
+impl Warning {
+    /// The `<road id>` it happened on.
+    pub fn road_id(&self) -> &str {
+        match self {
+            Self::RoadSkipped { road_id, .. }
+            | Self::LaneDropped { road_id, .. }
+            | Self::WidthAndBorder { road_id, .. }
+            | Self::BorderWithLaneOffset { road_id, .. }
+            | Self::BorderCrossesInnerLane { road_id, .. } => road_id,
+        }
+    }
+}
+
 impl fmt::Display for Warning {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -60,7 +113,32 @@ impl fmt::Display for Warning {
                 lane,
             } => write!(
                 f,
-                "road {road_id:?}, lane section {section}: lane {lane} dropped, it has no usable <width>"
+                "road {road_id:?}, lane section {section}: lane {lane} dropped, it has no usable <width> or <border>"
+            ),
+            Self::WidthAndBorder {
+                road_id,
+                section,
+                lane,
+            } => write!(
+                f,
+                "road {road_id:?}, lane section {section}: lane {lane} has <border>s in a section with <width>s"
+            ),
+            Self::BorderWithLaneOffset {
+                road_id,
+                section,
+                lane,
+            } => write!(
+                f,
+                "road {road_id:?}, lane section {section}: lane {lane} has <border>s under a <laneOffset>, which they ignore"
+            ),
+            Self::BorderCrossesInnerLane {
+                road_id,
+                section,
+                lane,
+                s,
+            } => write!(
+                f,
+                "road {road_id:?}, lane section {section}: lane {lane}'s <border> crosses inside the lane within it at s {s:.2} m"
             ),
         }
     }

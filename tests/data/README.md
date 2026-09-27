@@ -62,4 +62,12 @@ Regenerate with
 
     uv run --with scenariogeneration==0.16.6 tests/data/lane_heights.py
 
+`lane_borders.xodr` comes from `lane_borders.py`, which writes the XML
+itself, since scenariogeneration writes no lane borders. It has a lane
+opening out of nothing as in ASAM's `Ex_Lane-Border.xodr`, border and width
+lanes stacked on each other, a lane with both, borders under a
+`laneOffset`, and a border that crosses the lane inside it. Regenerate with
+
+    python3 tests/data/lane_borders.py
+
 [scenariogeneration]: https://github.com/pyoscx/scenariogeneration

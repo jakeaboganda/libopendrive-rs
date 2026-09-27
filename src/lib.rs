@@ -61,6 +61,7 @@
 //! | `<left>`, `<center>`, `<right>` | none |
 //! | `<lane>` | `id`, `type` |
 //! | `<lane><width>` | `sOffset`, `a`, `b`, `c`, `d` |
+//! | `<lane><border>` | `sOffset`, `a`, `b`, `c`, `d` |
 //! | `<lane><height>` | `sOffset`, `inner`, `outer` |
 //! | `<lane><roadMark>` | `sOffset`, `type`, `weight`, `color`, `width`, `height`, `laneChange` |
 //! | `<roadMark><type>` | `width` |
@@ -247,6 +248,43 @@
 //! baked network has no junctions, so each entry is in the
 //! [`ControllerProvenance`] of the controller it names.
 //!
+//! # Lane borders
+//!
+//! A lane's `<border>`s give the `t` of its outer border, a cubic from each
+//! `sOffset` in the lane section, held until the next. A border is measured
+//! from the reference line, not from the lanes inside it. The lane's width
+//! is its border less its inner neighbour's outer border, so a lane can open
+//! out of nothing, as a gore area does. [`Lane::width`] and [`Lane::widths`]
+//! come from that. A lane with widths outside a border lane stacks on its
+//! border.
+//!
+//! No other reader to compare against builds lanes from borders.
+//! libOpenDRIVE logs that it does not support them, esmini reads only
+//! widths, and CARLA parses them but does not use them.
+//!
+//! The crate departs from the OpenDRIVE 1.9 spec here:
+//!
+//! - The spec makes widths and borders exclusive, and uses the widths when
+//!   a lane section has both. Read literally, a lane with only borders in
+//!   such a section has no extent. The crate reads each lane on its own: its
+//!   widths if it has any, and its borders if not. It raises
+//!   [`Warning::WidthAndBorder`] for each lane with borders in a section
+//!   with widths.
+//! - The spec forbids borders with a `<laneOffset>`. The crate measures a
+//!   border from the reference line and ignores the offset for it. Width
+//!   lanes still move with the offset. It raises
+//!   [`Warning::BorderWithLaneOffset`] for each border lane where the offset
+//!   is not 0 in its section.
+//! - The spec forbids a border crossing inside the lanes within it. The
+//!   crate gives the lane 0 width there, as it does a negative width, and
+//!   raises [`Warning::BorderCrossesInnerLane`] at the first of the lane's
+//!   stations where it crosses.
+//! - The spec requires `sOffset`, `a`, `b`, `c` and `d`. The crate reads a
+//!   border as it reads a width: a record without `a` is skipped, and a
+//!   missing `sOffset`, `b`, `c` or `d` is 0.
+//! - The spec says the records come in ascending `sOffset`. Ones out of
+//!   order are sorted rather than dropped.
+//!
 //! # Lane heights
 //!
 //! A lane's `<height>`s raise its surface off the road, as a sidewalk or a
@@ -373,9 +411,10 @@
 //!   do, so a dash on the outside of a bend is longer.
 //! - The spec says a lane's marks come in ascending `sOffset`. Marks out of
 //!   order are sorted, as lane sections are, rather than dropped.
-//! - The spec draws the marks of a lane with no `<width>` on its border,
-//!   which is then its inner border. The crate does not bake the lane, so
-//!   its marks go with it, and raises [`Warning::LaneDropped`].
+//! - The spec draws the marks of a lane with neither a `<width>` nor a
+//!   `<border>` on its border, which is then its inner border. The crate
+//!   does not bake the lane, so its marks go with it, and raises
+//!   [`Warning::LaneDropped`].
 //!
 //! # Road surfaces
 //!
@@ -430,14 +469,11 @@
 //! `<semantics>`. Of road marks, it ignores `material` and a `<type>`'s
 //! `name`.
 //!
-//! Three omissions change the road you get back, rather than only dropping
+//! Two omissions change the road you get back, rather than only dropping
 //! detail around it:
 //!
 //! - `<shape>`, the other lateralProfile child, so a crowned or cambered
 //!   cross-section imports flat across its width.
-//! - A lane's `<border>`, as opposed to an object's. A lane whose extent
-//!   comes from a border rather than a width element has nothing to sample,
-//!   so the importer drops it and raises [`Warning::LaneDropped`].
 //! - The center lane, lane 0, so it never becomes a [`Lane`]. Only its road
 //!   marks are read.
 //!
@@ -477,7 +513,11 @@
 //! - [`Warning::RoadSkipped`] for a road with no finite `length`, no
 //!   `<planView>`, or no `<geometry>` it can bake. The [`RoadSkipReason`]
 //!   says which.
-//! - [`Warning::LaneDropped`] for a lane with no `<width>` it can read.
+//! - [`Warning::LaneDropped`] for a lane with no `<width>` or `<border>` it
+//!   can read.
+//! - [`Warning::WidthAndBorder`], [`Warning::BorderWithLaneOffset`] and
+//!   [`Warning::BorderCrossesInnerLane`] for the lane borders the spec
+//!   forbids. See [Lane borders](#lane-borders).
 //!
 //! Elements the crate does not read at all raise none. Real maps are full of
 //! them, and they would bury the rest. Other things it drops, such as a lane

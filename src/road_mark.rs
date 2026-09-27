@@ -240,9 +240,9 @@ pub struct RoadMarkLine {
 /// A mark with a [`kind`](Self::kind) that isn't paint, such as a kerb, or
 /// no mark at all, keeps its meaning and has no lines.
 ///
-/// A lane the map gives no width does not bake, and nor do its marks. The
-/// OpenDRIVE spec would draw them on its border, which is then its inner
-/// border.
+/// A lane the map gives neither a width nor a border does not bake, and nor
+/// do its marks. The OpenDRIVE spec would draw them on its border, which is
+/// then its inner border.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RoadMark {

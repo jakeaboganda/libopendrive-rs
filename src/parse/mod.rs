@@ -370,17 +370,9 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             &mut topo,
         ) {
             Ok(baked) => {
-                warnings.extend(baked.sections.iter().flat_map(|section| {
-                    section
-                        .def
-                        .dropped
-                        .iter()
-                        .map(|&lane| Warning::LaneDropped {
-                            road_id: baked.id.clone(),
-                            section: section.index,
-                            lane,
-                        })
-                }));
+                for section in &baked.sections {
+                    warnings.extend(baked.lane_warnings(section));
+                }
                 roads.push((road, baked));
             }
             Err(reason) => warnings.push(Warning::RoadSkipped {
@@ -654,13 +646,26 @@ fn active(records: &[Cubic], s: f64) -> Option<&Cubic> {
 struct LaneDef {
     id: i32,
     kind: LaneType,
-    widths: Vec<Cubic>,
+    extent: LaneExtent,
     pred_link: Option<i32>,
     succ_link: Option<i32>,
     /// The road marks on its outer border.
     marks: Vec<MarkDef>,
     /// Its `<height>`s, in order along it.
     heights: Vec<HeightDef>,
+}
+
+/// How far across the road a lane reaches: its `<width>`s, or where it has
+/// none, its `<border>`s. Each list is sorted by `sOffset`.
+///
+/// A border is the `t` of the lane's outer border, measured from the
+/// reference line, so `<laneOffset>` does not move it. The spec forbids the
+/// two together. The lane's width is its border less its inner neighbour's
+/// outer border, signed by side and 0 where the border crosses inside it,
+/// which the spec also forbids.
+enum LaneExtent {
+    Width(Vec<Cubic>),
+    Border(Vec<Cubic>),
 }
 
 /// A lane's `<height>`: how far its surface stands off the road, along the
@@ -717,8 +722,8 @@ fn height_at(lane: &LaneDef, s_lane: f64) -> (f64, f64) {
 }
 
 /// A `<laneSection>`'s lanes as the file gives them. Only lanes with a
-/// width are here, since a lane without one has nothing to sample and no
-/// border. The ids of those without one are in `dropped`.
+/// width or a border are here, since a lane with neither has nothing to
+/// sample. The ids of those are in `dropped`.
 struct SectionDef {
     /// The left lanes, ordered from the center outward: 1, 2, 3, ...
     left: Vec<LaneDef>,
@@ -726,8 +731,11 @@ struct SectionDef {
     right: Vec<LaneDef>,
     /// The road marks of the center lane, on the line between the sides.
     center: Vec<MarkDef>,
-    /// The `<lane id>`s it skipped for having no width, in file order.
+    /// The `<lane id>`s it skipped for having neither a width nor a border,
+    /// in file order.
     dropped: Vec<i32>,
+    /// The `<lane id>`s with borders, if any lane has widths, in file order.
+    mixed: Vec<i32>,
 }
 
 impl SectionDef {
@@ -741,6 +749,7 @@ impl SectionDef {
 
     fn parse(section: roxmltree::Node) -> Self {
         let (mut left, mut right, mut dropped) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut with_widths, mut with_borders) = (false, Vec::new());
         for side in ["left", "right"] {
             let Some(side_node) = child(section, side) else {
                 continue;
@@ -749,16 +758,25 @@ impl SectionDef {
                 let Some(id) = lane.attribute("id").and_then(|s| s.parse::<i32>().ok()) else {
                     continue;
                 };
-                let widths = parse_width_cubics(lane);
-                if widths.is_empty() {
-                    dropped.push(id);
-                    continue;
+                let widths = lane_cubics(lane.children().filter(|n| n.has_tag_name("width")));
+                let borders = lane_cubics(lane.children().filter(|n| n.has_tag_name("border")));
+                with_widths |= !widths.is_empty();
+                if !borders.is_empty() {
+                    with_borders.push(id);
                 }
+                let extent = match (widths.is_empty(), borders.is_empty()) {
+                    (false, _) => LaneExtent::Width(widths),
+                    (true, false) => LaneExtent::Border(borders),
+                    (true, true) => {
+                        dropped.push(id);
+                        continue;
+                    }
+                };
                 let (pred_link, succ_link) = links::lane_link(lane);
                 let def = LaneDef {
                     id,
                     kind: lane_type(lane.attribute("type")),
-                    widths,
+                    extent,
                     pred_link,
                     succ_link,
                     marks: road_marks::parse(lane),
@@ -771,6 +789,11 @@ impl SectionDef {
                 }
             }
         }
+        let mixed = if with_widths {
+            with_borders
+        } else {
+            Vec::new()
+        };
         left.sort_by_key(|l| l.id);
         right.sort_by_key(|l| -l.id);
         let center = child(section, "center")
@@ -784,6 +807,7 @@ impl SectionDef {
             right,
             center,
             dropped,
+            mixed,
         }
     }
 }
@@ -997,7 +1021,78 @@ fn parse_road(
     Ok(baked)
 }
 
+/// How far, in metres, a `<border>` may lie inside its inner neighbour's
+/// outer border before it counts as crossing it, rather than as rounding.
+const BORDER_CROSSING: f64 = 1e-6;
+
 impl BakedRoad {
+    /// What the load dropped from `section`'s lanes, or read against the
+    /// spec: each dropped lane, then each lane with borders in a section with
+    /// widths,
+    /// each border lane under a `<laneOffset>`, and each border that crosses
+    /// inside its inner neighbour at one of the section's stations.
+    fn lane_warnings(&self, section: &BakedSection) -> Vec<Warning> {
+        let def = &section.def;
+        let (road_id, index) = (&self.id, section.index);
+        let mut out: Vec<Warning> = def
+            .dropped
+            .iter()
+            .map(|&lane| Warning::LaneDropped {
+                road_id: road_id.clone(),
+                section: index,
+                lane,
+            })
+            .chain(def.mixed.iter().map(|&lane| Warning::WidthAndBorder {
+                road_id: road_id.clone(),
+                section: index,
+                lane,
+            }))
+            .collect();
+        let border_lanes = || {
+            def.left
+                .iter()
+                .chain(&def.right)
+                .filter(|l| matches!(l.extent, LaneExtent::Border(_)))
+        };
+        if offset_within(&self.lane_offsets, section.start, section.end) {
+            out.extend(border_lanes().map(|l| Warning::BorderWithLaneOffset {
+                road_id: road_id.clone(),
+                section: index,
+                lane: l.id,
+            }));
+        }
+        let mut crossed: Vec<(i32, f64)> = Vec::new();
+        if border_lanes().next().is_some() {
+            for &s in &section.stations {
+                let base = active(&self.lane_offsets, s).map_or(0.0, |o| o.eval(s));
+                let s_lane = s - section.start;
+                for (side, sign) in [(&def.left, 1.0), (&def.right, -1.0)] {
+                    for (lane, b) in side.iter().zip(side_borders(side, sign, base, s_lane)) {
+                        let LaneExtent::Border(borders) = &lane.extent else {
+                            continue;
+                        };
+                        let inside = active(borders, s_lane)
+                            .is_some_and(|r| sign * (r.eval(s_lane) - b.inner) < -BORDER_CROSSING);
+                        if inside && !crossed.iter().any(|&(id, _)| id == lane.id) {
+                            crossed.push((lane.id, s));
+                        }
+                    }
+                }
+            }
+        }
+        out.extend(
+            crossed
+                .into_iter()
+                .map(|(lane, s)| Warning::BorderCrossesInnerLane {
+                    road_id: road_id.clone(),
+                    section: index,
+                    lane,
+                    s,
+                }),
+        );
+        out
+    }
+
     /// The reference line at `s`.
     fn station(&self, s: f64) -> RefPoint {
         let (x, y, heading) = geom_at(&self.geoms, s).pose(s);
@@ -1014,6 +1109,14 @@ impl BakedRoad {
             bank_rate: bank.map_or(0.0, |e| e.slope(s)),
         }
     }
+}
+
+/// Whether a `<laneOffset>` is anything but 0 anywhere over `[start, end)`.
+fn offset_within(lane_offsets: &[Cubic], start: f64, end: f64) -> bool {
+    lane_offsets.iter().enumerate().any(|(i, r)| {
+        let until = lane_offsets.get(i + 1).map_or(f64::INFINITY, |n| n.start);
+        r.start < end && until > start && [r.a, r.b, r.c, r.d].iter().any(|&c| c != 0.0)
+    })
 }
 
 /// How far apart a CRG stretch's stations are, in metres. The stretch joins
@@ -1388,8 +1491,7 @@ fn bake_lanes(
 /// and return the stations they are sampled at, from [`sample_positions`].
 /// Malformed individual lanes are skipped, not fatal (real files).
 ///
-/// Every lane with a width is sampled for the running lateral offset, whatever
-/// its type; only the ones [`lane_type`] recognises become a `Lane`.
+/// Every lane with a width or a border becomes a `Lane`, whatever its type.
 #[allow(clippy::too_many_arguments)]
 fn emit_section(
     def: &SectionDef,
@@ -1709,12 +1811,6 @@ fn raised(
     )
 }
 
-fn width_at(lane: &LaneDef, s_lane: f64) -> f64 {
-    active(&lane.widths, s_lane)
-        .map(|w| w.eval(s_lane).max(0.0))
-        .unwrap_or(0.0)
-}
-
 /// Where one lane lies across the road at one station: the `t` of its inner
 /// and outer border, and its width between them.
 #[derive(Clone, Copy)]
@@ -1728,6 +1824,9 @@ struct LaneBorders {
 /// from the center outward. `sign` is 1.0 for the left side and -1.0 for the
 /// right, and `base` the `t` of the center lane, from `<laneOffset>`. Every
 /// place that needs a lane's borders reads them here.
+///
+/// A lane is 0 wide before its first `<width>` or `<border>`, and where
+/// either would make it narrower than 0. See [`LaneExtent`].
 fn side_borders(
     side: &[LaneDef],
     sign: f64,
@@ -1735,8 +1834,14 @@ fn side_borders(
     s_lane: f64,
 ) -> impl Iterator<Item = LaneBorders> + '_ {
     side.iter().scan(base, move |t, lane| {
-        let width = width_at(lane, s_lane);
         let inner = *t;
+        let width = match &lane.extent {
+            LaneExtent::Width(widths) => active(widths, s_lane).map_or(0.0, |w| w.eval(s_lane)),
+            LaneExtent::Border(borders) => {
+                active(borders, s_lane).map_or(0.0, |b| sign * (b.eval(s_lane) - inner))
+            }
+        }
+        .max(0.0);
         *t += sign * width;
         Some(LaneBorders {
             inner,
@@ -1957,10 +2062,11 @@ fn cubics_in(parent: roxmltree::Node, item: &str, start_attr: &str) -> Vec<Cubic
     out
 }
 
-fn parse_width_cubics(lane: roxmltree::Node) -> Vec<Cubic> {
-    let mut out: Vec<Cubic> = lane
-        .children()
-        .filter(|n| n.has_tag_name("width"))
+/// A lane's `<width>` or `<border>` records as cubics, sorted by `sOffset`.
+/// The spec requires every attribute. A record without `a` is skipped, and
+/// a missing `sOffset`, `b`, `c` or `d` is 0.
+fn lane_cubics<'a>(records: impl Iterator<Item = roxmltree::Node<'a, 'a>>) -> Vec<Cubic> {
+    let mut out: Vec<Cubic> = records
         .filter_map(|n| {
             Some(Cubic {
                 start: attr_f64(n, "sOffset").unwrap_or(0.0),
@@ -4749,7 +4855,7 @@ mod tests {
         let lane = |widths| LaneDef {
             id: -1,
             kind: LaneType::Driving,
-            widths: vec![widths],
+            extent: LaneExtent::Width(vec![widths]),
             pred_link: None,
             succ_link: None,
             marks: Vec::new(),

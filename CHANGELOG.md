@@ -18,6 +18,29 @@
 - Elements the crate does not read raise no warning.
 - The viewer lists the warnings at the top of its sidebar. Picking one
   lights the lanes of the road it names.
+- `Warning::road_id` gives the road any warning happened on.
+
+### Lane borders
+
+- A lane's `<border>`s give the `t` of its outer border, measured from the
+  reference line. The lane's width is its border less its inner
+  neighbour's outer border, so `Lane::width` and `Lane::widths` follow it,
+  and a lane can open out of nothing. Such lanes used to be dropped.
+- A width lane outside a border lane stacks on its border. Road marks run
+  along a border, and links and lane-change neighbours hold as for any lane.
+- `Warning::LaneDropped` now means a lane with neither a width nor a border.
+- Where the crate departs from the spec:
+  - A lane with widths follows them, and a lane with only borders follows
+    those, even in a lane section where other lanes have widths. The spec
+    uses the widths when a section has both. Raises
+    `Warning::WidthAndBorder`.
+  - A border ignores `<laneOffset>`. The spec forbids the two together.
+    Raises `Warning::BorderWithLaneOffset` where the offset is not 0.
+  - A border that crosses inside the lanes within it gives its lane 0
+    width. The spec forbids it. Raises `Warning::BorderCrossesInnerLane`.
+  - A border without `a` is skipped, and a missing `sOffset`, `b`, `c` or
+    `d` is 0, as for a width. The spec requires all five.
+  - Borders out of order are sorted rather than dropped.
 
 ## 0.3.1 - 2026-09-27
 

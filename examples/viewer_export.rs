@@ -271,13 +271,7 @@ fn build_scene(
 
 /// One warning's viewer record: its message, and the road it names.
 fn warning_entry(w: &Warning) -> Value {
-    let road_id = match w {
-        Warning::RoadSkipped { road_id, .. } | Warning::LaneDropped { road_id, .. } => {
-            Some(road_id.as_str())
-        }
-        _ => None,
-    };
-    json!({ "message": w.to_string(), "roadId": road_id })
+    json!({ "message": w.to_string(), "roadId": w.road_id() })
 }
 
 /// A mesh's positions, normals and indices, flattened into the

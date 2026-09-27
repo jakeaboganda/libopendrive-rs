@@ -234,7 +234,35 @@ fn a_warning_reads_as_a_sentence() {
             lane: -3,
         }
         .to_string(),
-        r#"road "7", lane section 2: lane -3 dropped, it has no usable <width>"#
+        r#"road "7", lane section 2: lane -3 dropped, it has no usable <width> or <border>"#
+    );
+    assert_eq!(
+        Warning::WidthAndBorder {
+            road_id: "7".into(),
+            section: 0,
+            lane: 2,
+        }
+        .to_string(),
+        r#"road "7", lane section 0: lane 2 has <border>s in a section with <width>s"#
+    );
+    assert_eq!(
+        Warning::BorderWithLaneOffset {
+            road_id: "7".into(),
+            section: 0,
+            lane: 2,
+        }
+        .to_string(),
+        r#"road "7", lane section 0: lane 2 has <border>s under a <laneOffset>, which they ignore"#
+    );
+    assert_eq!(
+        Warning::BorderCrossesInnerLane {
+            road_id: "7".into(),
+            section: 0,
+            lane: -2,
+            s: 30.2222,
+        }
+        .to_string(),
+        r#"road "7", lane section 0: lane -2's <border> crosses inside the lane within it at s 30.22 m"#
     );
 }
 

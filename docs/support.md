@@ -32,6 +32,11 @@ files declaring 1.4, 1.6 and 1.7.
   leaving a hole. `LaneType::is_drivable` separates the ones traffic uses.
 - Lane widths that vary along a lane, so a gore area that opens out of a
   point is drawn as the wedge it is.
+- Lane borders, which give a lane's outer edge as a `t` from the reference
+  line rather than a width. A border lane stacks on the lane inside it, and
+  width lanes stack on it. Where a lane has both, its widths win. A border
+  ignores `laneOffset`, and one that crosses inside the lane within it
+  gives its lane 0 width. The spec forbids both, and each raises a warning.
 - Lane heights, so a sidewalk stands above the road beside it. A lane's
   `<height>`s raise its centerline and tilt its surface, so the mesh and
   `Lane::sample_at` see the kerb. Poles, signs and road marks on a sidewalk
@@ -157,18 +162,17 @@ cargo run --release --example crg_profile -- target/crg/country_road.xodr > prof
 
 `Provenance::warnings` lists what a load dropped from a bad file. A road with
 no finite `length`, no `<planView>` or no geometry the importer can bake
-raises `Warning::RoadSkipped`. A lane with no `<width>` raises
-`Warning::LaneDropped`. The elements below raise nothing.
+raises `Warning::RoadSkipped`. A lane with no `<width>` or `<border>` raises
+`Warning::LaneDropped`. The lane borders the spec forbids raise
+`Warning::WidthAndBorder`, `Warning::BorderWithLaneOffset` and
+`Warning::BorderCrossesInnerLane`. The elements below raise nothing.
 
 ## What it ignores
 
 The importer silently skips everything else in the file, `<geoReference>`
-included. Three omissions change the road you get back, not only the detail
+included. Two omissions change the road you get back, not only the detail
 around it:
 
 - `<shape>`, the other `<lateralProfile>` child, so a crowned or cambered
   cross-section imports flat across its width.
-- A lane's `<border>`, as opposed to an object's. A lane whose extent comes
-  from a border rather than a width element has nothing to sample, so the
-  importer drops it and raises `Warning::LaneDropped`.
 - `<center>`, so lane 0 never becomes a `Lane`.
