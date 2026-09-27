@@ -8,6 +8,7 @@ use crate::crg::CrgSurface;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
 use crate::object::{Object, ObjectId};
+use crate::road_mark::{RoadMark, RoadMarkId};
 use crate::signal::{Controller, ControllerId, Signal, SignalId};
 use crate::structure::{Coverage, Structure, StructureId};
 
@@ -233,8 +234,8 @@ pub struct Lane {
 /// to go stale. A map that changed under its own index would answer
 /// `nearest_lane` with a lane that is no longer there.
 ///
-/// Serializes as its lanes, objects, structures, signals, controllers and CRG
-/// surfaces; the index is rebuilt on the way back in, so a network that
+/// Serializes as its lanes, objects, structures, signals, controllers, road
+/// marks and CRG surfaces; the index is rebuilt on the way back in, so a network that
 /// crossed a process boundary is indistinguishable from one that was just
 /// imported.
 #[derive(Debug, Clone, Default)]
@@ -249,6 +250,7 @@ pub struct RoadNetwork {
     structures: Vec<Structure>,
     signals: Vec<Signal>,
     controllers: Vec<Controller>,
+    road_marks: Vec<RoadMark>,
     crg: Vec<CrgSurface>,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
     /// [`Self::nearest_lane`]. Derived from `lanes`, so it takes no part in
@@ -257,7 +259,7 @@ pub struct RoadNetwork {
 }
 
 /// Two networks are equal when their lanes, objects, structures, signals,
-/// controllers and CRG surfaces are; the index is a function of the lanes.
+/// controllers, road marks and CRG surfaces are; the index is a function of the lanes.
 impl PartialEq for RoadNetwork {
     fn eq(&self, other: &Self) -> bool {
         self.lanes == other.lanes
@@ -265,6 +267,7 @@ impl PartialEq for RoadNetwork {
             && self.structures == other.structures
             && self.signals == other.signals
             && self.controllers == other.controllers
+            && self.road_marks == other.road_marks
             && self.crg == other.crg
     }
 }
@@ -278,6 +281,7 @@ struct NetworkData {
     structures: Vec<Structure>,
     signals: Vec<Signal>,
     controllers: Vec<Controller>,
+    road_marks: Vec<RoadMark>,
     crg: Vec<CrgSurface>,
 }
 
@@ -289,6 +293,7 @@ impl From<NetworkData> for RoadNetwork {
             .with_structures(data.structures)
             .with_signals(data.signals)
             .with_controllers(data.controllers)
+            .with_road_marks(data.road_marks)
             .with_crg_surfaces(data.crg)
     }
 }
@@ -302,6 +307,7 @@ impl From<RoadNetwork> for NetworkData {
             structures: net.structures,
             signals: net.signals,
             controllers: net.controllers,
+            road_marks: net.road_marks,
             crg: net.crg,
         }
     }
@@ -417,6 +423,7 @@ impl RoadNetwork {
             structures: Vec::new(),
             signals: Vec::new(),
             controllers: Vec::new(),
+            road_marks: Vec::new(),
             crg: Vec::new(),
             index,
         }
@@ -444,6 +451,12 @@ impl RoadNetwork {
     /// had.
     pub fn with_controllers(mut self, controllers: Vec<Controller>) -> Self {
         self.controllers = controllers;
+        self
+    }
+
+    /// This network with `road_marks` along its lanes, replacing any it had.
+    pub fn with_road_marks(mut self, road_marks: Vec<RoadMark>) -> Self {
+        self.road_marks = road_marks;
         self
     }
 
@@ -532,6 +545,20 @@ impl RoadNetwork {
         match self.controllers.get(id.0) {
             Some(controller) if controller.id == id => Some(controller),
             _ => self.controllers.iter().find(|c| c.id == id),
+        }
+    }
+
+    /// Every road mark, in the order the importer emitted them.
+    pub fn road_marks(&self) -> &[RoadMark] {
+        &self.road_marks
+    }
+
+    /// The road mark with this id, by identity (not position), the same way
+    /// as [`Self::lane`].
+    pub fn road_mark(&self, id: RoadMarkId) -> Option<&RoadMark> {
+        match self.road_marks.get(id.0) {
+            Some(mark) if mark.id == id => Some(mark),
+            _ => self.road_marks.iter().find(|m| m.id == id),
         }
     }
 

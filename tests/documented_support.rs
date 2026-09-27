@@ -9,6 +9,7 @@
 const PARSER: &str = include_str!("../src/parse/mod.rs");
 const LINKS: &str = include_str!("../src/parse/links.rs");
 const SIGNALS: &str = include_str!("../src/parse/signals.rs");
+const ROAD_MARKS: &str = include_str!("../src/parse/road_marks.rs");
 const CRATE_DOCS: &str = include_str!("../src/lib.rs");
 
 /// Tags read in one place and ignored in another, which a scan of tag names
@@ -24,7 +25,7 @@ const LOOKED_UP_BY_VARIABLE: [&str; 2] = ["left", "right"];
 /// Every XML tag name the parser asks for by literal.
 fn tags_the_parser_reads() -> Vec<String> {
     let mut found: Vec<String> = Vec::new();
-    for source in [PARSER, LINKS, SIGNALS] {
+    for source in [PARSER, LINKS, SIGNALS, ROAD_MARKS] {
         // Each of these takes the tag as its first (or only) string literal.
         for marker in ["has_tag_name(", "child(", "cubics_in("] {
             let mut rest = source;

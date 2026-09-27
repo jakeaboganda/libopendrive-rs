@@ -47,4 +47,10 @@ controllers. Regenerate with
 
     uv run --with scenariogeneration==0.16.6 tests/data/signals.py
 
+`road_marks.xodr` comes from `road_marks.py` the same way. It has every
+road mark type on one straight, banked road with a laneOffset and two lane
+sections. Regenerate with
+
+    uv run --with scenariogeneration==0.16.6 tests/data/road_marks.py
+
 [scenariogeneration]: https://github.com/pyoscx/scenariogeneration

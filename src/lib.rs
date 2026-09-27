@@ -58,9 +58,10 @@
 //! | `<lateralProfile><superelevation>` | `s`, `a`, `b`, `c`, `d` |
 //! | `<lanes><laneOffset>` | `s`, `a`, `b`, `c`, `d` |
 //! | `<laneSection>` | `s` |
-//! | `<left>`, `<right>` | none |
+//! | `<left>`, `<center>`, `<right>` | none |
 //! | `<lane>` | `id`, `type` |
 //! | `<lane><width>` | `sOffset`, `a`, `b`, `c`, `d` |
+//! | `<lane><roadMark>` | `sOffset`, `type`, `weight`, `color`, `width`, `height`, `laneChange` |
 //! | `<lane><link>` | `id` |
 //! | `<junction>` | `id` |
 //! | `<connection>` | `incomingRoad`, `connectingRoad`, `contactPoint` |
@@ -240,6 +241,46 @@
 //! baked network has no junctions, so each entry is in the
 //! [`ControllerProvenance`] of the controller it names.
 //!
+//! # Road marks
+//!
+//! Each `<roadMark>` bakes to a [`RoadMark`] in [`RoadNetwork::road_marks`].
+//! It runs along its lane's outer border, from its `sOffset` in the lane
+//! section to the lane's next `<roadMark>` or the end of the section. The
+//! center lane's marks run along the line between the two sides. A mark
+//! names the lanes either side of it, [`RoadMark::left`] and
+//! [`RoadMark::right`], looking along `+s`. Its `type` is a
+//! [`RoadMarkType`], its `laneChange` a [`LaneChange`], and its `color` stays
+//! the file's text. Its road, lane section, `<lane id>`, `s` and length are in
+//! its [`RoadMarkProvenance`].
+//!
+//! Each of its [`RoadMark::lines`] is quads lying in the road surface, placed
+//! at the lane's own stations, so the paint lies on the lane mesh. The type
+//! alone decides the lines: one for `solid` and `broken`, two for a double
+//! type, and none for the rest. The marks of a lane section too short to
+//! bake do not bake either.
+//!
+//! The crate departs from the OpenDRIVE 1.9 spec here:
+//!
+//! - The spec requires `color`, `type` and `sOffset`. A mark missing one is
+//!   `standard`, `none` or 0, as libOpenDRIVE reads it. A `type` this crate
+//!   does not know is [`RoadMarkType::Unknown`].
+//! - The spec gives no default `weight`. A mark missing one is standard.
+//! - The spec says a width is above 0. A width of 0 counts as none, and
+//!   esmini writes one on every mark.
+//! - The spec does not say how wide a line of each weight is, or how a type
+//!   looks. A line is 0.12 m wide, or 0.25 m bold, as libOpenDRIVE has it.
+//!   `broken` is dashes 4 m long with 8 m between, and a double type's lines
+//!   are one width either side of the border, as esmini draws them. `none`,
+//!   `edge`, `grass`, `curb`, `botts dots` and `custom` paint nothing.
+//! - The spec does not say what a dash's length is measured along. The
+//!   crate measures it along the reference line, as libOpenDRIVE and esmini
+//!   do, so a dash on the outside of a bend is longer.
+//! - The spec says a lane's marks come in ascending `sOffset`. Marks out of
+//!   order are sorted, as lane sections are, rather than dropped.
+//! - The spec draws the marks of a lane with no `<width>` on its border,
+//!   which is then its inner border. The crate does not bake the lane, so
+//!   its marks go with it.
+//!
 //! # Road surfaces
 //!
 //! Each `<CRG>` under a road's or a junction's `<surface>` becomes a
@@ -287,10 +328,11 @@
 //! # What the importer ignores
 //!
 //! Everything else in the file, silently. That includes `<geoReference>`,
-//! `<roadMark>`, `<junctionGroup>`, `<station>`, an object's
+//! `<junctionGroup>`, `<station>`, an object's
 //! `<surface>`, and road `<type>` with its `<speed>`. Of signals, it ignores
 //! a signal's `<userData>`, the boards `<staticBoard>` and `<vmsBoard>`, and
-//! `<semantics>`.
+//! `<semantics>`. Of road marks, it ignores `material`, and the `<type>`,
+//! `<explicit>` and `<sway>` of a road mark.
 //!
 //! Three omissions change the road you get back, rather than only dropping
 //! detail around it:
@@ -300,7 +342,8 @@
 //! - A lane's `<border>`, as opposed to an object's. A lane whose extent
 //!   comes from a border rather than a width element has nothing to sample,
 //!   so the importer drops it.
-//! - `<center>`, so lane 0 never becomes a [`Lane`].
+//! - The center lane, lane 0, so it never becomes a [`Lane`]. Only its road
+//!   marks are read.
 //!
 //! # Coordinate frame
 //!
@@ -356,6 +399,7 @@ mod network;
 mod object;
 mod object_mesh;
 mod parse;
+mod road_mark;
 mod route;
 mod signal;
 mod structure;
@@ -381,7 +425,11 @@ pub use opencrg;
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ControllerProvenance,
     ImportError, JunctionControllerProvenance, LaneProvenance, ObjectProvenance, Orientation,
-    Provenance, SignalProvenance, SignalReferenceProvenance, StructureProvenance,
+    Provenance, RoadMarkProvenance, SignalProvenance, SignalReferenceProvenance,
+    StructureProvenance,
+};
+pub use road_mark::{
+    LaneChange, LinePattern, RoadMark, RoadMarkId, RoadMarkLine, RoadMarkType, RoadMarkWeight,
 };
 pub use signal::{
     Control, Controller, ControllerId, Dependency, Reference, Referenced, Signal, SignalId, Unit,

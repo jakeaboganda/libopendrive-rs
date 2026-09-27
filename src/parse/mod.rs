@@ -16,13 +16,15 @@ use crate::object::orient;
 use crate::{
     Border, ControllerId, Corner, Coverage, CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface,
     Direction, Extent, Lane, LaneId, LaneType, Marking, Material, Object, ObjectId, ObjectType,
-    ParkingSpace, Polyline, RoadNetwork, Section, Shape, SignalId, Structure, StructureId,
-    StructureKind, UserData,
+    ParkingSpace, Polyline, RoadMarkId, RoadNetwork, Section, Shape, SignalId, Structure,
+    StructureId, StructureKind, UserData,
 };
 
 mod links;
+mod road_marks;
 mod signals;
 use links::{LaneMeta, RoadInfo, Topology};
+use road_marks::MarkDef;
 
 /// The furthest apart, in metres, a lane's centerline samples get, on
 /// straight or gently curving road.
@@ -243,6 +245,36 @@ pub struct JunctionControllerProvenance {
     pub sequence: Option<u32>,
 }
 
+/// The OpenDRIVE identity of one baked road mark: which road, lane section
+/// and `<lane>` its `<roadMark>` is on, and the stretch of road it covers.
+///
+/// Kept apart from [`RoadMark`](crate::RoadMark) as [`LaneProvenance`] is
+/// from [`Lane`].
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct RoadMarkProvenance {
+    /// The baked road mark this record describes.
+    pub road_mark: RoadMarkId,
+    /// The `<road id>` it is on.
+    pub road_id: String,
+    /// The zero-based lane-section index within that road, as in
+    /// [`LaneProvenance::section`].
+    pub section: usize,
+    /// The `<lane id>` the `<roadMark>` is under: 0 for the center lane's,
+    /// the line between the two sides, and otherwise the lane whose outer
+    /// border it runs along.
+    pub od_lane_id: i32,
+    /// Where it starts, in metres along the road's reference line: its lane
+    /// section's start plus its `sOffset`. The spec requires `sOffset`, and
+    /// a mark without one starts at its section.
+    pub s: f64,
+    /// How far along the road it runs from `s`, in metres: to the lane's
+    /// next `<roadMark>`, or the end of the lane section. The spec says a
+    /// lane's marks come in ascending `sOffset`, and ones out of order are
+    /// sorted rather than dropped.
+    pub length: f64,
+}
+
 /// The OpenDRIVE identity of everything a load baked, from
 /// [`load_str_with_provenance`] or [`load_file_with_provenance`].
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -258,6 +290,8 @@ pub struct Provenance {
     pub signals: Vec<SignalProvenance>,
     /// One per baked controller, in baked-controller order.
     pub controllers: Vec<ControllerProvenance>,
+    /// One per baked road mark, in baked-road-mark order.
+    pub road_marks: Vec<RoadMarkProvenance>,
 }
 
 /// Load an OpenDRIVE file from disk and bake it into a `RoadNetwork`.
@@ -271,7 +305,7 @@ pub fn load_str(xml: &str) -> Result<RoadNetwork, ImportError> {
 }
 
 /// Like [`load_file`], but also returns the OpenDRIVE [`Provenance`] of
-/// every baked lane, object, structure, signal and controller, for a viewer
+/// every baked lane, object, structure, signal, controller and road mark, for a viewer
 /// or editor that must name the road and original id each one came from.
 pub fn load_file_with_provenance(
     path: impl AsRef<std::path::Path>,
@@ -282,7 +316,7 @@ pub fn load_file_with_provenance(
 }
 
 /// Like [`load_str`], but also returns the OpenDRIVE [`Provenance`] of
-/// every baked lane, object, structure, signal and controller. Each record
+/// every baked lane, object, structure, signal, controller and road mark. Each record
 /// carries the id of what it describes.
 pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), ImportError> {
     let cleaned = sanitize(xml);
@@ -312,6 +346,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     }
     surfaces.extend(junction_crgs(root, &topo));
     let signals = signals::place(root, &roads, &objects.provenance);
+    let road_marks = road_marks::place(&roads);
     // Resolve connectivity once all lanes exist and are registered.
     topo.junctions = links::junctions(root);
     links::resolve(&mut lanes, &topo);
@@ -332,6 +367,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
         structures: structures.provenance,
         signals: signals.provenance,
         controllers: signals.controller_provenance,
+        road_marks: road_marks.provenance,
     };
     Ok((
         RoadNetwork::new(lanes)
@@ -339,6 +375,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             .with_structures(structures.baked)
             .with_signals(signals.baked)
             .with_controllers(signals.controllers)
+            .with_road_marks(road_marks.baked)
             .with_crg_surfaces(surfaces),
         provenance,
     ))
@@ -570,6 +607,67 @@ struct LaneDef {
     widths: Vec<Cubic>,
     pred_link: Option<i32>,
     succ_link: Option<i32>,
+    /// The road marks on its outer border.
+    marks: Vec<MarkDef>,
+}
+
+/// A `<laneSection>`'s lanes as the file gives them. Only lanes with a
+/// width are here, since a lane without one has nothing to sample and no
+/// border.
+struct SectionDef {
+    /// The left lanes, ordered from the center outward: 1, 2, 3, ...
+    left: Vec<LaneDef>,
+    /// The right lanes, ordered from the center outward: -1, -2, -3, ...
+    right: Vec<LaneDef>,
+    /// The road marks of the center lane, on the line between the sides.
+    center: Vec<MarkDef>,
+}
+
+impl SectionDef {
+    fn parse(section: roxmltree::Node) -> Self {
+        let (mut left, mut right) = (Vec::new(), Vec::new());
+        for side in ["left", "right"] {
+            let Some(side_node) = child(section, side) else {
+                continue;
+            };
+            for lane in side_node.children().filter(|n| n.has_tag_name("lane")) {
+                let Some(id) = lane.attribute("id").and_then(|s| s.parse::<i32>().ok()) else {
+                    continue;
+                };
+                let widths = parse_width_cubics(lane);
+                if widths.is_empty() {
+                    continue;
+                }
+                let (pred_link, succ_link) = links::lane_link(lane);
+                let def = LaneDef {
+                    id,
+                    kind: lane_type(lane.attribute("type")),
+                    widths,
+                    pred_link,
+                    succ_link,
+                    marks: road_marks::parse(lane),
+                };
+                if id > 0 {
+                    left.push(def);
+                } else if id < 0 {
+                    right.push(def);
+                }
+            }
+        }
+        left.sort_by_key(|l| l.id);
+        right.sort_by_key(|l| -l.id);
+        let center = child(section, "center")
+            .into_iter()
+            .flat_map(|c| c.children())
+            .find(|n| n.has_tag_name("lane"))
+            .map(road_marks::parse)
+            .unwrap_or_default();
+        Self {
+            left,
+            right,
+            center,
+        }
+    }
 }
 
 /// The [`LaneType`] an OpenDRIVE `<lane>` `type` maps to. A new lane type is
@@ -741,6 +839,12 @@ fn parse_road(
     let superelevations = child(road, "lateralProfile")
         .map(|n| cubics_in(n, "superelevation", "s"))
         .unwrap_or_default();
+    // laneOffset shifts the whole lane cross-section laterally off lane 0 (lane
+    // widening, merges, a centerline that isn't the road reference). It adds to
+    // every lane's offset, so it must be applied or all lanes are mis-placed.
+    let lane_offsets = child(road, "lanes")
+        .map(|n| cubics_in(n, "laneOffset", "s"))
+        .unwrap_or_default();
     let sections = bake_lanes(
         road,
         &road_id,
@@ -748,6 +852,7 @@ fn parse_road(
         &geoms,
         &elevations,
         &superelevations,
+        &lane_offsets,
         out,
         topo,
     );
@@ -757,6 +862,7 @@ fn parse_road(
         geoms,
         elevations,
         superelevations,
+        lane_offsets,
         sections,
     };
     if let Some(objects_node) = child(road, "objects") {
@@ -894,11 +1000,15 @@ fn crg_surface(
 /// One lane section of a road as baked: the stretch of road it covers, and
 /// the lanes in it.
 struct BakedSection {
+    /// Its position among the road's `<laneSection>`s, ordered by `s`.
+    index: usize,
     start: f64,
     end: f64,
     /// The stations its lanes are sampled at, from [`sample_positions`].
     stations: Vec<f64>,
     lanes: Vec<BakedLane>,
+    /// Its lanes as the file gives them, for what lies along their borders.
+    def: SectionDef,
 }
 
 /// One baked lane of a [`BakedSection`].
@@ -919,13 +1029,14 @@ fn is_valid(od_id: i32, validity: &[(i32, i32)]) -> bool {
 }
 
 /// A baked road: its reference line with the profiles along it, and its lane
-/// sections. What placing an object or a signal on it needs.
+/// sections. What placing an object, a signal or a road mark on it needs.
 struct BakedRoad {
     id: String,
     length: f64,
     geoms: Vec<GeomRec>,
     elevations: Vec<Cubic>,
     superelevations: Vec<Cubic>,
+    lane_offsets: Vec<Cubic>,
     sections: Vec<BakedSection>,
 }
 
@@ -975,16 +1086,13 @@ fn bake_lanes(
     geoms: &[GeomRec],
     elevations: &[Cubic],
     superelevations: &[Cubic],
+    lane_offsets: &[Cubic],
     out: &mut Vec<Lane>,
     topo: &mut Topology,
 ) -> Vec<BakedSection> {
     let Some(lanes_node) = child(road, "lanes") else {
         return Vec::new();
     };
-    // laneOffset shifts the whole lane cross-section laterally off lane 0 (lane
-    // widening, merges, a centerline that isn't the road reference). It adds to
-    // every lane's offset, so it must be applied or all lanes are mis-placed.
-    let lane_offsets = cubics_in(lanes_node, "laneOffset", "s");
 
     // Every lane section becomes its own set of lanes, each spanning that
     // section's `s`-range `[start, next-start-or-length]`.
@@ -1024,14 +1132,15 @@ fn bake_lanes(
             continue; // zero-length section
         }
         let (first, first_lane) = (topo.metas.len(), out.len());
+        let def = SectionDef::parse(*section);
         let stations = emit_section(
-            *section,
+            &def,
             s_start,
             s_end,
             geoms,
             elevations,
             superelevations,
-            &lane_offsets,
+            lane_offsets,
             out,
             topo,
             road_id,
@@ -1040,6 +1149,7 @@ fn bake_lanes(
         // emit_section records a lane's meta as it pushes the lane, so the
         // new metas and the new lanes are in step.
         baked.push(BakedSection {
+            index: i,
             start: s_start,
             end: s_end,
             stations,
@@ -1052,6 +1162,7 @@ fn bake_lanes(
                     index: first_lane + k,
                 })
                 .collect(),
+            def,
         });
     }
     baked
@@ -1065,7 +1176,7 @@ fn bake_lanes(
 /// its type; only the ones [`lane_type`] recognises become a `Lane`.
 #[allow(clippy::too_many_arguments)]
 fn emit_section(
-    section: roxmltree::Node,
+    def: &SectionDef,
     s_start: f64,
     s_end: f64,
     geoms: &[GeomRec],
@@ -1077,40 +1188,8 @@ fn emit_section(
     road_id: &str,
     section_idx: usize,
 ) -> Vec<f64> {
-    let (mut left, mut right) = (Vec::new(), Vec::new());
-    for side in ["left", "right"] {
-        let Some(side_node) = child(section, side) else {
-            continue;
-        };
-        for lane in side_node.children().filter(|n| n.has_tag_name("lane")) {
-            let Some(id) = lane.attribute("id").and_then(|s| s.parse::<i32>().ok()) else {
-                continue;
-            };
-            let widths = parse_width_cubics(lane);
-            if widths.is_empty() {
-                continue; // no width: nothing to sample, and no offset to add
-            }
-            let kind = lane_type(lane.attribute("type"));
-            let (pred_link, succ_link) = links::lane_link(lane);
-            let def = LaneDef {
-                id,
-                kind,
-                widths,
-                pred_link,
-                succ_link,
-            };
-            if id > 0 {
-                left.push(def);
-            } else if id < 0 {
-                right.push(def);
-            }
-        }
-    }
-    // Order each side from the center outward, so cumulative width works.
-    left.sort_by_key(|l| l.id); // 1, 2, 3, ...
-    right.sort_by_key(|l| -l.id); // -1, -2, -3, ...
-
-    let bends = section_bends(geoms, lane_offsets, [&left, &right], s_start, s_end);
+    let (left, right) = (&def.left, &def.right);
+    let bends = section_bends(geoms, lane_offsets, [left, right], s_start, s_end);
     let sample_s = sample_positions(s_start, s_end, &bends);
     // The bank profile is a road-level property (the cross-section's roll about
     // the reference line), identical for every lane in the section, sampled
@@ -1125,7 +1204,7 @@ fn emit_section(
     } else {
         bank
     };
-    for side in [&left, &right] {
+    for side in [left, right] {
         // Left lanes (positive id) offset toward +t and travel against +s;
         // right lanes (negative id) offset toward -t and travel with +s.
         let is_left = side.first().map(|l| l.id > 0).unwrap_or(false);
@@ -4297,6 +4376,7 @@ mod tests {
             widths: vec![widths],
             pred_link: None,
             succ_link: None,
+            marks: Vec::new(),
         };
         let road = |geom| {
             [GeomRec {

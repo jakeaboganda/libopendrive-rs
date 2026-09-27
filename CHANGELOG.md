@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Road marks
+
+- Each `<roadMark>` imports as a `RoadMark` on `RoadNetwork::road_marks`,
+  with a `RoadMarkId`. It runs along its lane's outer border, or the line
+  between the two sides for the center lane, to the lane's next mark or
+  the end of its lane section. `RoadMark::left` and `RoadMark::right` name
+  the lanes either side of it.
+- A mark keeps its `type` as a `RoadMarkType`, its `laneChange` as a
+  `LaneChange`, its `weight`, width and height, and its `color` as the
+  file's text.
+- Its `lines` are quads in the road surface. A mark described by its type
+  alone paints what esmini draws for it: one line for `solid`, 4 m dashes
+  8 m apart for `broken`, and two lines one width either side of the border
+  for a double type. The other types paint nothing. A line is 0.12 m wide,
+  or 0.25 m bold, as in libOpenDRIVE. The spec gives none of these.
+- `RoadMarkProvenance` gives each mark's road, lane section, `<lane id>`,
+  `s` and length.
+- Where the crate departs from the spec: a mark without a `color` is
+  `standard`, one without a `type` is `none`, and one without an `sOffset`
+  starts at its section, where the spec requires all three. One without a
+  `weight` is standard, which the spec gives no default for. A width of 0
+  counts as none, where the spec says it is above 0. Dashes are measured
+  along the reference line, which the spec does not say. Marks out of
+  order are sorted rather than dropped. A lane with no `<width>` does not
+  bake, so its marks go too, where the spec would draw them on its inner
+  border.
+
 ### Signals
 
 - Each `<signal>` imports as a `Signal` on `RoadNetwork::signals`, with a
@@ -67,10 +94,10 @@
 
 - The minimum Rust version is 1.85, up from 1.82, for the `opencrg`
   dependency.
-- `Provenance` has new `signals` and `controllers` fields, so a `Provenance`
-  literal needs them or `..Default::default()`. The `serde` form of
-  `RoadNetwork` has new `signals` and `controllers` keys, so JSON written
-  before does not load.
+- `Provenance` has new `signals`, `controllers` and `road_marks` fields, so a
+  `Provenance` literal needs them or `..Default::default()`. The `serde`
+  form of `RoadNetwork` has new `signals`, `controllers` and `road_marks`
+  keys, so JSON written before does not load.
 
 ## 0.2.1 - 2026-09-26
 
