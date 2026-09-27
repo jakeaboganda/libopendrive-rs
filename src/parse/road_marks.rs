@@ -81,7 +81,7 @@ impl LineDef {
     fn parse(line: roxmltree::Node, pattern: LinePattern) -> Self {
         Self {
             pattern,
-            s_offset: attr_f64(line, "sOffset").unwrap_or(0.0),
+            s_offset: attr_f64(line, "sOffset").unwrap_or(0.0).max(0.0),
             t_offset: attr_f64(line, "tOffset").unwrap_or(0.0),
             rule: match line.attribute("rule") {
                 None | Some("none") => LineRule::None,
@@ -119,7 +119,8 @@ pub(super) struct RoadMarks {
 /// The spec says they come in ascending `sOffset`. Ones out of order are
 /// sorted, as lane sections are, rather than dropped. A missing `sOffset` is
 /// 0, a missing `type` is `none` and a missing `color` is `standard`, though
-/// the spec requires all three.
+/// the spec requires all three. A negative `sOffset` on a mark or a line is
+/// 0, as libOpenDRIVE and esmini read it.
 pub(super) fn parse<'a>(lane: roxmltree::Node<'a, 'a>) -> Vec<MarkDef> {
     let mut marks: Vec<MarkDef> = lane
         .children()
@@ -134,7 +135,7 @@ pub(super) fn parse<'a>(lane: roxmltree::Node<'a, 'a>) -> Vec<MarkDef> {
                     .filter(|n| n.has_tag_name("line"))
             };
             MarkDef {
-                s_offset: attr_f64(m, "sOffset").unwrap_or(0.0),
+                s_offset: attr_f64(m, "sOffset").unwrap_or(0.0).max(0.0),
                 kind: mark_type(m.attribute("type")),
                 weight: match m.attribute("weight") {
                     Some("bold") => RoadMarkWeight::Bold,
@@ -243,7 +244,7 @@ fn place_section(road: &BakedRoad, section: &BakedSection, out: &mut RoadMarks) 
     }
     for border in &borders {
         for (k, mark) in border.marks.iter().enumerate() {
-            let start = (section.start + mark.s_offset).max(section.start);
+            let start = section.start + mark.s_offset;
             let end = border
                 .marks
                 .get(k + 1)
@@ -618,6 +619,16 @@ mod tests {
                 p.od_lane_id
             );
         }
+    }
+
+    #[test]
+    fn a_negative_s_offset_is_0() {
+        let line = r#"<line length="1" space="3" sOffset="-2"/>"#;
+        let mark = with_line("0", "0", line).replace(r#"sOffset="0""#, r#"sOffset="-5""#);
+        let marks = marks_of(&road(0.0, &lane(-1, &mark)));
+        assert_eq!((marks[0].1, marks[0].2), (0.0, 20.0));
+        let first = marks[0].0.lines[0].pieces[0];
+        assert!(first[0].x.abs() < 1e-5 && (first[1].x - 1.0).abs() < 1e-5);
     }
 
     #[test]

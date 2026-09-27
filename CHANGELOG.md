@@ -26,7 +26,9 @@
   `s` and length.
 - Where the crate departs from the spec: a mark without a `color` is
   `standard`, one without a `type` is `none`, and one without an `sOffset`
-  starts at its section, where the spec requires all three. One without a
+  starts at its section, where the spec requires all three. A negative
+  `sOffset` on a mark or a line is 0, where the spec says it is at least
+  0. One without a
   `weight` is standard, and a line without a `rule` has none, which the
   spec gives no default for. A width of 0 counts as none, where the spec
   says it is above 0, so the line's, the type's, the mark's and the

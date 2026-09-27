@@ -218,7 +218,8 @@ pub struct RoadMarkLine {
     /// outward. A mark's sway moves the pieces further, and is not in this.
     pub t_offset: f32,
     /// How far along the road the line starts after the start of its mark,
-    /// in metres.
+    /// in metres. The OpenDRIVE spec says it is at least 0, and a negative
+    /// one is 0, as esmini reads it.
     pub s_offset: f32,
     /// Whether it is solid or dashed.
     pub pattern: LinePattern,

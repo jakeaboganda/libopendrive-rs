@@ -275,6 +275,8 @@
 //! - The spec requires `color`, `type` and `sOffset`. A mark missing one is
 //!   `standard`, `none` or 0, as libOpenDRIVE reads it. A `type` this crate
 //!   does not know is [`RoadMarkType::Unknown`].
+//! - The spec says a mark's and a line's `sOffset` are at least 0. A
+//!   negative one is 0, as libOpenDRIVE and esmini read it.
 //! - The spec gives no default `weight`. A mark missing one is standard.
 //! - The spec says a mark's, a `<type>`'s and a `<line>`'s width are above
 //!   0. A width of 0 counts as none, so the next in line applies: the

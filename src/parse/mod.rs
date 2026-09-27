@@ -266,7 +266,8 @@ pub struct RoadMarkProvenance {
     pub od_lane_id: i32,
     /// Where it starts, in metres along the road's reference line: its lane
     /// section's start plus its `sOffset`. The spec requires `sOffset`, and
-    /// a mark without one starts at its section.
+    /// says it is at least 0. A mark without one, or with a negative one,
+    /// starts at its section.
     pub s: f64,
     /// How far along the road it runs from `s`, in metres: to the lane's
     /// next `<roadMark>`, or the end of the lane section. The spec says a
