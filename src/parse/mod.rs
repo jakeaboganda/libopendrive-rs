@@ -1248,19 +1248,18 @@ impl BakedRoad {
         [(&section.def.left, 1.0), (&section.def.right, -1.0)]
             .into_iter()
             .flat_map(move |(side, sign)| {
-                side.iter().scan(base, move |inner_t, lane| {
-                    let outer_t = *inner_t + sign * width_at(lane, s_lane);
-                    let (inner_height, outer_height) = height_at(lane, s_lane);
-                    let across = Across {
-                        od_id: lane.id,
-                        inner_t: *inner_t,
-                        outer_t,
-                        inner_height,
-                        outer_height,
-                    };
-                    *inner_t = outer_t;
-                    Some(across)
-                })
+                side.iter().zip(side_borders(side, sign, base, s_lane)).map(
+                    move |(lane, borders)| {
+                        let (inner_height, outer_height) = height_at(lane, s_lane);
+                        Across {
+                            od_id: lane.id,
+                            inner_t: borders.inner,
+                            outer_t: borders.outer,
+                            inner_height,
+                            outer_height,
+                        }
+                    },
+                )
             })
     }
 
@@ -1436,16 +1435,16 @@ fn emit_section(
         // kind). Consecutive ones are lateral neighbors (lane-change edges),
         // subject to the drivability test below.
         let mut emitted: Vec<(LaneId, usize, LaneType)> = Vec::new();
-        for (i, lane) in side.iter().enumerate() {
+        let across = side_across(side, sign, lane_offsets, s_start, &sample_s);
+        for (lane, borders) in side.iter().zip(&across) {
             let kind = lane.kind;
             let (points, headings) = sample_lane(
                 geoms,
                 elevations,
                 superelevations,
-                lane_offsets,
                 s_start,
                 lane,
-                &side[..i], // inner lanes on the same side, closer to center
+                borders,
                 sign,
                 &sample_s,
             );
@@ -1474,7 +1473,7 @@ fn emit_section(
                 heights: lane_heights(lane, s_start, &sample_s),
             });
             emitted.push((id, out.len(), kind));
-            let (width, widths) = width_profile(lane, s_start, &sample_s);
+            let (width, widths) = width_profile(borders);
             out.push(Lane {
                 id,
                 kind,
@@ -1485,7 +1484,7 @@ fn emit_section(
                 bank: if lane.heights.is_empty() {
                     level_bank.clone()
                 } else {
-                    lane_bank(lane, sign, s_start, &sample_s, &road_bank)
+                    lane_bank(lane, borders, sign, s_start, &sample_s, &road_bank)
                 },
                 // Filled by links::resolve once all lanes are registered.
                 successors: Vec::new(),
@@ -1550,6 +1549,7 @@ fn road_axes(
 /// along the road from where the road's normal puts them.
 fn lane_bank(
     lane: &LaneDef,
+    borders: &[LaneBorders],
     sign: f64,
     s_start: f64,
     sample_s: &[f64],
@@ -1558,10 +1558,11 @@ fn lane_bank(
     unless_flat(
         sample_s
             .iter()
+            .zip(borders)
             .zip(road_bank)
-            .map(|(&s, &phi)| {
+            .map(|((&s, b), &phi)| {
                 let (inner, outer) = height_at(lane, s - s_start);
-                let slope = (outer - inner).atan2(width_at(lane, s - s_start));
+                let slope = (outer - inner).atan2(b.width);
                 (phi + sign * slope) as f32
             })
             .collect(),
@@ -1618,27 +1619,26 @@ fn unit(v: [f64; 3]) -> [f64; 3] {
 /// chords between the points, so two sections sampled either side of the same
 /// station report the same heading there. That shared value is what lets their
 /// meshed ribs meet flush; see [`Polyline::try_new_with_tangents`].
+///
+/// `borders` is where the lane lies across the road at each of `sample_s`,
+/// from [`side_across`], and `sign` which way it stacks.
 #[allow(clippy::too_many_arguments)]
 fn sample_lane(
     geoms: &[GeomRec],
     elevations: &[Cubic],
     superelevations: &[Cubic],
-    lane_offsets: &[Cubic],
     section_s: f64,
     lane: &LaneDef,
-    inner: &[LaneDef],
+    borders: &[LaneBorders],
     sign: f64,
     sample_s: &[f64],
 ) -> (Vec<Point>, Vec<Vector>) {
     sample_s
         .iter()
-        .map(|&s| {
+        .zip(borders)
+        .map(|(&s, b)| {
             let s_lane = s - section_s;
-            // Center offset: the road's laneOffset (shared by all lanes) plus
-            // this lane's own: cumulative inner-lane widths + half its width.
-            let base = active(lane_offsets, s).map(|o| o.eval(s)).unwrap_or(0.0);
-            let inner_w: f64 = inner.iter().map(|l| width_at(l, s_lane)).sum();
-            let t = base + sign * (inner_w + width_at(lane, s_lane) / 2.0);
+            let t = b.inner + sign * b.width / 2.0;
             let (inner, outer) = height_at(lane, s_lane);
             let (point, hdg) = raised(
                 geoms,
@@ -1715,8 +1715,61 @@ fn width_at(lane: &LaneDef, s_lane: f64) -> f64 {
         .unwrap_or(0.0)
 }
 
-/// A lane's nominal width and its per-sample profile, sampled parallel to
-/// `sample_s`.
+/// Where one lane lies across the road at one station: the `t` of its inner
+/// and outer border, and its width between them.
+#[derive(Clone, Copy)]
+struct LaneBorders {
+    inner: f64,
+    outer: f64,
+    width: f64,
+}
+
+/// Each lane of `side` across the road `s_lane` metres into its section,
+/// from the center outward. `sign` is 1.0 for the left side and -1.0 for the
+/// right, and `base` the `t` of the center lane, from `<laneOffset>`. Every
+/// place that needs a lane's borders reads them here.
+fn side_borders(
+    side: &[LaneDef],
+    sign: f64,
+    base: f64,
+    s_lane: f64,
+) -> impl Iterator<Item = LaneBorders> + '_ {
+    side.iter().scan(base, move |t, lane| {
+        let width = width_at(lane, s_lane);
+        let inner = *t;
+        *t += sign * width;
+        Some(LaneBorders {
+            inner,
+            outer: *t,
+            width,
+        })
+    })
+}
+
+/// Each lane of `side` across the road at each of `sample_s`, from
+/// [`side_borders`]: one row per lane, parallel to `sample_s`.
+fn side_across(
+    side: &[LaneDef],
+    sign: f64,
+    lane_offsets: &[Cubic],
+    s_start: f64,
+    sample_s: &[f64],
+) -> Vec<Vec<LaneBorders>> {
+    let mut rows = vec![Vec::with_capacity(sample_s.len()); side.len()];
+    for &s in sample_s {
+        let base = active(lane_offsets, s).map_or(0.0, |o| o.eval(s));
+        for (row, b) in rows
+            .iter_mut()
+            .zip(side_borders(side, sign, base, s - s_start))
+        {
+            row.push(b);
+        }
+    }
+    rows
+}
+
+/// A lane's nominal width and its per-sample profile, from its `borders` at
+/// each station.
 ///
 /// The profile collapses to empty when the lane holds one width all the way
 /// along, which covers most lanes, so an ordinary lane bakes to exactly what
@@ -1725,11 +1778,8 @@ fn width_at(lane: &LaneDef, s_lane: f64) -> f64 {
 /// The nominal width is the widest the lane gets, not the width where it
 /// starts. A lane that opens out of a point starts at 0 m, and reporting that
 /// as its width gave a gore area no surface at all.
-fn width_profile(lane: &LaneDef, s_start: f64, sample_s: &[f64]) -> (f32, Vec<f32>) {
-    let widths: Vec<f32> = sample_s
-        .iter()
-        .map(|&s| width_at(lane, s - s_start) as f32)
-        .collect();
+fn width_profile(borders: &[LaneBorders]) -> (f32, Vec<f32>) {
+    let widths: Vec<f32> = borders.iter().map(|b| b.width as f32).collect();
     let nominal = widths.iter().copied().fold(0.0_f32, f32::max);
     let constant = widths.iter().all(|w| (w - nominal).abs() < 1e-6);
     (nominal, if constant { Vec::new() } else { widths })
@@ -1840,10 +1890,8 @@ fn section_bends(
         out.clear();
         out.push((x - base * sin, y + base * cos));
         for (side, sign) in sides.into_iter().zip([1.0, -1.0]) {
-            let mut t = base;
-            for lane in side {
-                t += sign * width_at(lane, s - start);
-                out.push((x - t * sin, y + t * cos));
+            for b in side_borders(side, sign, base, s - start) {
+                out.push((x - b.outer * sin, y + b.outer * cos));
             }
         }
     };

@@ -1,7 +1,7 @@
 //! Road marks, placed along the lane borders of each baked road.
 
 use super::{
-    active, attr_f64, child, cubics_in, width_at, BakedRoad, BakedSection, Cubic, LaneDef,
+    active, attr_f64, child, cubics_in, side_borders, BakedRoad, BakedSection, Cubic, LaneDef,
     RoadMarkProvenance, MAX_REPEAT_INSTANCES,
 };
 use crate::coords::Point;
@@ -190,12 +190,9 @@ impl Border<'_> {
     /// The border's `t` at road station `s`.
     fn t(&self, road: &BakedRoad, section: &BakedSection, s: f64) -> f64 {
         let base = super::active(&road.lane_offsets, s).map_or(0.0, |o| o.eval(s));
-        let width: f64 = self
-            .inner
-            .iter()
-            .map(|l| width_at(l, s - section.start))
-            .sum();
-        base + self.sign * width
+        side_borders(self.inner, self.sign, base, s - section.start)
+            .last()
+            .map_or(base, |b| b.outer)
     }
 }
 
