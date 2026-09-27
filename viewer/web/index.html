@@ -744,7 +744,9 @@ function buildSignals(data) {
   signalMeshes.push(mesh);
 }
 
-// A dashed line from a signal's board to each point where it applies.
+// A dashed line from a signal's board to each point where it applies:
+// straight down to the road under it, or across to the road it applies to
+// where the map stands it somewhere else.
 function linkSignal(sg) {
   const positions = sg.appliesAt.flatMap(p => [...sg.position, ...p]);
   signalLink.geometry.dispose();
@@ -784,6 +786,11 @@ function showSignalTip(ev, rect, hit) {
   }
   rows.push(laneList(applies));
   const [x, y, z] = sg.position;
+  for (const [ax, ay, az] of sg.appliesAt) {
+    if (Math.hypot(ax - x, ay - y) > 0.01) {
+      rows.push(`applies at x ${ax.toFixed(2)}   y ${ay.toFixed(2)}   z ${az.toFixed(2)}`);
+    }
+  }
   const size = v => v == null ? '?' : v.toFixed(2);
   rows.push(
     `x ${x.toFixed(2)}   y ${y.toFixed(2)}   z ${z.toFixed(2)}`,

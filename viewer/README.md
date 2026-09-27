@@ -135,14 +135,18 @@ since the map doesn't say how a signal is mounted. A pole is a separate
 `<object>` when the map has one.
 
 Hover a signal to outline it, light up the lanes it applies to, and draw a
-dashed line from the board down to the road where it takes effect. The
-readout shows:
+dashed line from the board to the road where it takes effect. That is
+straight down, unless the map stands the board somewhere else with a
+`<positionRoad>` or `<positionInertial>`, such as on a gantry or beside
+another road. Then the line runs across to where it applies. The readout
+shows:
 
 - its name, and whether it is dynamic, invalidated or temporary
 - its country, `type` and `subtype`, as the map spells them
 - its value and unit, and its text
 - its road, OpenDRIVE id, `s`, `t` and orientation
 - the lanes it applies to, by lane section and OpenDRIVE lane id
+- where it applies, if the board stands somewhere else
 - the board's position, heading, pitch, roll and size
 
 `tests/data/signals.xodr` has signs and lights with every feature the viewer
