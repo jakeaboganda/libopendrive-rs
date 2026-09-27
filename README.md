@@ -1,8 +1,13 @@
 # libopendrive
 
-A pure-Rust OpenDRIVE (`.xodr`) importer. Reads a map file and bakes it into a
-road network of polyline lanes, a drive-direction lane graph, and a triangle
-surface mesh.
+A pure-Rust OpenDRIVE (`.xodr`) and OpenCRG (`.crg`) importer. Reads a map file
+and bakes it into a road network of polyline lanes, a drive-direction lane
+graph, and a triangle surface mesh.
+
+Where the map lays OpenCRG files on its roads, it reads them too, and gives a
+vehicle model the height, normal and friction under a wheel in `f64`. It
+parses them with the [`opencrg`](https://crates.io/crates/opencrg) crate and
+re-exports it, so `libopendrive::opencrg` also reads a `.crg` file on its own.
 
 No C++ dependency, no bindings, no `unsafe`.
 
