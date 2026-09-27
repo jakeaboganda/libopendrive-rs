@@ -786,8 +786,8 @@ function showSignalTip(ev, rect, hit) {
       `s ${sg.s.toFixed(2)} m   t ${sg.t.toFixed(2)} m`);
     rows.push(`orientation ${sg.orientation}   signalId ${sg.signalId}`);
   }
-  rows.push(...controllerRows(sg));
-  for (const r of sg.references ?? []) {
+  rows.push(...controllerRows(sg), ...linkRows(sg));
+  for (const r of sg.signalReferences ?? []) {
     rows.push(`<b>reference</b> on road ${escapeHtml(r.roadId)}  ` +
       `s ${r.s.toFixed(2)} m   t ${r.t.toFixed(2)} m   orientation ${r.orientation}`);
   }
@@ -830,6 +830,23 @@ function controllerRows(sg) {
     });
     rows.push('  with ' + (others.length ? others.join(', ') : 'no other signal'));
   }
+  return rows;
+}
+
+// A row each for the signals a signal depends on and the signals and
+// objects it refers to, by name, OpenDRIVE id and link type.
+function linkRows(sg) {
+  const signalById = new Map(signals.map(s => [s.signalId, s]));
+  const objectById = new Map(objects.map(o => [o.objectId, o]));
+  const describe = link => {
+    const target = link.signalId != null ? signalById.get(link.signalId) : objectById.get(link.objectId);
+    const what = link.signalId != null ? 'signal' : 'object';
+    const name = target ? `${escapeHtml(target.name || '(unnamed)')} ${escapeHtml(target.odId ?? '')}` : '?';
+    return `${what} ${name}` + (link.type ? ` (${escapeHtml(link.type)})` : '');
+  };
+  const rows = [];
+  if (sg.dependencies?.length) rows.push('<b>depends on</b> ' + sg.dependencies.map(describe).join(', '));
+  if (sg.references?.length) rows.push('<b>refers to</b> ' + sg.references.map(describe).join(', '));
   return rows;
 }
 

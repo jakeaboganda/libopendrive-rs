@@ -40,8 +40,8 @@ use libopendrive::opencrg::CrgGrid;
 use libopendrive::{
     load_file_with_provenance, Controller, ControllerProvenance, Corner, CrgMode, CrgPurpose,
     CrgSurface, Direction, Extent, LaneId, LaneProvenance, LaneSpan, Marking, Mesh, Object,
-    ObjectProvenance, Orientation, Point, Provenance, RoadNetwork, RoadSurface, Shape, Signal,
-    SignalProvenance, Structure, StructureKind, StructureProvenance, SurfaceHint,
+    ObjectProvenance, Orientation, Point, Provenance, Referenced, RoadNetwork, RoadSurface, Shape,
+    Signal, SignalProvenance, Structure, StructureKind, StructureProvenance, SurfaceHint,
 };
 use serde_json::{json, Map, Value};
 
@@ -294,8 +294,10 @@ fn object_entry(object: &Object, prov: Option<&ObjectProvenance>) -> Value {
 
 /// One signal's viewer record: what it means, its OpenDRIVE provenance, the
 /// lanes it applies to, and its board. `appliesAt` is the points on the road
-/// where it takes effect, its own and then one per entry in `references`,
-/// the `<signalReference>`s that apply it on other roads. The board's `position` is the middle of its bottom
+/// where it takes effect, its own and then one per entry in
+/// `signalReferences`, the `<signalReference>`s that apply it on other
+/// roads. `dependencies` and `references` are its links to other signals and
+/// objects, by `signalId` and `objectId`. The board's `position` is the middle of its bottom
 /// edge, and its angles are in radians, applied yaw, then pitch, then roll.
 /// `length`, `width` and `height` are null where the map gives none.
 fn signal_entry(s: &Signal, prov: Option<&SignalProvenance>) -> Value {
@@ -313,6 +315,19 @@ fn signal_entry(s: &Signal, prov: Option<&SignalProvenance>) -> Value {
         "invalidated": s.invalidated,
         "temporary": s.temporary,
         "controllers": s.controllers.iter().map(|c| c.0).collect::<Vec<_>>(),
+        "dependencies": s
+            .dependencies
+            .iter()
+            .map(|d| json!({ "signalId": d.signal.0, "type": d.kind }))
+            .collect::<Vec<_>>(),
+        "references": s
+            .references
+            .iter()
+            .map(|r| match r.to {
+                Referenced::Signal(id) => json!({ "signalId": id.0, "type": r.kind }),
+                Referenced::Object(id) => json!({ "objectId": id.0, "type": r.kind }),
+            })
+            .collect::<Vec<_>>(),
         "lanes": s.lanes.iter().map(|l| l.0).collect::<Vec<_>>(),
         "appliesAt": s.applies_at.iter().map(|p| p.to_array()).collect::<Vec<_>>(),
         "position": s.position.to_array(),
@@ -327,7 +342,7 @@ fn signal_entry(s: &Signal, prov: Option<&SignalProvenance>) -> Value {
         "s": prov.map(|p| p.s),
         "t": prov.map(|p| p.t),
         "orientation": prov.map(|p| orientation(p.orientation)),
-        "references": prov
+        "signalReferences": prov
             .map(|p| p.references.as_slice())
             .unwrap_or_default()
             .iter()

@@ -148,11 +148,15 @@ up with the rest, and another dashed line runs to it. The readout shows:
 - its road, OpenDRIVE id, `s`, `t` and orientation
 - each controller it belongs to, with its priority, the junctions that sync
   it, and the other signals it switches together with this one
+- the signals it depends on, and the signals and objects it refers to, by
+  name, OpenDRIVE id and link type
 - the road, `s`, `t` and orientation of each `<signalReference>`
 - the lanes it applies to, by road where there are several, lane section
   and OpenDRIVE lane id
 - where it applies, if the board stands somewhere else
 - the board's position, heading, pitch, roll and size
+
+![Hovering a traffic light that also applies on another road](signals.png)
 
 `tests/data/signals.xodr` has signs and lights with every feature the viewer
 draws:
