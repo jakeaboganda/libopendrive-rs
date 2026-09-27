@@ -15,8 +15,8 @@
 //! buffers, ready for a three.js `BufferGeometry`), a per-lane table, and an
 //! object table. Each
 //! lane entry names the OpenDRIVE road, section, and lane id it came from, what
-//! the lane is for, the mesh slice it owns (so a picked triangle resolves to a
-//! lane), and its centerline with the heading at each point (so the viewer can
+//! the lane is for, the lanes before and after it, the mesh slice it owns (so a
+//! picked triangle resolves to a lane), and its centerline with the heading at each point (so the viewer can
 //! project the cursor to `(s, t)` and read out the same heading the crate
 //! would). Each object entry is its type, name, and shape: a pose and extent
 //! for a solid, or world-space corners for an outline or a sweep. The object
@@ -565,7 +565,8 @@ fn pieces(quads: &[[Point; 4]]) -> Vec<[[f32; 3]; 4]> {
 }
 
 /// One lane's viewer record: identity, OpenDRIVE provenance, its mesh slice,
-/// and its centerline for cursor projection.
+/// its centerline for cursor projection, and the `laneId`s it leads to and
+/// comes from in its travel direction.
 fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan) -> Value {
     let prov = provenance.iter().find(|p| p.lane == span.lane);
     let lane = net.lane(span.lane);
@@ -598,6 +599,15 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
         })),
     );
     entry.insert("width".into(), json!(lane.map(|l| l.width)));
+    let ids = |ids: &[LaneId]| ids.iter().map(|l| l.0).collect::<Vec<_>>();
+    entry.insert(
+        "successors".into(),
+        json!(lane.map(|l| ids(&l.successors)).unwrap_or_default()),
+    );
+    entry.insert(
+        "predecessors".into(),
+        json!(lane.map(|l| ids(&l.predecessors)).unwrap_or_default()),
+    );
     entry.insert("length".into(), json!(lane.map(|l| l.center.length())));
     entry.insert(
         "vertexRange".into(),

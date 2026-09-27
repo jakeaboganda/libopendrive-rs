@@ -146,6 +146,10 @@
   The page opens on the map `?scene=` names, and asks for one without it.
 - `viewer_export` takes any number of maps, such as `tests/data/*.xodr`,
   and names each output after its map instead of `scene.json`.
+- Hovering a lane draws an arrow the way traffic drives, tints its
+  successors green and its predecessors orange, and lists them in the
+  readout. `viewer_export` writes each lane's `successors` and
+  `predecessors`.
 
 ### Breaking
 

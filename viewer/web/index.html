@@ -159,6 +159,14 @@ const MARKING_FALLBACK_COLOR = 0xff66cc;
 // Tint laid over the lanes a tunnel or a bridge covers.
 const STRUCTURE_COLORS = { 'tunnel': 0xb388ff, 'bridge': 0x4dd0e1 };
 
+// Tint laid over the lanes the hovered lane leads to and comes from.
+const LINK_COLORS = { 'successor': 0x3ddc84, 'predecessor': 0xff8c1a };
+
+// Colour of the arrow along the hovered lane's travel direction, and its
+// length in lane widths.
+const ARROW_COLOR = 0xffffff;
+const ARROW_LENGTH = 1.2;
+
 const BORDER_COLORS = { 'curb': 0xd8d2c4, 'concrete': 0x9e9e9e, 'paint': 0xf5f5f5 };
 
 // Board colour for a static signal and a dynamic one, such as a traffic
@@ -187,6 +195,8 @@ const NORMAL_LENGTH = 0.6;
 
 let scene, camera, renderer, controls, raycaster;
 let roadMesh, wireMesh, badMesh, highlight, highlightLine;
+let successorMesh, predecessorMesh; // tints over the hovered lane's successors and predecessors
+let travelArrow;             // the hovered lane's travel direction at the cursor
 let centerlineMesh, boundaryMesh, normalMesh;
 let objectMeshes = [];       // the object meshes; userData.pick(hit) is the hovered record
 let objectOutline;           // edges of the hovered object
@@ -337,17 +347,10 @@ function buildMesh(data) {
   badMesh = buildBadMesh(data.mesh);
   scene.add(badMesh);
 
-  // A yellow overlay drawn over the base mesh for the hovered lane section,
-  // sharing the base position buffer and swapping only its index slice.
-  const hg = new THREE.BufferGeometry();
-  hg.setAttribute('position', g.getAttribute('position'));
-  highlight = new THREE.Mesh(hg, new THREE.MeshBasicMaterial({
-    color: 0xffd24a, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
-    depthTest: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
-  }));
-  highlight.renderOrder = 2;
-  highlight.visible = false;
-  scene.add(highlight);
+  highlight = laneOverlay(g, 0xffd24a);
+  successorMesh = laneOverlay(g, LINK_COLORS.successor);
+  predecessorMesh = laneOverlay(g, LINK_COLORS.predecessor);
+  travelArrow = buildArrow();
 
   highlightLine = new THREE.Line(new THREE.BufferGeometry(),
     new THREE.LineBasicMaterial({ color: 0xffef9f }));
@@ -361,6 +364,36 @@ function buildMesh(data) {
   grid.rotation.x = Math.PI / 2;                       // grid is XZ by default; lay it in XY
   grid.position.set((bb.min.x + bb.max.x) / 2, (bb.min.y + bb.max.y) / 2, bb.min.z - 0.05);
   scene.add(grid);
+}
+
+// An overlay drawn over the base mesh for some lanes, sharing the base
+// position buffer and swapping only its index slice.
+function laneOverlay(g, color) {
+  const hg = new THREE.BufferGeometry();
+  hg.setAttribute('position', g.getAttribute('position'));
+  const mesh = new THREE.Mesh(hg, new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
+    depthTest: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  }));
+  mesh.renderOrder = 2;
+  mesh.visible = false;
+  scene.add(mesh);
+  return mesh;
+}
+
+// A flat arrow one unit long, pointing +X from the origin, lying in the XY
+// plane. Drawn over everything, so the road never hides it.
+function buildArrow() {
+  const shape = new THREE.Shape()
+    .moveTo(-0.5, -0.08).lineTo(0.1, -0.08).lineTo(0.1, -0.25).lineTo(0.5, 0)
+    .lineTo(0.1, 0.25).lineTo(0.1, 0.08).lineTo(-0.5, 0.08).closePath();
+  const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({
+    color: ARROW_COLOR, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.9,
+  }));
+  mesh.renderOrder = 4;
+  mesh.visible = false;
+  scene.add(mesh);
+  return mesh;
 }
 
 // A colour per mesh vertex, taken from the lane type of the span that owns it.
@@ -1005,6 +1038,7 @@ function buildLegend() {
   group('lanes', lanes.map(l => l.laneType), LANE_COLORS, FALLBACK_COLOR);
   group('objects', objects.map(o => o.objectType), OBJECT_COLORS, OBJECT_FALLBACK_COLOR);
   group('structures', structures.map(s => s.kind), STRUCTURE_COLORS, FALLBACK_COLOR);
+  group('hovered lane', Object.keys(LINK_COLORS), LINK_COLORS, FALLBACK_COLOR);
   group('signals', signals.map(s => s.dynamic ? 'dynamic' : 'static'), SIGNAL_COLORS, FALLBACK_COLOR);
   group('road marks', roadMarks.flatMap(m => m.lines.map(l => l.color)), MARKING_COLORS, MARKING_FALLBACK_COLOR);
   group('parking access', objects.filter(o => o.parkingSpace).map(o => o.parkingSpace.access),
@@ -1102,6 +1136,7 @@ function onHover(ev) {
   const hit = mark && mark.distance - hits[0].distance < ROAD_MARK_PICK ? mark : hits[0];
   objectOutline.visible = false;
   signalLink.visible = false;
+  travelArrow.visible = false;
   if (!hit) { hideTip(); if (!activeLane) clearHighlight(); return; }
   if (hit.object === roadMarkMesh) return showRoadMarkTip(ev, rect, hit);
   if (signalMeshes.includes(hit.object)) return showSignalTip(ev, rect, hit);
@@ -1112,6 +1147,7 @@ function onHover(ev) {
 
   const { s, t, heading, i, u } = project(lane, hit.point);
   if (activeLane == null) setHighlight(lane);
+  showTravel(lane, i, u, heading);
 
   const p = hit.point;
   const rows = [
@@ -1134,6 +1170,9 @@ function onHover(ev) {
     rows.push(`<b>${st.kind}</b> ${escapeHtml(st.name || '(unnamed)')}${type}   ${structureRange(st)}`);
   }
   if (crgMesh && crgMesh.visible) rows.push(...crgRows(lane));
+  const linked = (ids, link) => laneList(lanesOf(ids),
+    `<span style="color:#${LINK_COLORS[link].toString(16).padStart(6, '0')}">${link}s</span>`, true);
+  rows.push(linked(lane.successors, 'successor'), linked(lane.predecessors, 'predecessor'));
   rows.push(`section ${lane.section}   ${lane.direction}`, `laneId ${lane.laneId}`);
 
   tip.style.display = 'block';
@@ -1375,10 +1414,12 @@ function laneHeight(lane, i, u) {
 
 // --- Highlight ---------------------------------------------------------------
 
+// `lane` highlighted with its centerline, and its successors and
+// predecessors tinted.
 function setHighlight(lane) {
-  highlight.geometry.setIndex(new THREE.Uint32BufferAttribute(lane.sliceIndices, 1));
-  highlight.geometry.setDrawRange(0, lane.sliceIndices.length);
-  highlight.visible = true;
+  showLanes(highlight, [lane]);
+  showLanes(successorMesh, lanesOf(lane.successors));
+  showLanes(predecessorMesh, lanesOf(lane.predecessors));
   const flat = new Float32Array(lane.centerline.length * 3);
   lane.centerline.forEach((p, i) => { flat[i*3]=p[0]; flat[i*3+1]=p[1]; flat[i*3+2]=p[2]+0.05; });
   highlightLine.geometry.setAttribute('position', new THREE.Float32BufferAttribute(flat, 3));
@@ -1389,30 +1430,57 @@ function setHighlight(lane) {
 // object applies to.
 function highlightLanes(list) {
   if (!list.length) return clearHighlight();
-  const indices = new Uint32Array(list.reduce((n, l) => n + l.sliceIndices.length, 0));
-  let at = 0;
-  for (const l of list) { indices.set(l.sliceIndices, at); at += l.sliceIndices.length; }
-  highlight.geometry.setIndex(new THREE.Uint32BufferAttribute(indices, 1));
-  highlight.geometry.setDrawRange(0, indices.length);
-  highlight.visible = true;
+  showLanes(highlight, list);
+  successorMesh.visible = predecessorMesh.visible = false;
   highlightLine.visible = false;
 }
 
-// The lanes an object or a signal applies to, by OpenDRIVE lane id, grouped
-// by section, and by road where they are on more than one.
-function laneList(list) {
-  if (!list.length) return 'lanes none';
-  const roads = new Set(list.map(l => l.roadId)).size > 1;
+// The lanes `ids` names. None for a scene baked without them.
+function lanesOf(ids) { return (ids ?? []).map(id => laneById.get(id)).filter(Boolean); }
+
+// Draw `overlay` over every lane in `list`, or hide it for none.
+function showLanes(overlay, list) {
+  const indices = new Uint32Array(list.reduce((n, l) => n + l.sliceIndices.length, 0));
+  let at = 0;
+  for (const l of list) { indices.set(l.sliceIndices, at); at += l.sliceIndices.length; }
+  overlay.geometry.setIndex(new THREE.Uint32BufferAttribute(indices, 1));
+  overlay.geometry.setDrawRange(0, indices.length);
+  overlay.visible = list.length > 0;
+}
+
+// The travel arrow on `lane`'s centerline a fraction `u` along segment `i`,
+// along `heading`, reversed on a backward lane.
+function showTravel(lane, i, u, heading) {
+  const a = lane.centerline[i], b = lane.centerline[i + 1];
+  if (!a || !b) return;
+  const sign = lane.direction === 'backward' ? -1 : 1;
+  const x = new THREE.Vector3(...heading).multiplyScalar(sign);
+  if (x.lengthSq() < 1e-9) return;
+  const y = new THREE.Vector3(0, 0, 1).cross(x).normalize();
+  const z = new THREE.Vector3().crossVectors(x, y);
+  const size = Math.max(lane.width, 1) * ARROW_LENGTH;
+  new THREE.Matrix4().makeBasis(x, y, z).scale(new THREE.Vector3(size, size, 1)).setPosition(
+    a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u + 0.05)
+    .decompose(travelArrow.position, travelArrow.quaternion, travelArrow.scale);
+  travelArrow.visible = true;
+}
+
+// Lanes by OpenDRIVE lane id after `label`, grouped by section, and by road
+// where `roads` is set, by default where they are on more than one.
+function laneList(list, label = 'lanes', roads = new Set(list.map(l => l.roadId)).size > 1) {
+  if (!list.length) return `${label} none`;
   const groups = new Map();
   for (const l of list) {
     const key = (roads ? `road ${escapeHtml(String(l.roadId))} ` : '') + `§${l.section}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(l.odLaneId);
   }
-  return 'lanes ' + [...groups].map(([key, ids]) => `${key}: ${ids.join(' ')}`).join('   ');
+  return `${label} ` + [...groups].map(([key, ids]) => `${key}: ${ids.join(' ')}`).join('   ');
 }
 
-function clearHighlight() { highlight.visible = false; highlightLine.visible = false; }
+function clearHighlight() {
+  highlight.visible = successorMesh.visible = predecessorMesh.visible = highlightLine.visible = false;
+}
 
 function selectLane(id) {
   activeLane = (activeLane === id) ? null : id;

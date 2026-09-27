@@ -67,13 +67,19 @@ signals, road marks, and the CRG heat map.
 
 ## Lanes
 
-Hover a lane to highlight its lane section. The readout shows:
+Hover a lane to highlight its lane section. A white arrow on its centerline
+points the way traffic drives, so on a `backward` lane it runs against the
+heading below. The lanes it leads to are green and the lanes that lead into
+it are orange. While a lane is selected in the sidebar, its own links stay
+lit as you hover others. The readout shows:
 
 - the road id, the OpenDRIVE lane id and the lane type
 - the surface point `x, y, z`, and `s` and `t` along the lane
 - the lane's heading
 - on a lane raised by its `<height>`s, such as a sidewalk, how far it stands
   off the road at its inner and outer border at that point
+- its successors and predecessors, by road, lane section and OpenDRIVE
+  lane id
 - the crate's internal `LaneId`
 - the surface normal, if normals are on
 
