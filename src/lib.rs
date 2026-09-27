@@ -72,7 +72,8 @@
 //! | `<signals><signal>` | `id`, `name`, `dynamic`, `orientation`, `s`, `t`, `zOffset`, `hOffset`, `pitch`, `roll`, `country`, `countryRevision`, `type`, `subtype`, `value`, `unit`, `text`, `length`, `width`, `height`, `invalidated`, `temporary` |
 //! | `<signal><positionRoad>` | `roadId`, `s`, `t`, `zOffset`, `hOffset`, `pitch`, `roll` |
 //! | `<signal><positionInertial>` | `x`, `y`, `z`, `hdg`, `pitch`, `roll` |
-//! | `<validity>`, under `<object>`, `<objectReference>`, `<signal>`, `<tunnel>` and `<bridge>` | `fromLane`, `toLane` |
+//! | `<signals><signalReference>` | `id`, `s`, `t`, `orientation` |
+//! | `<validity>`, under `<object>`, `<objectReference>`, `<signal>`, `<signalReference>`, `<tunnel>` and `<bridge>` | `fromLane`, `toLane` |
 //! | `<object><parkingSpace>` | `access`, `restrictions` |
 //! | `<object><material>` | `surface`, `friction`, `roughness` |
 //! | `<object><userData>` | `code`, `value` |
@@ -210,6 +211,14 @@
 //! `orientation` are in its [`SignalProvenance`]. A signal missing `s` or
 //! `t`, or off the ends of its road, is skipped.
 //!
+//! A `<signalReference>` applies the signal it names on its own road too,
+//! and draws nothing new. It adds the lanes at its `s`, picked by its own
+//! `orientation` and `<validity>`s the same way, to [`Signal::lanes`], and
+//! its point to [`Signal::applies_at`].
+//! [`SignalProvenance::references`] records its road, `(s, t)` and
+//! `orientation`. Where two signals share an id, a reference applies the
+//! first. A reference to an id no signal has is skipped.
+//!
 //! # Road surfaces
 //!
 //! Each `<CRG>` under a road's or a junction's `<surface>` becomes a
@@ -259,9 +268,8 @@
 //! Everything else in the file, silently. That includes `<geoReference>`,
 //! `<roadMark>`, `<controller>`, `<junctionGroup>`, `<station>`, an object's
 //! `<surface>`, and road `<type>` with its `<speed>`. Of signals, it ignores
-//! `<signalReference>`, a signal's `<dependency>`, `<reference>` and
-//! `<userData>`, the boards `<staticBoard>` and `<vmsBoard>`, and
-//! `<semantics>`.
+//! a signal's `<dependency>`, `<reference>` and `<userData>`, the boards
+//! `<staticBoard>` and `<vmsBoard>`, and `<semantics>`.
 //!
 //! Three omissions change the road you get back, rather than only dropping
 //! detail around it:
@@ -352,7 +360,7 @@ pub use opencrg;
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ImportError,
     LaneProvenance, ObjectProvenance, Orientation, Provenance, SignalProvenance,
-    StructureProvenance,
+    SignalReferenceProvenance, StructureProvenance,
 };
 pub use signal::{Signal, SignalId, Unit};
 pub use structure::{Coverage, Structure, StructureId, StructureKind};

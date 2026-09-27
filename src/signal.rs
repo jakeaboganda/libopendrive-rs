@@ -104,9 +104,11 @@ pub struct Signal {
     pub invalidated: bool,
     /// Whether the signal is temporary, such as a sign at road works.
     pub temporary: bool,
-    /// The lanes the signal applies to.
+    /// The lanes the signal applies to, on every road the map applies it
+    /// to. A lane appears once.
     pub lanes: Vec<LaneId>,
-    /// The points on the road surface where the signal takes effect.
+    /// The points on the road surface where the signal takes effect: its
+    /// own first, then one for each further place the map applies it.
     pub applies_at: Vec<Point>,
     /// The middle of the board's bottom edge.
     pub position: Point,

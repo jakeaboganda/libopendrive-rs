@@ -12,7 +12,7 @@ use std::f32::consts::PI;
 
 use libopendrive::{
     load_file_with_provenance, Orientation, Point, Provenance, RoadNetwork, Signal,
-    SignalProvenance, Unit,
+    SignalProvenance, SignalReferenceProvenance, Unit,
 };
 
 const SIGNALS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/signals.xodr");
@@ -114,7 +114,7 @@ fn a_board_stands_its_z_offset_above_the_road_and_faces_its_traffic() {
     let (net, prov) = load(SIGNALS);
     let (limit, _) = find(&net, &prov, "1");
     assert_near(limit.position, Point::new(20.0, -7.0, 0.4 + 2.0), "limit");
-    assert_eq!(limit.applies_at, vec![Point::new(20.0, -7.0, 0.4)]);
+    assert_eq!(limit.applies_at[0], Point::new(20.0, -7.0, 0.4));
     assert_angle(limit.heading, PI, "a + sign faces back along the road");
 
     let (town, _) = find(&net, &prov, "3");
@@ -195,13 +195,59 @@ fn a_position_inertial_stands_the_board_where_it_says() {
 }
 
 #[test]
+fn a_signal_reference_applies_the_signal_on_another_road_too() {
+    let (net, prov) = load(SIGNALS);
+    let (limit, p) = find(&net, &prov, "1");
+    let mut want = on("0", &[-1, -2]);
+    want.extend(on("2", &[-1]));
+    assert_eq!(
+        lanes(&prov, limit),
+        want,
+        "the reference's validity narrows it"
+    );
+    assert_eq!(
+        limit.applies_at,
+        vec![Point::new(20.0, -7.0, 0.4), Point::new(10.0, 36.0, 0.0)]
+    );
+    assert_eq!(
+        p.references,
+        vec![SignalReferenceProvenance {
+            road_id: "2".into(),
+            s: 10.0,
+            t: -4.0,
+            orientation: Orientation::Positive,
+        }]
+    );
+
+    let (light, _) = find(&net, &prov, "4");
+    let mut want = on("0", &[-1]);
+    want.extend(on("2", &[-1]));
+    assert_eq!(
+        lanes(&prov, light),
+        want,
+        "the reference's orientation picks the side"
+    );
+    assert_eq!(light.applies_at[1], Point::new(50.0, 36.0, 0.0));
+}
+
+#[test]
+fn a_signal_reference_moves_no_board_and_one_to_no_signal_is_skipped() {
+    let (net, prov) = load(SIGNALS);
+    assert_eq!(net.signals().len(), 11);
+    let (limit, _) = find(&net, &prov, "1");
+    assert_near(limit.position, Point::new(20.0, -7.0, 2.4), "the board");
+    let referenced: usize = prov.signals.iter().map(|p| p.references.len()).sum();
+    assert_eq!(referenced, 2);
+}
+
+#[test]
 fn a_signal_applies_to_the_lanes_its_orientation_names_unless_its_validity_says() {
     let (net, prov) = load(SIGNALS);
     let applies = |id| lanes(&prov, find(&net, &prov, id).0);
-    assert_eq!(applies("1"), on("0", &[-1, -2]), "+ is the right side");
+    assert_eq!(applies("2"), on("0", &[-1, -2]), "+ is the right side");
     assert_eq!(applies("3"), on("0", &[1, 2]), "- is the left side");
     assert_eq!(applies("6"), on("0", &[1, 2, -1, -2]), "none is both");
-    assert_eq!(applies("4"), on("0", &[-1]), "validity narrows it");
+    assert_eq!(applies("5"), on("0", &[-1]), "validity narrows it");
 }
 
 #[test]

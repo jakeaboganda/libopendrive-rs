@@ -190,6 +190,27 @@ pub struct SignalProvenance {
     pub t: f64,
     /// Which direction of the road it applies to.
     pub orientation: Orientation,
+    /// Each `<signalReference>` that applies the signal again, in file
+    /// order. Its points follow the signal's own in
+    /// [`Signal::applies_at`](crate::Signal::applies_at).
+    pub references: Vec<SignalReferenceProvenance>,
+}
+
+/// A `<signalReference>`: a road, and a station on it, where a signal also
+/// applies. The signal itself stands where its `<signal>` puts it.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SignalReferenceProvenance {
+    /// The `<road id>` the reference is on.
+    pub road_id: String,
+    /// Where on that road the signal takes effect, in metres along the
+    /// reference line.
+    pub s: f64,
+    /// The lateral offset from the reference line there, in metres, positive
+    /// to the left.
+    pub t: f64,
+    /// Which direction of that road it applies to.
+    pub orientation: Orientation,
 }
 
 /// The OpenDRIVE identity of everything a load baked, from

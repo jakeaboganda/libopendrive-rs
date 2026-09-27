@@ -3,7 +3,10 @@
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
-use super::{attr_f64, child, orientation, validity, BakedRoad, Orientation, SignalProvenance};
+use super::{
+    attr_f64, child, orientation, validity, BakedRoad, Orientation, SignalProvenance,
+    SignalReferenceProvenance,
+};
 use crate::coords::{Point, Vector};
 use crate::{Signal, SignalId, Unit};
 
@@ -14,23 +17,67 @@ pub(super) struct Signals {
     pub provenance: Vec<SignalProvenance>,
 }
 
-/// Bake every `<signal>` of every road. `roads` pairs each baked road with
-/// its `<road>`.
+/// Bake every `<signal>` of every road, then apply each to the roads whose
+/// `<signalReference>`s name it. `roads` pairs each baked road with its
+/// `<road>`.
 pub(super) fn place(roads: &[(roxmltree::Node, BakedRoad)]) -> Signals {
     let mut by_id = HashMap::new();
     for (_, road) in roads {
         by_id.entry(road.id.as_str()).or_insert(road);
     }
+    let entries = || {
+        roads.iter().flat_map(|(node, road)| {
+            child(*node, "signals")
+                .into_iter()
+                .flat_map(|n| n.children())
+                .map(move |n| (n, road))
+        })
+    };
     let mut out = Signals::default();
-    for (node, road) in roads {
-        let Some(signals) = child(*node, "signals") else {
+    for (signal, road) in entries().filter(|(n, _)| n.has_tag_name("signal")) {
+        place_signal(signal, road, &by_id, &mut out);
+    }
+    let mut placed = HashMap::new();
+    for p in &out.provenance {
+        placed.entry(p.od_id.clone()).or_insert(p.signal.0);
+    }
+    for (reference, road) in entries().filter(|(n, _)| n.has_tag_name("signalReference")) {
+        let Some(&i) = reference.attribute("id").and_then(|id| placed.get(id)) else {
             continue;
         };
-        for signal in signals.children().filter(|n| n.has_tag_name("signal")) {
-            place_signal(signal, road, &by_id, &mut out);
-        }
+        apply_reference(reference, road, &mut out.baked[i], &mut out.provenance[i]);
     }
     out
+}
+
+/// Apply `signal` where the `<signalReference>` `node` on `road` says too: add
+/// the lanes there and the point it names. One missing `s` or `t`, or off
+/// the ends of the road, is skipped.
+fn apply_reference(
+    node: roxmltree::Node,
+    road: &BakedRoad,
+    signal: &mut Signal,
+    provenance: &mut SignalProvenance,
+) {
+    let (Some(s), Some(t)) = (attr_f64(node, "s"), attr_f64(node, "t")) else {
+        return;
+    };
+    if !road.on_road(s) {
+        return;
+    }
+    let orientation = orientation(node);
+    for lane in road.lanes((s, s), &lane_ranges(orientation, validity(node))) {
+        if !signal.lanes.contains(&lane) {
+            signal.lanes.push(lane);
+        }
+    }
+    signal.applies_at.push(road.surface(s, t).0);
+    provenance.references.push(SignalReferenceProvenance {
+        road_id: road.id.clone(),
+        s,
+        t,
+        orientation,
+    });
 }
 
 /// Where a signal's board stands, and how it is turned.
@@ -99,6 +146,7 @@ fn place_signal(
         s,
         t,
         orientation,
+        references: Vec::new(),
     });
 }
 

@@ -92,7 +92,9 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   applies to, and the pose and size of its board. A board stands upright
   even on a banked road, and faces the traffic it addresses. A
   `<positionRoad>` or `<positionInertial>` moves the board, such as onto a
-  gantry, and the signal still applies where its `(s, t)` says.
+  gantry, and the signal still applies where its `(s, t)` says. A
+  `<signalReference>` applies the signal on another road too, adding the
+  lanes there.
   `load_*_with_provenance` gives its road, OpenDRIVE id, `(s, t)` and
   orientation.
 

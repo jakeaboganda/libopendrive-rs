@@ -17,6 +17,8 @@
 - A `<positionRoad>` or `<positionInertial>` moves the board, and the signal
   still applies at its own `(s, t)`. `Signal::applies_at` is where it takes
   effect.
+- A `<signalReference>` adds its road's lanes and its point to the signal it
+  names. `SignalProvenance::references` records each one.
 - `SignalProvenance` gives each signal's road, OpenDRIVE id, `(s, t)` and
   orientation.
 - The viewer draws each signal as a board, white when static and dark when
