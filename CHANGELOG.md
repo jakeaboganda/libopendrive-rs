@@ -56,6 +56,12 @@
   surface under it as CSV. `examples/crg_data.sh` downloads five CRG files
   from ASAM and Project Chrono and prepares each for the viewer.
 
+### Viewer
+
+- A `map` picker in the toolbar switches between every map you have baked,
+  and the page opens on the last one. `viewer_export` names its output
+  after the map when you give no output path, instead of `scene.json`.
+
 ### Breaking
 
 - The minimum Rust version is 1.85, up from 1.82, for the `opencrg`

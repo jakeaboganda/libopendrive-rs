@@ -55,6 +55,7 @@
   <div id="view">
     <div id="tip"></div>
     <div id="tools">
+      <label>map <select id="map"></select></label>
       <label>view
         <select id="mode">
           <option value="solid">solid</option>
@@ -88,7 +89,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const SCENE_URL = new URLSearchParams(location.search).get('scene') || 'scene.json';
 
 const view = document.getElementById('view');
 const tip = document.getElementById('tip');
@@ -200,13 +200,30 @@ let signalLink;              // dashed lines from the hovered board to where it 
 
 init().catch(showError);
 
+// The scene named by ?scene=, else the one the exporter wrote last, from its
+// scenes.json. Fills the map picker, which reloads the page on the pick.
+async function pickScene() {
+  const list = await fetch('scenes.json').then(r => r.ok ? r.json() : {}).catch(() => ({}));
+  const names = list.scenes ?? [];
+  const chosen = new URLSearchParams(location.search).get('scene') || list.latest || 'scene.json';
+  const picker = document.getElementById('map');
+  for (const name of names.includes(chosen) ? names : [chosen, ...names]) {
+    picker.add(new Option(name.replace(/\.json$/, ''), name, false, name === chosen));
+  }
+  picker.addEventListener('change', () => { location.search = '?scene=' + encodeURIComponent(picker.value); });
+  document.title = `${chosen.replace(/\.json$/, '')} - libopendrive viewer`;
+  return chosen;
+}
+
 async function init() {
+  const sceneUrl = await pickScene();
   let data;
   try {
-    data = await (await fetch(SCENE_URL)).json();
+    data = await (await fetch(sceneUrl)).json();
   } catch (e) {
-    throw new Error(`could not load ${SCENE_URL}. Serve this folder over HTTP ` +
-      `(e.g. <code>python3 -m http.server</code>) rather than opening the file directly.`);
+    throw new Error(`could not load ${escapeHtml(sceneUrl)}. Serve this folder over HTTP ` +
+      `(e.g. <code>python3 -m http.server</code>) rather than opening the file directly, ` +
+      `and bake a map with <code>viewer_export</code> first.`);
   }
 
   scene = new THREE.Scene();

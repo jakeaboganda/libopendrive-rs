@@ -2,8 +2,12 @@
 //!
 //! ```sh
 //! cargo run --example viewer_export --features serde -- \
-//!     tests/data/testtrack.xodr viewer/web/scene.json
+//!     tests/data/testtrack.xodr viewer/web/testtrack.json
 //! ```
+//!
+//! With no output path, it writes `viewer/web/<map name>.json`. Either way it
+//! then lists every scene in the output's folder in `scenes.json`, which the
+//! viewer's map picker reads, and notes this one as the latest.
 //!
 //! The output is one object: a merged surface mesh (flat position/normal/index
 //! buffers, ready for a three.js `BufferGeometry`), a per-lane table, and an
@@ -51,7 +55,10 @@ fn main() -> ExitCode {
         eprintln!("usage: viewer_export <input.xodr> [output.json]");
         return ExitCode::FAILURE;
     };
-    let output = output.unwrap_or_else(|| "viewer/web/scene.json".to_string());
+    let output = output.unwrap_or_else(|| {
+        let stem = Path::new(&input).file_stem().unwrap_or_default();
+        format!("viewer/web/{}.json", stem.to_string_lossy())
+    });
 
     let (net, provenance) = match load_file_with_provenance(&input) {
         Ok(pair) => pair,
@@ -107,7 +114,34 @@ fn main() -> ExitCode {
         loaded.len(),
         bytes.len() / 1024,
     );
+    let folder = Path::new(&output).parent().unwrap_or(Path::new("."));
+    let latest = Path::new(&output).file_name().unwrap_or_default();
+    if let Err(e) = write_scene_list(folder, &latest.to_string_lossy()) {
+        eprintln!("warning: listing scenes in {}: {e}", folder.display());
+    }
     ExitCode::SUCCESS
+}
+
+/// Write `scenes.json` in `folder`: `scenes`, the sorted names of the other
+/// `.json` files there, and `latest`, the one just written.
+fn write_scene_list(folder: &Path, latest: &str) -> std::io::Result<()> {
+    let folder = if folder.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        folder
+    };
+    let mut names = Vec::new();
+    for entry in fs::read_dir(folder)? {
+        let name = entry?.file_name().to_string_lossy().into_owned();
+        if name.ends_with(".json") && name != "scenes.json" {
+            names.push(name);
+        }
+    }
+    names.sort_by_key(|n| n.to_lowercase());
+    fs::write(
+        folder.join("scenes.json"),
+        serde_json::to_vec(&json!({ "latest": latest, "scenes": names })).expect("list serializes"),
+    )
 }
 
 /// Assemble the viewer scene: flat mesh buffers, the lane table, the object

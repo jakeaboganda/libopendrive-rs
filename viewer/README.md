@@ -13,7 +13,7 @@ rendering.
 ## Run it
 
 1. Bake a map to JSON. With no second argument, this writes
-   `viewer/web/scene.json`.
+   `viewer/web/town07.json`, named after the map.
 
    ```sh
    cargo run --example viewer_export --features serde -- tests/data/town07.xodr
@@ -26,18 +26,18 @@ rendering.
    cd viewer/web && python3 -m http.server 8000
    ```
 
-3. Open <http://localhost:8000>.
+3. Open <http://localhost:8000>. It shows the map you baked last.
 
-To keep several maps side by side, give each its own file and name it in the
-URL:
+Each bake adds its map to the `map` picker in the toolbar, so bake as many as
+you like and switch between them there. The URL names the map on screen, as
+`?scene=town07.json`, so a link opens the same one.
 
 ```sh
-cargo run --example viewer_export --features serde -- tests/data/objects.xodr viewer/web/objects.json
+cargo run --example viewer_export --features serde -- tests/data/objects.xodr
 ```
 
-Then open <http://localhost:8000/?scene=objects.json>. `objects.xodr` is a
-small test map with one of everything the viewer draws, so use it to try the
-features below.
+`objects.xodr` is a small test map with one of everything the viewer draws,
+so use it to try the features below.
 
 ## Controls
 
@@ -51,6 +51,7 @@ features below.
 | `o` | toggle objects |
 | `s` | toggle signals |
 | `c` | toggle the CRG heat map |
+| pick in the `map` list | load another baked map |
 | click a sidebar entry | highlight it and move the camera to it |
 | type in the filter box | filter lanes by road id, lane id or lane type, and tunnels and bridges by name, kind or road |
 
@@ -195,8 +196,8 @@ cargo run --example viewer_export --features serde -- tests/data/crg.xodr viewer
 
 For measured surfaces, `examples/crg_data.sh` downloads five CRG files, writes
 a map for each, and exports it to `viewer/web/NAME.json`. The scenes are 12
-to 38 MB each. Open `?scene=belgian_block.json` for a scan of cobbles, or
-`?scene=country_road.json` for 569 m of a country road.
+to 38 MB each. Pick `belgian_block` for a scan of cobbles, or
+`country_road` for 569 m of a country road.
 
 ```sh
 sh examples/crg_data.sh
