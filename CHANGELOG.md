@@ -36,6 +36,8 @@
   - A point on the border between two lanes is on the inner one, as in
     libOpenDRIVE, and a point past the outermost lane takes its outer
     height. The spec says neither.
+- The viewer's lane readout gives a raised lane's inner and outer height
+  at the hovered point.
   - An `attached` CRG over a raised lane answers at road level. The spec
     measures a height from the road including its surface.
 

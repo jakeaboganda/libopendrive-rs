@@ -72,12 +72,20 @@ Hover a lane to highlight its lane section. The readout shows:
 - the road id, the OpenDRIVE lane id and the lane type
 - the surface point `x, y, z`, and `s` and `t` along the lane
 - the lane's heading
+- on a lane raised by its `<height>`s, such as a sidewalk, how far it stands
+  off the road at its inner and outer border at that point
 - the crate's internal `LaneId`
 - the surface normal, if normals are on
 
 The surface is coloured by lane type, and the legend lists the types in this
 map. A lane type the page has no colour for is magenta, so it stands out
 instead of passing for a driving lane.
+
+A raised sidewalk stands above the road beside it, with the step up to it
+left open. Here, in esmini's `fabriksgatan_traffic_lights.xodr`, the
+sidewalk is 0.12 m up and the traffic light stands on it.
+
+![Hovering a sidewalk raised 0.12 m, with a traffic light standing on it](lane-heights.png)
 
 ## Objects
 

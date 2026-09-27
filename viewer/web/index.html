@@ -1110,7 +1110,7 @@ function onHover(ev) {
   const lane = laneForFace(hit.faceIndex);
   if (!lane) { hideTip(); return; }
 
-  const { s, t, heading } = project(lane, hit.point);
+  const { s, t, heading, i, u } = project(lane, hit.point);
   if (activeLane == null) setHighlight(lane);
 
   const p = hit.point;
@@ -1120,6 +1120,10 @@ function onHover(ev) {
     `s ${s.toFixed(2)} m   t ${t.toFixed(2)} m`,
     `heading ${vec3(heading)}`,
   ];
+  const raised = laneHeight(lane, i, u);
+  if (raised) {
+    rows.push(`height  inner ${raised[0].toFixed(3)} m   outer ${raised[1].toFixed(3)} m`);
+  }
   if (document.getElementById('normals').checked) {
     rows.push(`normal ${vec3(surfaceNormal(hit))}`);
   }
@@ -1344,7 +1348,7 @@ function project(lane, p) {
       const hlen = Math.hypot(ab[0], ab[1]) || 1;
       const nx = -ab[1] / hlen, ny = ab[0] / hlen;
       const t = (p.x - c[0]) * nx + (p.y - c[1]) * ny;
-      best = { d2, s: lane.cum[i] + segLen * u, t, heading: heading(lane, i, u) };
+      best = { d2, s: lane.cum[i] + segLen * u, t, heading: heading(lane, i, u), i, u };
     }
   }
   return best;
@@ -1358,6 +1362,15 @@ function heading(lane, i, u) {
   const h = [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
   const len = Math.hypot(h[0], h[1], h[2]) || 1;
   return [h[0] / len, h[1] / len, h[2] / len];
+}
+
+// The lane's height off the road at its inner and outer border, a fraction
+// `u` along segment `i`, lerped between the segment's two vertices. Null for a
+// lane level with the road.
+function laneHeight(lane, i, u) {
+  const a = lane.heights && lane.heights[i], b = lane.heights && lane.heights[i + 1];
+  if (!a || !b) return null;
+  return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
 }
 
 // --- Highlight ---------------------------------------------------------------

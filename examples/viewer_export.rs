@@ -579,6 +579,9 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
     let headings: Vec<[f32; 3]> = lane
         .map(|l| l.center.tangents().iter().map(|t| t.to_array()).collect())
         .unwrap_or_default();
+    let heights: Vec<[f32; 2]> = prov
+        .map(|p| p.heights.iter().map(|h| [h.inner, h.outer]).collect())
+        .unwrap_or_default();
 
     let mut entry = Map::new();
     entry.insert("laneId".into(), json!(span.lane.0));
@@ -606,6 +609,7 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
     );
     entry.insert("centerline".into(), json!(centerline));
     entry.insert("headings".into(), json!(headings));
+    entry.insert("heights".into(), json!(heights));
     Value::Object(entry)
 }
 
