@@ -1,15 +1,15 @@
-//! Bake an OpenDRIVE map and export it as the JSON the three.js viewer reads.
+//! Bake OpenDRIVE maps and export each as the JSON the three.js viewer reads.
 //!
 //! ```sh
+//! cargo run --example viewer_export --features serde -- tests/data/*.xodr
 //! cargo run --example viewer_export --features serde -- \
-//!     tests/data/testtrack.xodr viewer/web/testtrack.json
+//!     tests/data/testtrack.xodr /tmp/testtrack.json
 //! ```
 //!
-//! With no output path, it writes `viewer/web/<map name>.json`, and it takes
-//! any number of maps that way, such as `tests/data/*.xodr`. A map that fails
-//! to load is reported and the rest still export. It then lists every scene
-//! in each output folder in `scenes.json`, which the viewer's map picker
-//! reads.
+//! Each map goes to `viewer/web/<map name>.json`, unless there is one map and
+//! an output path after it. A map that fails to load is reported and the rest
+//! still export. It then lists every scene in `viewer/web/` in
+//! `scenes.json`, which the viewer's map picker reads.
 //!
 //! The output is one object: a merged surface mesh (flat position/normal/index
 //! buffers, ready for a three.js `BufferGeometry`), a per-lane table, and an
@@ -51,6 +51,9 @@ use libopendrive::{
 };
 use serde_json::{json, Map, Value};
 
+/// Where scenes go without an output path, and the folder the viewer serves.
+const SCENES: &str = "viewer/web";
+
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     let jobs: Vec<(String, String)> = match args.as_slice() {
@@ -59,7 +62,7 @@ fn main() -> ExitCode {
             .iter()
             .map(|input| {
                 let stem = Path::new(input).file_stem().unwrap_or_default();
-                let output = format!("viewer/web/{}.json", stem.to_string_lossy());
+                let output = format!("{SCENES}/{}.json", stem.to_string_lossy());
                 (input.clone(), output)
             })
             .collect(),
@@ -89,13 +92,16 @@ fn main() -> ExitCode {
         }
     }
 
-    let folders: HashSet<&Path> = written
-        .keys()
-        .map(|output| Path::new(output).parent().unwrap_or(Path::new("")))
-        .collect();
-    for folder in folders {
-        if let Err(e) = write_scene_list(folder) {
-            eprintln!("warning: listing scenes in {}: {e}", folder.display());
+    let scenes = fs::canonicalize(SCENES).ok();
+    let in_scenes = |output: &&str| {
+        let folder = Path::new(output)
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty());
+        fs::canonicalize(folder.unwrap_or(Path::new("."))).ok() == scenes
+    };
+    if scenes.is_some() && written.keys().any(in_scenes) {
+        if let Err(e) = write_scene_list(Path::new(SCENES)) {
+            eprintln!("warning: listing scenes in {SCENES}: {e}");
         }
     }
     if failed > 0 {
@@ -159,11 +165,6 @@ fn export(input: &str, output: &str) -> Result<(), String> {
 /// Write `scenes.json` in `folder`: the sorted names of the other `.json`
 /// files there.
 fn write_scene_list(folder: &Path) -> std::io::Result<()> {
-    let folder = if folder.as_os_str().is_empty() {
-        Path::new(".")
-    } else {
-        folder
-    };
     let mut names = Vec::new();
     for entry in fs::read_dir(folder)? {
         let name = entry?.file_name().to_string_lossy().into_owned();
