@@ -54,6 +54,11 @@ Then open <http://localhost:8000> and pick a map from the `map` list.
 
 ![A traffic island's details in the viewer](viewer/objects.png)
 
+It draws CRG heights as a heat map over the road. Here are ASAM's scanned
+cobbles from `belgian_block.crg`, which `examples/crg_data.sh` downloads:
+
+![Scanned cobbles from ASAM's belgian_block.crg](viewer/crg-cobbles.png)
+
 ## More
 
 - [docs/design.md](docs/design.md): the coordinate frame, `Point` and
