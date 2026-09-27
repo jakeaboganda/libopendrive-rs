@@ -152,11 +152,13 @@ Geometry is cross-checked against the reference C++
 ## What it ignores
 
 Everything else in the file, silently, including `<geoReference>`, and
-signal boards and semantics. Three omissions change the road you get back, not only
+signal boards and semantics. Four omissions change the road you get back, not only
 the detail around it:
 
 - `<shape>`, the other lateralProfile child, so a crowned or cambered
   cross-section imports flat across its width.
+- A lane's `<height>`, so a raised sidewalk or kerb imports level with the
+  road beside it.
 - A lane's `<border>`, as opposed to an object's. A lane whose extent comes
   from a border rather than a width element has nothing to sample, so the
   importer drops it.
