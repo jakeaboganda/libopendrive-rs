@@ -16,6 +16,8 @@
 - `Warning::LaneDropped` names a lane with no `<width>`, which the crate
   drops along with its road marks. The spec draws those marks.
 - Elements the crate does not read raise no warning.
+- The viewer lists the warnings at the top of its sidebar. Picking one
+  lights the lanes of the road it names.
 
 ## 0.3.1 - 2026-09-27
 

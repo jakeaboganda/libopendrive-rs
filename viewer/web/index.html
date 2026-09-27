@@ -23,6 +23,7 @@
   .item:hover { background: #1b1f27; }
   .item.active { background: #2d4a63; }
   .tag { color: #7c8595; font-variant-numeric: tabular-nums; }
+  .warning { color: #e0b060; }
   #view { position: relative; min-width: 0; }
   canvas { display: block; }
   #tip { position: absolute; pointer-events: none; padding: 6px 8px; background: #0b0d11ee; border: 1px solid #3a4150;
@@ -50,7 +51,7 @@
   <aside id="sidebar">
     <header>
       <h1>map</h1>
-      <input id="search" placeholder="filter: road, lane, object or signal…" autocomplete="off" />
+      <input id="search" placeholder="filter: road, lane, object, signal or warning…" autocomplete="off" />
       <div id="count"></div>
     </header>
     <div id="list"></div>
@@ -212,7 +213,7 @@ let objects = [];
 let lanes = [];              // enriched lane records
 let spanIndex = [];          // {start,end,lane} sorted by index-range start, for picking
 let laneById = new Map();
-let selected = null;         // null, or {kind: 'lane' | 'object' | 'signal', record} clicked in the sidebar
+let selected = null;         // null, or {kind: 'lane' | 'object' | 'signal' | 'warning', record} clicked in the sidebar
 let selectionOutline;        // edges of the selected object or signal
 let selectionLink;           // dashed lines from the selected board to where it applies
 let openGroups = new Set();  // keys of the sidebar groups that are open
@@ -225,6 +226,7 @@ let signalMeshes = [];       // the boards; userData.pick(hit) is the hovered re
 let signalLink;              // dashed lines from the hovered board to where it applies
 let roadMarks = [];          // the exported road mark table
 let roadMarkMesh = null;     // every road mark's lines; userData.pick(hit) is the hovered mark
+let warnings = [];           // the exported warnings, each with the lanes of the road it names
 
 init().catch(showError);
 
@@ -299,6 +301,7 @@ async function init() {
   buildSignals(data);
   buildRoadMarks(data);
   buildCrg(data);
+  buildWarnings(data);
   buildSidebar();
   buildLegend();
   frameOn(roadMesh);
@@ -540,6 +543,14 @@ function buildLanes(data) {
   spanIndex = lanes
     .map(l => ({ start: l.indexRange[0], end: l.indexRange[1], lane: l }))
     .sort((a, b) => a.start - b.start);
+}
+
+// Each warning, with the lanes of the road it names. A skipped road has none.
+function buildWarnings(data) {
+  warnings = (data.warnings ?? []).map(w => ({
+    ...w,
+    lanes: lanes.filter(l => w.roadId != null && l.roadId === w.roadId).map(l => l.laneId),
+  }));
 }
 
 // --- Objects -----------------------------------------------------------------
@@ -1118,6 +1129,7 @@ function buildSidebar() {
     if (signals.length <= OPEN_BELOW) openGroups.add(`road ${road} signals`);
   }
   if (structures.length <= OPEN_BELOW) openGroups.add('structures');
+  if (warnings.length <= OPEN_BELOW) openGroups.add('warnings');
   renderSidebar();
 }
 
@@ -1127,7 +1139,7 @@ function renderSidebar() {
   const total = kind => [...roads.values()].reduce((n, r) => n + r[kind].length, 0);
   countEl.textContent = `${total('lanes')} / ${lanes.length} lanes · ${total('objects')} / ${objects.length} objects · ` +
     `${total('signals')} / ${signals.length} signals · ${roads.size} roads · ` +
-    `${structures.length} tunnels & bridges · ${roadMarks.length} road marks`;
+    `${structures.length} tunnels & bridges · ${roadMarks.length} road marks · ${warnings.length} warnings`;
 
   // A collapsible group under `parent`, open while filtering or if the user
   // left it open.
@@ -1154,6 +1166,18 @@ function renderSidebar() {
   const at = x => x.s != null ? `<span class="tag">s ${x.s.toFixed(0)} m</span>` : '';
 
   const frag = document.createDocumentFragment();
+  const warned = warnings.filter(w => !q || w.message.toLowerCase().includes(q));
+  if (warned.length) {
+    const g = group(frag, 'warnings', 'road warning', `warnings <span class="tag">${warned.length}</span>`);
+    for (const w of warned) {
+      item(g, w, `<span class="warning">${escapeHtml(w.message)}</span>`, () => {
+        const list = lanesOf(w.lanes);
+        if (select('warning', w) && list.length) frameOnPoints(list.flatMap(l => l.centerline));
+        if (selected && !list.length) showSelectedTip([`<b>road ${escapeHtml(String(w.roadId))}</b> baked no lanes`]);
+        else hideTip();
+      });
+    }
+  }
   const listed = structures.filter(s => !q || s.kind.includes(q) ||
     s.name.toLowerCase().includes(q) || String(s.roadId).toLowerCase().includes(q));
   if (listed.length) {
@@ -1592,7 +1616,7 @@ function clearHighlight() {
   highlight.visible = successorMesh.visible = predecessorMesh.visible = highlightLine.visible = false;
 }
 
-// Select `record`, a lane, object or signal, or clear the selection if it is
+// Select `record`, a lane, object, signal or warning, or clear the selection if it is
 // already selected. True if it is selected now.
 function select(kind, record) {
   selected = selected?.record === record ? null : { kind, record };
@@ -1609,7 +1633,7 @@ function drawSelection() {
   const { kind, record } = selected;
   if (kind === 'lane') return setHighlight(record);
   highlightLanes(lanesOf(record.lanes));
-  if (!document.getElementById(kind + 's').checked) return;
+  if (!document.getElementById(kind + 's')?.checked) return;
   showOutline(selectionOutline, record.outline?.());
   if (kind === 'signal') linkSignal(selectionLink, record);
 }

@@ -59,7 +59,7 @@ viewer draws, so use it to try the features below.
 | `c` | toggle the CRG heat map |
 | pick in the `map` list | load another baked map |
 | click a sidebar entry | select it and move the camera to it, or clear it if selected |
-| type in the filter box | filter lanes by road id, lane id or lane type, objects by type, subtype, name or id, signals by name, country, type, subtype or id, and tunnels and bridges by name, kind or road |
+| type in the filter box | filter lanes by road id, lane id or lane type, objects by type, subtype, name or id, signals by name, country, type, subtype or id, tunnels and bridges by name, kind or road, and warnings by their text |
 
 The checkboxes along the top toggle centerlines (green), lane boundaries
 (cream), normals (a hair at every mesh vertex), objects, tunnels, bridges,
@@ -71,6 +71,12 @@ The sidebar lists each road with its lanes, objects and signals, and the
 tunnels and bridges above them. A group of 12 or fewer starts open. So on a
 small map everything is listed, and on town07 you see 234 closed roads.
 Filtering opens every group that matches.
+
+At the top, in amber, are the load's warnings: what the crate dropped from a
+bad file, such as a road with no geometry or a lane with no `<width>`. Click
+one to light the lanes of the road it names and frame them. A skipped road
+has no lanes, so the readout says so instead. A clean map has no warnings
+group.
 
 Click an object or a signal to select it. The camera frames it, and the
 readout opens beside it. It stays outlined, with its lanes lit and a

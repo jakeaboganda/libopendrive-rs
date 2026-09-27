@@ -26,7 +26,8 @@
 //! gives each signal's meaning, the lanes it applies to, and its board's
 //! pose and size. A controller table lists the signals each controller
 //! switches together. A road mark table gives each mark's meaning, the lanes
-//! either side of it, and its lines as world-space quads.
+//! either side of it, and its lines as world-space quads. A warning table
+//! gives each [`Warning`]'s message and the road it names.
 //!
 //! Where the map lays OpenCRG files on its roads, the exporter loads them from
 //! beside the `.xodr` and samples [`RoadSurface`] over every lane they cover:
@@ -49,7 +50,7 @@ use libopendrive::{
     CrgSurface, Direction, Extent, LaneId, LaneProvenance, LaneSpan, LinePattern, Marking, Mesh,
     Object, ObjectProvenance, Orientation, Point, Provenance, Referenced, RoadMark,
     RoadMarkProvenance, RoadNetwork, RoadSurface, Shape, Signal, SignalProvenance, Structure,
-    StructureKind, StructureProvenance, SurfaceHint,
+    StructureKind, StructureProvenance, SurfaceHint, Warning,
 };
 use serde_json::{json, Map, Value};
 
@@ -183,8 +184,8 @@ fn write_scene_list(folder: &Path) -> std::io::Result<()> {
 }
 
 /// Assemble the viewer scene: flat mesh buffers, the lane table, the object
-/// table, the object mesh, and the structure, signal, controller and road
-/// mark tables.
+/// table, the object mesh, and the structure, signal, controller, road mark
+/// and warning tables.
 fn build_scene(
     net: &RoadNetwork,
     mesh: &Mesh,
@@ -264,7 +265,19 @@ fn build_scene(
         "signals": signals,
         "controllers": controllers,
         "roadMarks": road_marks,
+        "warnings": provenance.warnings.iter().map(warning_entry).collect::<Vec<_>>(),
     })
+}
+
+/// One warning's viewer record: its message, and the road it names.
+fn warning_entry(w: &Warning) -> Value {
+    let road_id = match w {
+        Warning::RoadSkipped { road_id, .. } | Warning::LaneDropped { road_id, .. } => {
+            Some(road_id.as_str())
+        }
+        _ => None,
+    };
+    json!({ "message": w.to_string(), "roadId": road_id })
 }
 
 /// A mesh's positions, normals and indices, flattened into the
