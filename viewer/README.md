@@ -1,8 +1,8 @@
 # OpenDRIVE viewer
 
 A three.js page that draws maps baked by `libopendrive`. Hover a lane, an
-object, a signal, a tunnel, a bridge or a CRG heat map to read what the
-crate knows about it.
+object, a signal, a road mark, a tunnel, a bridge or a CRG heat map to read
+what the crate knows about it.
 
 The viewer has two parts. `examples/viewer_export.rs` bakes `.xodr` maps
 into JSON in `web/`, and lists them in `web/scenes.json`. `web/index.html`
@@ -55,6 +55,7 @@ viewer draws, so use it to try the features below.
 | `n` | toggle normals |
 | `o` | toggle objects |
 | `s` | toggle signals |
+| `m` | toggle road marks |
 | `c` | toggle the CRG heat map |
 | pick in the `map` list | load another baked map |
 | click a sidebar entry | highlight it and move the camera to it |
@@ -62,7 +63,7 @@ viewer draws, so use it to try the features below.
 
 The checkboxes along the top toggle centerlines (green), lane boundaries
 (cream), normals (a hair at every mesh vertex), objects, tunnels, bridges,
-signals, and the CRG heat map.
+signals, road marks, and the CRG heat map.
 
 ## Lanes
 
@@ -169,6 +170,34 @@ draws. Bake it and pick `signals`:
 
 ```sh
 cargo run --example viewer_export --features serde -- tests/data/signals.xodr
+```
+
+## Road marks
+
+Each road mark's lines are painted on the road in their colour, cut into
+dashes where the crate dashes them. A mark that isn't paint, such as a kerb,
+or a mark of type `none`, draws nothing. The legend lists the colours in
+this map. A colour the page doesn't know is magenta.
+
+Hover a line to outline its mark and light up the lanes either side of it.
+The readout shows:
+
+- its type and colour
+- its road, lane section, and the OpenDRIVE lane whose border it runs
+  along, or the center lane
+- the stretch of road it covers, as `s` along the reference line
+- its width, weight and height
+- which way traffic may cross it
+- the lanes on its left and right, looking along the road's `+s`, or the
+  road edge where there is none
+
+![Hovering the double center line of the road mark test map](road-marks.png)
+
+`tests/data/road_marks.xodr` has every road mark type on one road. Bake it
+and pick `road_marks`:
+
+```sh
+cargo run --example viewer_export --features serde -- tests/data/road_marks.xodr
 ```
 
 ## OpenCRG surfaces

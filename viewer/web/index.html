@@ -71,10 +71,11 @@
       <label><input type="checkbox" id="tunnels" checked> tunnels</label>
       <label><input type="checkbox" id="bridges" checked> bridges</label>
       <label><input type="checkbox" id="signals" checked> signals</label>
+      <label><input type="checkbox" id="roadmarks" checked> road marks</label>
       <label id="crglabel"><input type="checkbox" id="crg" checked> CRG heights</label>
       <label><input type="checkbox" id="flag"> flag bad tris <span id="flagcount"></span></label>
     </div>
-    <div id="hint">drag: orbit · scroll: zoom · right-drag: pan · [w] cycles wireframe · [n] toggles normals · [o] toggles objects · [s] toggles signals · [c] toggles CRG heights · hover a lane, object or signal for coordinates</div>
+    <div id="hint">drag: orbit · scroll: zoom · right-drag: pan · [w] cycles wireframe · [n] toggles normals · [o] toggles objects · [s] toggles signals · [m] toggles road marks · [c] toggles CRG heights · hover a lane, object, signal or road mark for coordinates</div>
     <div id="err"></div>
   </div>
 </div>
@@ -176,6 +177,10 @@ const MARKER_SIZE = 0.4;
 const MIN_OBJECT_HEIGHT = 0.02;
 const MIN_OBJECT_FOOTPRINT = 0.1;
 
+// How much further, in metres, a road mark may be than the nearest hit and
+// still be picked over it.
+const ROAD_MARK_PICK = 0.05;
+
 // Length in metres of a drawn normal hair. Road scale, so it reads against a
 // lane without burying it.
 const NORMAL_LENGTH = 0.6;
@@ -198,6 +203,8 @@ let signals = [];            // the exported signal table
 let controllers = new Map(); // controllerId -> the exported controller record
 let signalMeshes = [];       // the boards; userData.pick(hit) is the hovered record
 let signalLink;              // dashed lines from the hovered board to where it applies
+let roadMarks = [];          // the exported road mark table
+let roadMarkMesh = null;     // every road mark's lines; userData.pick(hit) is the hovered mark
 
 init().catch(showError);
 
@@ -267,13 +274,14 @@ async function init() {
   buildObjects(data);
   buildStructures(data);
   buildSignals(data);
+  buildRoadMarks(data);
   buildCrg(data);
   buildSidebar();
   buildLegend();
   frameOn(roadMesh);
 
   applyMode();
-  for (const id of ['mode', 'flag', 'centerlines', 'boundaries', 'normals', 'objects', 'tunnels', 'bridges', 'signals', 'crg']) {
+  for (const id of ['mode', 'flag', 'centerlines', 'boundaries', 'normals', 'objects', 'tunnels', 'bridges', 'signals', 'roadmarks', 'crg']) {
     document.getElementById(id).addEventListener('change', applyMode);
   }
 
@@ -288,8 +296,8 @@ async function init() {
       const order = ['solid', 'wire', 'both'];
       sel.value = order[(order.indexOf(sel.value) + 1) % order.length];
       applyMode();
-    } else if (e.key === 'n' || e.key === 'o' || e.key === 's' || e.key === 'c') {
-      const box = document.getElementById({ n: 'normals', o: 'objects', s: 'signals', c: 'crg' }[e.key]);
+    } else if (['n', 'o', 's', 'm', 'c'].includes(e.key)) {
+      const box = document.getElementById({ n: 'normals', o: 'objects', s: 'signals', m: 'roadmarks', c: 'crg' }[e.key]);
       box.checked = !box.checked;
       applyMode();
     }
@@ -462,7 +470,8 @@ function applyMode() {
   if (markingMesh) markingMesh.visible = on('objects');
   for (const [kind, mesh] of Object.entries(structureTints)) mesh.visible = on(kind + 's');
   for (const m of signalMeshes) m.visible = on('signals');
-  if (!on('objects') && !on('signals')) objectOutline.visible = false;
+  if (roadMarkMesh) roadMarkMesh.visible = on('roadmarks');
+  if (!on('objects') && !on('signals') && !on('roadmarks')) objectOutline.visible = false;
   if (!on('signals')) signalLink.visible = false;
   if (crgMesh) crgMesh.visible = on('crg');
   badMesh.visible = on('flag');
@@ -881,6 +890,82 @@ function linkRows(sg) {
   return rows;
 }
 
+// --- Road marks ----------------------------------------------------------------
+
+// Every road mark's lines as one mesh, two triangles a piece, in each line's
+// colour. The crate has already cut them into dashes on the lane mesh's
+// facets, and the polygon offset keeps them in front of the road. Pickable:
+// `owner` maps a triangle to its mark.
+function buildRoadMarks(data) {
+  roadMarks = data.roadMarks ?? [];
+  const positions = [], colors = [], owner = [];
+  const c = new THREE.Color();
+  for (const m of roadMarks) {
+    m.first = owner.length;
+    for (const line of m.lines) {
+      c.setHex(MARKING_COLORS[line.color] ?? MARKING_FALLBACK_COLOR);
+      for (const [a, b, cc, d] of line.pieces) {
+        for (const p of [a, b, cc, a, cc, d]) {
+          positions.push(...p);
+          colors.push(c.r, c.g, c.b);
+        }
+        owner.push(m, m);
+      }
+    }
+    m.count = owner.length - m.first;
+  }
+  if (!owner.length) return;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  g.computeBoundingSphere();
+  roadMarkMesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    vertexColors: true, side: THREE.DoubleSide,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8,
+  }));
+  roadMarkMesh.renderOrder = 1;
+  roadMarkMesh.userData.pick = hit => {
+    const m = owner[hit.faceIndex];
+    if (!m.edges) {
+      const part = new THREE.BufferGeometry().setAttribute('position',
+        new THREE.Float32BufferAttribute(positions.slice(m.first * 9, (m.first + m.count) * 9), 3));
+      m.edges = new THREE.EdgesGeometry(part);
+    }
+    return { record: m, edges: m.edges, matrix: new THREE.Matrix4() };
+  };
+  scene.add(roadMarkMesh);
+}
+
+// The readout for a hovered road mark: what it means, where it runs, and the
+// lanes either side of it, which are highlighted.
+function showRoadMarkTip(ev, rect, hit) {
+  const { record: m, edges, matrix } = hit.object.userData.pick(hit);
+  objectOutline.geometry = edges;
+  objectOutline.matrix.copy(matrix);
+  objectOutline.visible = true;
+  const left = laneById.get(m.left), right = laneById.get(m.right);
+  if (activeLane == null) highlightLanes([left, right].filter(Boolean));
+
+  const side = l => l ? `lane ${l.odLaneId} (${l.laneType})` : 'road edge';
+  const rows = [`<b>road mark</b> ${m.type}  ${escapeHtml(m.color)}`];
+  if (m.roadId != null) {
+    const where = m.odLaneId === 0 ? 'center lane' : `lane ${m.odLaneId}`;
+    rows.push(`road ${escapeHtml(m.roadId)}  section ${m.section}  ${where}   ` +
+      `s ${m.s.toFixed(2)}–${(m.s + m.length).toFixed(2)} m`);
+  }
+  rows.push(
+    `width ${m.width.toFixed(2)} m   weight ${m.weight}` +
+      (m.height != null ? `   height ${m.height.toFixed(3)} m` : ''),
+    `lane change ${m.laneChange}`,
+    `left ${side(left)}   right ${side(right)}`,
+    `roadMarkId ${m.roadMarkId}`,
+  );
+  tip.style.display = 'block';
+  tip.style.left = (ev.clientX - rect.left + 14) + 'px';
+  tip.style.top = (ev.clientY - rect.top + 14) + 'px';
+  tip.innerHTML = rows.join('\n');
+}
+
 // --- Sidebar -----------------------------------------------------------------
 
 function buildSidebar() { renderSidebar(); }
@@ -906,6 +991,7 @@ function buildLegend() {
   group('objects', objects.map(o => o.objectType), OBJECT_COLORS, OBJECT_FALLBACK_COLOR);
   group('structures', structures.map(s => s.kind), STRUCTURE_COLORS, FALLBACK_COLOR);
   group('signals', signals.map(s => s.dynamic ? 'dynamic' : 'static'), SIGNAL_COLORS, FALLBACK_COLOR);
+  group('road marks', roadMarks.flatMap(m => m.lines.map(l => l.color)), MARKING_COLORS, MARKING_FALLBACK_COLOR);
   group('parking access', objects.filter(o => o.parkingSpace).map(o => o.parkingSpace.access),
     PARKING_COLORS, OBJECT_COLORS['parking-space']);
   if (crgMesh) {
@@ -937,7 +1023,8 @@ function renderSidebar() {
     byRoad.get(l.roadId).push(l);
   }
   countEl.textContent = `${shown} / ${lanes.length} lanes · ${byRoad.size} roads · ` +
-    `${objects.length} objects · ${structures.length} tunnels & bridges · ${signals.length} signals`;
+    `${objects.length} objects · ${structures.length} tunnels & bridges · ${signals.length} signals · ` +
+    `${roadMarks.length} road marks`;
 
   const frag = document.createDocumentFragment();
   const listed = structures.filter(s => !q || s.kind.includes(q) ||
@@ -992,11 +1079,16 @@ function onHover(ev) {
     ((ev.clientX - rect.left) / rect.width) * 2 - 1,
     -((ev.clientY - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
-  const pickable = [roadMesh, ...[...objectMeshes, ...signalMeshes].filter(m => m.visible)];
-  const hit = raycaster.intersectObjects(pickable, false)[0];
+  const pickable = [roadMesh, ...[...objectMeshes, ...signalMeshes, roadMarkMesh].filter(m => m?.visible)];
+  const hits = raycaster.intersectObjects(pickable, false);
+  // Paint lies in the road surface, so it ties with the road under it. It
+  // wins anything within a few centimetres.
+  const mark = hits.find(h => h.object === roadMarkMesh);
+  const hit = mark && mark.distance - hits[0].distance < ROAD_MARK_PICK ? mark : hits[0];
   objectOutline.visible = false;
   signalLink.visible = false;
   if (!hit) { hideTip(); if (!activeLane) clearHighlight(); return; }
+  if (hit.object === roadMarkMesh) return showRoadMarkTip(ev, rect, hit);
   if (signalMeshes.includes(hit.object)) return showSignalTip(ev, rect, hit);
   if (hit.object !== roadMesh) return showObjectTip(ev, rect, hit);
 

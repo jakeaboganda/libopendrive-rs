@@ -25,7 +25,8 @@
 //! bridges, each with the stretch of every lane it covers. A signal table
 //! gives each signal's meaning, the lanes it applies to, and its board's
 //! pose and size. A controller table lists the signals each controller
-//! switches together.
+//! switches together. A road mark table gives each mark's meaning, the lanes
+//! either side of it, and its lines as world-space quads.
 //!
 //! Where the map lays OpenCRG files on its roads, the exporter loads them from
 //! beside the `.xodr` and samples [`RoadSurface`] over every lane they cover:
@@ -45,9 +46,10 @@ use std::process::ExitCode;
 use libopendrive::opencrg::CrgGrid;
 use libopendrive::{
     load_file_with_provenance, Controller, ControllerProvenance, Corner, CrgMode, CrgPurpose,
-    CrgSurface, Direction, Extent, LaneId, LaneProvenance, LaneSpan, Marking, Mesh, Object,
-    ObjectProvenance, Orientation, Point, Provenance, Referenced, RoadNetwork, RoadSurface, Shape,
-    Signal, SignalProvenance, Structure, StructureKind, StructureProvenance, SurfaceHint,
+    CrgSurface, Direction, Extent, LaneId, LaneProvenance, LaneSpan, LinePattern, Marking, Mesh,
+    Object, ObjectProvenance, Orientation, Point, Provenance, Referenced, RoadMark,
+    RoadMarkProvenance, RoadNetwork, RoadSurface, Shape, Signal, SignalProvenance, Structure,
+    StructureKind, StructureProvenance, SurfaceHint,
 };
 use serde_json::{json, Map, Value};
 
@@ -150,10 +152,11 @@ fn export(input: &str, output: &str) -> Result<(), String> {
     fs::write(output, &bytes).map_err(|e| format!("writing {output}: {e}"))?;
 
     eprintln!(
-        "wrote {output}: {} lanes, {} objects, {} signals, {} vertices, {} triangles, {} CRG files ({} KiB)",
+        "wrote {output}: {} lanes, {} objects, {} signals, {} road marks, {} vertices, {} triangles, {} CRG files ({} KiB)",
         mesh.lanes.len(),
         net.objects().len(),
         net.signals().len(),
+        net.road_marks().len(),
         mesh.vertices.len(),
         mesh.indices.len() / 3,
         loaded.len(),
@@ -180,7 +183,8 @@ fn write_scene_list(folder: &Path) -> std::io::Result<()> {
 }
 
 /// Assemble the viewer scene: flat mesh buffers, the lane table, the object
-/// table, the object mesh, and the structure, signal and controller tables.
+/// table, the object mesh, and the structure, signal, controller and road
+/// mark tables.
 fn build_scene(
     net: &RoadNetwork,
     mesh: &Mesh,
@@ -226,6 +230,17 @@ fn build_scene(
         })
         .collect();
 
+    let road_marks: Vec<Value> = net
+        .road_marks()
+        .iter()
+        .map(|m| {
+            road_mark_entry(
+                m,
+                provenance.road_marks.iter().find(|p| p.road_mark == m.id),
+            )
+        })
+        .collect();
+
     let mut object_buffers = buffers(object_mesh);
     object_buffers["spans"] = object_mesh
         .objects
@@ -248,6 +263,7 @@ fn build_scene(
         "structures": structures,
         "signals": signals,
         "controllers": controllers,
+        "roadMarks": road_marks,
     })
 }
 
@@ -443,6 +459,46 @@ fn controller_entry(c: &Controller, prov: Option<&ControllerProvenance>) -> Valu
             .unwrap_or_default()
             .iter()
             .map(|j| json!({ "junctionId": j.junction_id, "type": j.kind, "sequence": j.sequence }))
+            .collect::<Vec<_>>(),
+    })
+}
+
+/// One road mark's viewer record: what it means, its OpenDRIVE provenance,
+/// the `laneId`s either side of it looking along `+s`, null at the edge of
+/// the road, and its lines. Each line's `pattern` is `continuous`, or
+/// `dashed` with a `length` and a `space`, and its `pieces` are world-space
+/// quads.
+fn road_mark_entry(m: &RoadMark, prov: Option<&RoadMarkProvenance>) -> Value {
+    json!({
+        "roadMarkId": m.id.0,
+        "type": m.kind.as_str(),
+        "weight": m.weight.as_str(),
+        "color": m.color,
+        "width": m.width,
+        "height": m.height,
+        "laneChange": m.lane_change.as_str(),
+        "left": m.left.map(|l| l.0),
+        "right": m.right.map(|l| l.0),
+        "roadId": prov.map(|p| p.road_id.as_str()),
+        "section": prov.map(|p| p.section),
+        "odLaneId": prov.map(|p| p.od_lane_id),
+        "s": prov.map(|p| p.s),
+        "length": prov.map(|p| p.length),
+        "lines": m
+            .lines
+            .iter()
+            .map(|l| json!({
+                "color": l.color,
+                "width": l.width,
+                "tOffset": l.t_offset,
+                "pattern": match l.pattern {
+                    LinePattern::Continuous => json!({ "kind": "continuous" }),
+                    LinePattern::Dashed { length, space } => {
+                        json!({ "kind": "dashed", "length": length, "space": space })
+                    }
+                },
+                "pieces": pieces(&l.pieces),
+            }))
             .collect::<Vec<_>>(),
     })
 }
