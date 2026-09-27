@@ -281,7 +281,8 @@ fn object_entry(object: &Object, prov: Option<&ObjectProvenance>) -> Value {
 
 /// One signal's viewer record: what it means, its OpenDRIVE provenance, the
 /// lanes it applies to, and its board. `appliesAt` is the points on the road
-/// where it takes effect. The board's `position` is the middle of its bottom
+/// where it takes effect, its own and then one per entry in `references`,
+/// the `<signalReference>`s that apply it on other roads. The board's `position` is the middle of its bottom
 /// edge, and its angles are in radians, applied yaw, then pitch, then roll.
 /// `length`, `width` and `height` are null where the map gives none.
 fn signal_entry(s: &Signal, prov: Option<&SignalProvenance>) -> Value {
@@ -312,6 +313,17 @@ fn signal_entry(s: &Signal, prov: Option<&SignalProvenance>) -> Value {
         "s": prov.map(|p| p.s),
         "t": prov.map(|p| p.t),
         "orientation": prov.map(|p| orientation(p.orientation)),
+        "references": prov
+            .map(|p| p.references.as_slice())
+            .unwrap_or_default()
+            .iter()
+            .map(|r| json!({
+                "roadId": r.road_id,
+                "s": r.s,
+                "t": r.t,
+                "orientation": orientation(r.orientation),
+            }))
+            .collect::<Vec<_>>(),
     })
 }
 

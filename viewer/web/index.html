@@ -784,12 +784,15 @@ function showSignalTip(ev, rect, hit) {
       `s ${sg.s.toFixed(2)} m   t ${sg.t.toFixed(2)} m`);
     rows.push(`orientation ${sg.orientation}   signalId ${sg.signalId}`);
   }
+  for (const r of sg.references ?? []) {
+    rows.push(`<b>reference</b> on road ${escapeHtml(r.roadId)}  ` +
+      `s ${r.s.toFixed(2)} m   t ${r.t.toFixed(2)} m   orientation ${r.orientation}`);
+  }
   rows.push(laneList(applies));
   const [x, y, z] = sg.position;
-  for (const [ax, ay, az] of sg.appliesAt) {
-    if (Math.hypot(ax - x, ay - y) > 0.01) {
-      rows.push(`applies at x ${ax.toFixed(2)}   y ${ay.toFixed(2)}   z ${az.toFixed(2)}`);
-    }
+  const [ax, ay, az] = sg.appliesAt[0];
+  if (Math.hypot(ax - x, ay - y) > 0.01) {
+    rows.push(`applies at x ${ax.toFixed(2)}   y ${ay.toFixed(2)}   z ${az.toFixed(2)}`);
   }
   const size = v => v == null ? '?' : v.toFixed(2);
   rows.push(
@@ -1200,15 +1203,18 @@ function highlightLanes(list) {
   highlightLine.visible = false;
 }
 
-// The lanes an object applies to, by OpenDRIVE lane id, grouped by section.
+// The lanes an object or a signal applies to, by OpenDRIVE lane id, grouped
+// by section, and by road where they are on more than one.
 function laneList(list) {
   if (!list.length) return 'lanes none';
-  const bySection = new Map();
+  const roads = new Set(list.map(l => l.roadId)).size > 1;
+  const groups = new Map();
   for (const l of list) {
-    if (!bySection.has(l.section)) bySection.set(l.section, []);
-    bySection.get(l.section).push(l.odLaneId);
+    const key = (roads ? `road ${escapeHtml(String(l.roadId))} ` : '') + `§${l.section}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(l.odLaneId);
   }
-  return 'lanes ' + [...bySection].map(([s, ids]) => `§${s}: ${ids.join(' ')}`).join('   ');
+  return 'lanes ' + [...groups].map(([key, ids]) => `${key}: ${ids.join(' ')}`).join('   ');
 }
 
 function clearHighlight() { highlight.visible = false; highlightLine.visible = false; }
