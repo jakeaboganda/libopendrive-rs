@@ -303,6 +303,7 @@ fn bake(
                 pieces: paint(
                     road,
                     section,
+                    border.od_lane_id,
                     |s| border.t(road, section, s) + line.t_offset + sway(s),
                     width / 2.0,
                     &painted(line.pattern, start + line.s_offset, (start, end)),
@@ -380,12 +381,14 @@ fn painted(pattern: LinePattern, from: f64, (start, end): (f64, f64)) -> Vec<(f6
 }
 
 /// Quads `half_width` either side of the line at `t(s)`, over each stretch of
-/// road in `stretches`. The line's edges are placed on the road surface at
-/// each of the section's stations, and straight between them, so the paint
-/// lies on the facets of the lane mesh.
+/// road in `stretches`. The line's edges are placed on the surface of the
+/// lane `od_lane_id` at each of the section's stations, and straight between
+/// them, so the paint lies on the facets of the lane mesh. So a mark on a
+/// kerb, the outer border of the lane below it, stays on the road.
 fn paint(
     road: &BakedRoad,
     section: &BakedSection,
+    od_lane_id: i32,
     t: impl Fn(f64) -> f64,
     half_width: f64,
     stretches: &[(f64, f64)],
@@ -394,8 +397,8 @@ fn paint(
     let edges = |i: usize| {
         let (s, t) = (stations[i], t(stations[i]));
         (
-            road.surface(s, t - half_width).0,
-            road.surface(s, t + half_width).0,
+            road.lane_surface(section, od_lane_id, s, t - half_width).0,
+            road.lane_surface(section, od_lane_id, s, t + half_width).0,
         )
     };
     let at = |s: f64| {

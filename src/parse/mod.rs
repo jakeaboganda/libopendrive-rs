@@ -704,6 +704,14 @@ struct SectionDef {
 }
 
 impl SectionDef {
+    /// Whether any of its lanes has a `<height>`.
+    fn raised(&self) -> bool {
+        self.left
+            .iter()
+            .chain(&self.right)
+            .any(|l| !l.heights.is_empty())
+    }
+
     fn parse(section: roxmltree::Node) -> Self {
         let (mut left, mut right) = (Vec::new(), Vec::new());
         for side in ["left", "right"] {
@@ -1121,11 +1129,110 @@ struct BakedRoad {
     sections: Vec<BakedSection>,
 }
 
+/// One lane across the road at a station: the `t` of its inner and outer
+/// border, and its height at each.
+struct Across {
+    od_id: i32,
+    inner_t: f64,
+    outer_t: f64,
+    inner_height: f64,
+    outer_height: f64,
+}
+
+impl Across {
+    /// The lane's height at `t`, straight from its inner border to its outer
+    /// one, and on past them.
+    fn height(&self, t: f64) -> f64 {
+        let width = self.outer_t - self.inner_t;
+        let f = if width == 0.0 {
+            0.0
+        } else {
+            (t - self.inner_t) / width
+        };
+        self.inner_height + (self.outer_height - self.inner_height) * f
+    }
+}
+
 impl BakedRoad {
-    /// The road surface at a station `(s, t)`, and the reference line's
-    /// heading there.
+    /// The surface at a station `(s, t)`, on the lane there, and the
+    /// reference line's heading. A point on the border between two lanes is
+    /// on the inner one, as libOpenDRIVE finds it and as a road mark there
+    /// belongs to it. A point past the outermost lane takes that lane's outer
+    /// height. libOpenDRIVE carries the lane's slope on instead.
     fn surface(&self, s: f64, t: f64) -> (Point, f64) {
-        surface_at(&self.geoms, &self.elevations, &self.superelevations, s, t)
+        let height = self
+            .section_at(s)
+            .filter(|section| section.def.raised())
+            .map_or(0.0, |section| {
+                self.across(section, s)
+                    .filter(|a| f64::from(a.od_id.signum()) * (t - a.inner_t) > 0.0)
+                    .last()
+                    .map_or(0.0, |a| {
+                        a.height(t.clamp(a.inner_t.min(a.outer_t), a.inner_t.max(a.outer_t)))
+                    })
+            });
+        self.raised(s, t, height)
+    }
+
+    /// The surface of the lane `od_id` of `section` at `(s, t)`, straight
+    /// across the lane and on past its borders, so paint on its border lies
+    /// in it. The road's own surface for the center lane.
+    fn lane_surface(&self, section: &BakedSection, od_id: i32, s: f64, t: f64) -> (Point, f64) {
+        if !section.def.raised() {
+            return self.raised(s, t, 0.0);
+        }
+        let height = self
+            .across(section, s)
+            .find(|a| a.od_id == od_id)
+            .map_or(0.0, |a| a.height(t));
+        self.raised(s, t, height)
+    }
+
+    fn raised(&self, s: f64, t: f64, height: f64) -> (Point, f64) {
+        raised(
+            &self.geoms,
+            &self.elevations,
+            &self.superelevations,
+            (s, t),
+            height,
+        )
+    }
+
+    /// The lane section at `s`. On a boundary, the one starting there.
+    fn section_at(&self, s: f64) -> Option<&BakedSection> {
+        self.sections
+            .iter()
+            .rev()
+            .find(|section| section.start <= s + 1e-9)
+            .or(self.sections.first())
+    }
+
+    /// Each lane of `section` across the road at `s`, from the center
+    /// outward, the left side first.
+    fn across<'a>(
+        &'a self,
+        section: &'a BakedSection,
+        s: f64,
+    ) -> impl Iterator<Item = Across> + 'a {
+        let base = active(&self.lane_offsets, s).map_or(0.0, |o| o.eval(s));
+        let s_lane = s - section.start;
+        [(&section.def.left, 1.0), (&section.def.right, -1.0)]
+            .into_iter()
+            .flat_map(move |(side, sign)| {
+                side.iter().scan(base, move |inner_t, lane| {
+                    let outer_t = *inner_t + sign * width_at(lane, s_lane);
+                    let (inner_height, outer_height) = height_at(lane, s_lane);
+                    let across = Across {
+                        od_id: lane.id,
+                        inner_t: *inner_t,
+                        outer_t,
+                        inner_height,
+                        outer_height,
+                    };
+                    *inner_t = outer_t;
+                    Some(across)
+                })
+            })
     }
 
     /// The road's own axes at station `s`, from [`road_axes`].
@@ -4958,5 +5065,75 @@ mod tests {
         assert_eq!(ss, [0.0, 1.05, 2.1, 3.55, 5.0, 7.0, 9.0, 10.0]);
         let ss = sample_positions(0.0, 10.0, &[0.0; 11], &[4.0]);
         assert_eq!(ss, [0.0, 2.0, 4.0, 6.0, 8.0, 10.0]);
+    }
+
+    /// `xml` with `objects` on its road.
+    fn with_objects(xml: &str, objects: &str) -> String {
+        xml.replace("</road>", &format!("<objects>{objects}</objects></road>"))
+    }
+
+    /// A sidewalk 0.2 m up from its kerb at t = -3 m. A point exactly on
+    /// the kerb is on lane -1, the lane inside it, as libOpenDRIVE finds it.
+    #[test]
+    fn a_point_on_a_border_stands_on_the_inner_lane() {
+        let xml = with_objects(
+            &raised_road(r#"<height sOffset="0" inner="0.2" outer="0.2"/>"#, ""),
+            r#"<object id="1" s="10" t="-3"/><object id="2" s="10" t="-3.001"/>"#,
+        );
+        let objects = objects_of(&xml);
+        assert_z(solid(&objects[0]).0.z, 0.0);
+        assert_z(solid(&objects[1]).0.z, 0.2);
+    }
+
+    /// A sidewalk from 0.1 m at its kerb to 0.2 m at its outer edge, at
+    /// t = -5 m. 2 m past it, a point is at 0.2 m, where libOpenDRIVE would
+    /// carry the slope on to 0.3 m.
+    #[test]
+    fn a_point_past_the_outermost_lane_takes_its_outer_height() {
+        let xml = with_objects(
+            &raised_road(r#"<height sOffset="0" inner="0.1" outer="0.2"/>"#, ""),
+            r#"<object id="1" s="10" t="-7"/>"#,
+        );
+        assert_z(solid(&objects_of(&xml)[0]).0.z, 0.2);
+    }
+
+    /// An outline from the road onto the sidewalk has its corners on each.
+    #[test]
+    fn an_outline_across_a_kerb_has_its_corners_on_either_side() {
+        let xml = with_objects(
+            &raised_road(r#"<height sOffset="0" inner="0.2" outer="0.2"/>"#, ""),
+            r#"<object id="1" s="10" t="-3"><outlines><outline id="0" closed="true">
+                 <cornerRoad s="9" t="-2" dz="0" height="1"/>
+                 <cornerRoad s="9" t="-4" dz="0" height="1"/>
+                 <cornerRoad s="11" t="-4" dz="0" height="1"/>
+               </outline></outlines></object>"#,
+        );
+        let Shape::Outline { corners, .. } = &objects_of(&xml)[0].shape else {
+            panic!("not an outline");
+        };
+        let z: Vec<f32> = corners.iter().map(|c| c.base.z).collect();
+        assert_z(z[0], 0.0);
+        assert_z(z[1], 0.2);
+        assert_z(z[2], 0.2);
+    }
+
+    /// A guard rail swept along the sidewalk stands on it all the way.
+    #[test]
+    fn a_sweep_along_a_sidewalk_stands_on_it() {
+        let xml = with_objects(
+            &raised_road(r#"<height sOffset="0" inner="0.2" outer="0.2"/>"#, ""),
+            r#"<object id="1" s="2" t="-4" height="0.8">
+                 <repeat s="2" length="10" distance="0" tStart="-4" tEnd="-4"
+                         heightStart="0.8" heightEnd="0.8" zOffsetStart="0" zOffsetEnd="0"/>
+               </object>"#,
+        );
+        let Shape::Sweep { sections, .. } = &objects_of(&xml)[0].shape else {
+            panic!("not a sweep");
+        };
+        assert!(!sections.is_empty());
+        for section in sections {
+            assert_z(section.left.base.z, 0.2);
+            assert_z(section.right.base.z, 0.2);
+        }
     }
 }

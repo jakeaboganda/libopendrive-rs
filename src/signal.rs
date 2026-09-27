@@ -124,9 +124,12 @@ pub struct Signal {
     /// to. A lane appears once.
     pub lanes: Vec<LaneId>,
     /// The points on the road surface where the signal takes effect: its
-    /// own first, then one for each further place the map applies it.
+    /// own first, then one for each further place the map applies it. On a
+    /// lane raised by its `<height>`s, a point is on the lane.
     pub applies_at: Vec<Point>,
-    /// The middle of the board's bottom edge.
+    /// The middle of the board's bottom edge. On a lane raised by its
+    /// `<height>`s, the board stands on the lane. The spec does not say
+    /// whether it stands there or on the road below.
     pub position: Point,
     /// The direction the board faces, toward the traffic it addresses: yaw
     /// about +Z, counter-clockwise from +X, in radians in `(-π, π]`.

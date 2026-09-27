@@ -312,6 +312,8 @@ pub struct Object {
     pub materials: Vec<Material>,
     /// Vendor data the map attaches to the object, in the order it gives it.
     pub user_data: Vec<UserData>,
-    /// Where it is and what it fills.
+    /// Where it is and what it fills. On a lane raised by its `<height>`s,
+    /// it stands on the lane. The spec does not say whether it stands there
+    /// or on the road below.
     pub shape: Shape,
 }

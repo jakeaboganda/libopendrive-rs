@@ -274,6 +274,13 @@
 //! The step between a raised lane and the lane beside it stays open. The
 //! spec defines no kerb face, and libOpenDRIVE and esmini draw none.
 //!
+//! Objects and signals stand on the lane at their point, and a road mark on
+//! its own lane. So a pole on a sidewalk stands on the sidewalk, a
+//! sidewalk's outer mark rises with it, and the mark along the kerb, which
+//! belongs to the lane below it, stays on the road. An object still leans
+//! with the road, not with the slope of the lane under it, as in
+//! libOpenDRIVE.
+//!
 //! The crate departs from the OpenDRIVE 1.9 spec here:
 //!
 //! - The spec's rule for lane geometry holds a height until the next one.
@@ -293,6 +300,13 @@
 //!   order are sorted rather than dropped.
 //! - The spec forbids heights on the center lane. The crate never bakes the
 //!   center lane, so it ignores them.
+//! - The spec does not say whether objects, signals and road marks stand
+//!   on a raised lane or on the road below it. The crate stands them on the
+//!   lane.
+//! - The spec does not say which lane a point on the border between two is
+//!   on. The crate puts it on the inner one, as libOpenDRIVE does.
+//! - The spec gives no height past the outermost lane. A point there takes
+//!   that lane's outer height. libOpenDRIVE carries the lane's slope on.
 //! - The spec measures a height from the road including its surface. An
 //!   `attached` CRG adds its grid to the road without the lane's height, so
 //!   a CRG laid over a raised lane answers at road level.

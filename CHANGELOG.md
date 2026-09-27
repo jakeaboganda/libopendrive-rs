@@ -9,6 +9,9 @@
   the slope from its inner border to its outer one. So the surface mesh and
   `Lane::sample_at` see a raised sidewalk. The step up to it stays open, as
   libOpenDRIVE and esmini leave it.
+- Objects and signals stand on the lane at their point, and a road mark on
+  its own lane. So a sidewalk's outer mark rises with it, and the kerb's
+  mark stays on the road.
 - `LaneProvenance::heights` gives a lane's `LaneHeight`, inner and outer,
   at each centerline vertex.
 - A lane section has a station wherever a lane's heights change pace, so a
@@ -28,6 +31,11 @@
     it. The spec requires all three. A negative `sOffset` is 0.
   - Entries out of order are sorted rather than dropped.
   - Heights on the center lane are ignored. The spec forbids them.
+  - Objects, signals and road marks stand on a raised lane. The spec does
+    not say whether they stand there or on the road below.
+  - A point on the border between two lanes is on the inner one, as in
+    libOpenDRIVE, and a point past the outermost lane takes its outer
+    height. The spec says neither.
   - An `attached` CRG over a raised lane answers at road level. The spec
     measures a height from the road including its surface.
 

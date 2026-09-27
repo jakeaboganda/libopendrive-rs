@@ -228,8 +228,9 @@ pub struct RoadMarkLine {
     pub rule: LineRule,
     /// The painted pieces, in order along the road, in the network's frame.
     /// Each is four corners going anticlockwise seen from above, lying in the
-    /// road surface: a dash, or the part of one between two of the lane's
-    /// stations.
+    /// surface of the mark's lane: a dash, or the part of one between two of
+    /// the lane's stations. So a sidewalk's mark rises with it, and a kerb's,
+    /// the lane below's, stays on the road. The spec does not say which.
     pub pieces: Vec<[Point; 4]>,
 }
 

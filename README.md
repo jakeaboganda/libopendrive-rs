@@ -58,8 +58,9 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   point is drawn as the wedge it is.
 - Lane heights, so a sidewalk stands above the road beside it. A lane's
   `<height>`s raise its centerline and tilt its surface, so the mesh and
-  `Lane::sample_at` see the kerb. The step up to it is left open, as
-  libOpenDRIVE and esmini leave it. `load_*_with_provenance` gives the
+  `Lane::sample_at` see the kerb. Poles, signs and road marks on a sidewalk
+  stand on it. The step up to it is left open, as libOpenDRIVE and esmini
+  leave it. `load_*_with_provenance` gives the
   heights at each centerline vertex.
 - Road/lane `<link>`s and `<junction>`s, resolved into a drive-direction lane
   graph.

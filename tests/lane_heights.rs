@@ -5,7 +5,7 @@
 //! form to check against.
 
 use libopendrive::{
-    load_file_with_provenance, Lane, LaneProvenance, Mesh, Point, Provenance, RoadNetwork,
+    load_file_with_provenance, Lane, LaneProvenance, Mesh, Point, Provenance, RoadNetwork, Shape,
 };
 
 const FIXTURE: &str = "tests/data/lane_heights.xodr";
@@ -325,4 +325,74 @@ fn a_sidewalk_on_a_curve_keeps_its_height_and_radius() {
 fn a_map_with_raised_lanes_tessellates_to_a_valid_mesh() {
     let (net, _) = fixture();
     net.surface_mesh().validate().expect("a valid mesh");
+}
+
+/// Where a solid object stands: its position, the middle of its base.
+fn solid_at(net: &RoadNetwork, prov: &Provenance, od_id: &str) -> Point {
+    let p = prov
+        .objects
+        .iter()
+        .find(|p| p.od_id == od_id)
+        .unwrap_or_else(|| panic!("object {od_id}"));
+    let object = net.objects().iter().find(|o| o.id == p.object).unwrap();
+    match object.shape {
+        Shape::Solid { position, .. } => position,
+        ref other => panic!("object {od_id} is {other:?}"),
+    }
+}
+
+/// Each pole on road 0 stands on the lane under it: on sidewalk -2 halfway
+/// across its slope, and past its ramp at 0.12 m, on sidewalk 2 at 0.12 m,
+/// and on lane -1 on the road.
+#[test]
+fn an_object_on_a_sidewalk_stands_on_it() {
+    let (net, prov) = fixture();
+    for (od_id, z) in [("1", 0.07), ("2", 0.12), ("3", 0.12), ("4", 0.0)] {
+        let at = solid_at(&net, &prov, od_id);
+        assert_near(f64::from(at.z), z, 1e-6, &format!("object {od_id} z"));
+    }
+}
+
+/// The sign on sidewalk 2 stands 2 m above it, and takes effect on it.
+#[test]
+fn a_sign_on_a_sidewalk_stands_on_it() {
+    let (net, _) = fixture();
+    let sign = &net.signals()[0];
+    assert_near(f64::from(sign.position.z), 2.12, 1e-6, "board z");
+    assert_near(f64::from(sign.applies_at[0].z), 0.12, 1e-6, "applies at z");
+}
+
+/// Each road mark on road 0 lies in the surface of the lane it belongs to:
+/// the center line and the kerbs, the outer borders of lanes 1 and -1, on
+/// the road, and the sidewalks' outer marks on the sidewalks. Sidewalk -2
+/// rises 0.05 m a metre toward its outer edge until its ramp, so its mark,
+/// 0.12 m wide, tilts with it.
+#[test]
+fn a_road_mark_lies_on_the_lane_it_belongs_to() {
+    let (net, prov) = fixture();
+    let marks: Vec<_> = prov
+        .road_marks
+        .iter()
+        .filter(|p| p.road_id == "0")
+        .collect();
+    assert_eq!(marks.len(), 5);
+    for p in marks {
+        let mark = net
+            .road_marks()
+            .iter()
+            .find(|m| m.id == p.road_mark)
+            .unwrap();
+        for corner in mark.lines.iter().flat_map(|l| &l.pieces).flatten() {
+            let (x, y) = (f64::from(corner.x), f64::from(corner.y));
+            let want = match p.od_lane_id {
+                -1..=1 => 0.0,
+                2 => 0.12,
+                -2 if x >= 21.0 => 0.12,
+                -2 => ramp_inner(x) + (0.12 - ramp_inner(x)) * (-y - 3.5) / 2.0,
+                other => panic!("lane {other}"),
+            };
+            let what = format!("lane {} mark z at ({x}, {y})", p.od_lane_id);
+            assert_near(f64::from(corner.z), want, 1e-6, &what);
+        }
+    }
 }
