@@ -373,6 +373,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
                 for section in &baked.sections {
                     warnings.extend(baked.lane_warnings(section));
                 }
+                warnings.extend(baked.shape_warnings());
                 roads.push((road, baked));
             }
             Err(reason) => warnings.push(Warning::RoadSkipped {
@@ -666,6 +667,94 @@ struct LaneDef {
 enum LaneExtent {
     Width(Vec<Cubic>),
     Border(Vec<Cubic>),
+}
+
+/// A `<lateralProfile>`'s `<shape>`s at one `s`: the height off the
+/// reference plane across the road, a cubic in `dt` from each shape's `t`,
+/// held until the next. Each [`Cubic`] here starts at its `t`.
+struct ShapeProfile {
+    s: f64,
+    shapes: Vec<Cubic>,
+}
+
+/// A `<lateralProfile>`'s `<shape>`s, grouped into profiles by `s`, in
+/// ascending `s`, each sorted by `t`.
+///
+/// The spec requires every attribute, and says the shapes come in ascending
+/// `s`, then `t`. A shape without `s` or `t` is skipped, a missing `a`, `b`,
+/// `c` or `d` is 0, as for superelevation, and shapes out of order are
+/// sorted rather than dropped.
+fn shape_profiles(lateral: roxmltree::Node) -> Vec<ShapeProfile> {
+    let mut shapes: Vec<(f64, Cubic)> = lateral
+        .children()
+        .filter(|n| n.has_tag_name("shape"))
+        .filter_map(|n| {
+            let coeff = |name| attr_f64(n, name).unwrap_or(0.0);
+            Some((
+                attr_f64(n, "s")?,
+                Cubic {
+                    start: attr_f64(n, "t")?,
+                    a: coeff("a"),
+                    b: coeff("b"),
+                    c: coeff("c"),
+                    d: coeff("d"),
+                },
+            ))
+        })
+        .collect();
+    shapes.sort_by(|(s1, c1), (s2, c2)| s1.total_cmp(s2).then(c1.start.total_cmp(&c2.start)));
+    let mut profiles: Vec<ShapeProfile> = Vec::new();
+    for (s, shape) in shapes {
+        match profiles.last_mut() {
+            Some(p) if p.s == s => p.shapes.push(shape),
+            _ => profiles.push(ShapeProfile {
+                s,
+                shapes: vec![shape],
+            }),
+        }
+    }
+    profiles
+}
+
+/// The road's lateral shape at `(s, t)`: its height off the reference
+/// plane there. 0 on a road with no `<shape>`.
+///
+/// Between two profiles the height at a `t` goes linearly along `s`, as the
+/// spec has it. Before the first profile the first holds, and after the
+/// last the last. The spec gives 0 before the first. Across a profile, the
+/// last shape runs on to the road's edge, and before the first shape's `t`
+/// its value there holds, flat.
+fn shape_at(profiles: &[ShapeProfile], s: f64, t: f64) -> f64 {
+    let across = |p: &ShapeProfile| active(&p.shapes, t).map_or(p.shapes[0].a, |c| c.eval(t));
+    let next = profiles.partition_point(|p| p.s <= s + 1e-9);
+    match (
+        next.checked_sub(1).map(|i| &profiles[i]),
+        profiles.get(next),
+    ) {
+        (None, None) => 0.0,
+        (Some(p), None) | (None, Some(p)) => across(p),
+        (Some(a), Some(b)) => {
+            let f = (s - a.s) / (b.s - a.s);
+            across(a) + (across(b) - across(a)) * f
+        }
+    }
+}
+
+/// A lane's height off the road at its inner and outer border at station
+/// `s`, `s_lane` into its section, where its `borders` are: its `<height>`s
+/// plus the road's lateral shape under each border.
+fn border_heights(
+    lane: &LaneDef,
+    shapes: &[ShapeProfile],
+    s: f64,
+    s_lane: f64,
+    borders: &LaneBorders,
+) -> (f64, f64) {
+    let (inner, outer) = height_at(lane, s_lane);
+    (
+        inner + shape_at(shapes, s, borders.inner),
+        outer + shape_at(shapes, s, borders.outer),
+    )
 }
 
 /// A lane's `<height>`: how far its surface stands off the road, along the
@@ -981,6 +1070,9 @@ fn parse_road(
     let superelevations = child(road, "lateralProfile")
         .map(|n| cubics_in(n, "superelevation", "s"))
         .unwrap_or_default();
+    let shapes = child(road, "lateralProfile")
+        .map(shape_profiles)
+        .unwrap_or_default();
     // laneOffset shifts the whole lane cross-section laterally off lane 0 (lane
     // widening, merges, a centerline that isn't the road reference). It adds to
     // every lane's offset, so it must be applied or all lanes are mis-placed.
@@ -994,6 +1086,7 @@ fn parse_road(
         &geoms,
         &elevations,
         &superelevations,
+        &shapes,
         &lane_offsets,
         out,
         topo,
@@ -1004,6 +1097,7 @@ fn parse_road(
         geoms,
         elevations,
         superelevations,
+        shapes,
         lane_offsets,
         sections,
     };
@@ -1024,6 +1118,10 @@ fn parse_road(
 /// How far, in metres, a `<border>` may lie inside its inner neighbour's
 /// outer border before it counts as crossing it, rather than as rounding.
 const BORDER_CROSSING: f64 = 1e-6;
+
+/// How far, in metres, a lateral profile's first `<shape>` may start inside
+/// the road's right edge before it counts as short of the road.
+const SHAPE_SHORT: f64 = 1e-3;
 
 impl BakedRoad {
     /// What the load dropped from `section`'s lanes, or read against the
@@ -1091,6 +1189,30 @@ impl BakedRoad {
                 }),
         );
         out
+    }
+
+    /// Each lateral profile whose first `<shape>` starts more than
+    /// [`SHAPE_SHORT`] inside the road's right edge, at the profile's `s`.
+    /// The last shape runs on past the left edge, so only the right can fall
+    /// short.
+    fn shape_warnings(&self) -> Vec<Warning> {
+        self.shapes
+            .iter()
+            .filter(|p| {
+                let Some(section) = self.section_at(p.s) else {
+                    return false;
+                };
+                let base = active(&self.lane_offsets, p.s).map_or(0.0, |o| o.eval(p.s));
+                let edge = self
+                    .across(section, p.s)
+                    .fold(base, |edge, a| edge.min(a.inner_t).min(a.outer_t));
+                p.shapes[0].start > edge + SHAPE_SHORT
+            })
+            .map(|p| Warning::ShapeShortOfRoad {
+                road_id: self.id.clone(),
+                s: p.s,
+            })
+            .collect()
     }
 
     /// The reference line at `s`.
@@ -1257,6 +1379,7 @@ struct BakedRoad {
     geoms: Vec<GeomRec>,
     elevations: Vec<Cubic>,
     superelevations: Vec<Cubic>,
+    shapes: Vec<ShapeProfile>,
     lane_offsets: Vec<Cubic>,
     sections: Vec<BakedSection>,
 }
@@ -1405,6 +1528,7 @@ fn bake_lanes(
     geoms: &[GeomRec],
     elevations: &[Cubic],
     superelevations: &[Cubic],
+    shapes: &[ShapeProfile],
     lane_offsets: &[Cubic],
     out: &mut Vec<Lane>,
     topo: &mut Topology,
@@ -1459,6 +1583,7 @@ fn bake_lanes(
             geoms,
             elevations,
             superelevations,
+            shapes,
             lane_offsets,
             out,
             topo,
@@ -1500,6 +1625,7 @@ fn emit_section(
     geoms: &[GeomRec],
     elevations: &[Cubic],
     superelevations: &[Cubic],
+    shapes: &[ShapeProfile],
     lane_offsets: &[Cubic],
     out: &mut Vec<Lane>,
     topo: &mut Topology,
@@ -1513,6 +1639,7 @@ fn emit_section(
         .chain(right)
         .flat_map(|l| &l.heights)
         .map(|h| s_start + h.s_offset)
+        .chain(shapes.iter().map(|p| p.s))
         .collect();
     let sample_s = sample_positions(s_start, s_end, &bends, &knots);
     let road_bank: Vec<f64> = sample_s
@@ -1540,13 +1667,17 @@ fn emit_section(
         let across = side_across(side, sign, lane_offsets, s_start, &sample_s);
         for (lane, borders) in side.iter().zip(&across) {
             let kind = lane.kind;
+            let heights: Vec<(f64, f64)> = sample_s
+                .iter()
+                .zip(borders)
+                .map(|(&s, b)| border_heights(lane, shapes, s, s - s_start, b))
+                .collect();
             let (points, headings) = sample_lane(
                 geoms,
                 elevations,
                 superelevations,
-                s_start,
-                lane,
                 borders,
+                &heights,
                 sign,
                 &sample_s,
             );
@@ -1583,10 +1714,10 @@ fn emit_section(
                 center,
                 width,
                 widths,
-                bank: if lane.heights.is_empty() {
+                bank: if lane.heights.is_empty() && shapes.is_empty() {
                     level_bank.clone()
                 } else {
-                    lane_bank(lane, borders, sign, s_start, &sample_s, &road_bank)
+                    lane_bank(borders, &heights, sign, &road_bank)
                 },
                 // Filled by links::resolve once all lanes are registered.
                 successors: Vec::new(),
@@ -1636,10 +1767,11 @@ fn road_axes(
     [along, cross(up, along), up]
 }
 
-/// A lane's bank at each of `sample_s`, parallel to them: the road's
-/// superelevation `road_bank`, plus the slope of the lane's heights across
-/// it, signed to raise its outer border when that is the higher. `sign` is
-/// 1.0 for a left lane and -1.0 for a right one. Empty for a lane flat
+/// A lane's bank at each station, parallel to its `borders` and the
+/// `heights` of its borders there, from [`border_heights`]: the road's
+/// superelevation `road_bank`, plus the slope from one border height to the
+/// other, signed to raise its outer border when that is the higher. `sign`
+/// is 1.0 for a left lane and -1.0 for a right one. Empty for a lane flat
 /// across at every station, so a level road bakes as it did before lane
 /// heights.
 ///
@@ -1650,20 +1782,17 @@ fn road_axes(
 /// about the level tangent, so on a grade `g` the edges also sit `d / 2 * g`
 /// along the road from where the road's normal puts them.
 fn lane_bank(
-    lane: &LaneDef,
     borders: &[LaneBorders],
+    heights: &[(f64, f64)],
     sign: f64,
-    s_start: f64,
-    sample_s: &[f64],
     road_bank: &[f64],
 ) -> Vec<f32> {
     unless_flat(
-        sample_s
+        borders
             .iter()
-            .zip(borders)
+            .zip(heights)
             .zip(road_bank)
-            .map(|((&s, b), &phi)| {
-                let (inner, outer) = height_at(lane, s - s_start);
+            .map(|((b, &(inner, outer)), &phi)| {
                 let slope = (outer - inner).atan2(b.width);
                 (phi + sign * slope) as f32
             })
@@ -1723,25 +1852,23 @@ fn unit(v: [f64; 3]) -> [f64; 3] {
 /// meshed ribs meet flush; see [`Polyline::try_new_with_tangents`].
 ///
 /// `borders` is where the lane lies across the road at each of `sample_s`,
-/// from [`side_across`], and `sign` which way it stacks.
-#[allow(clippy::too_many_arguments)]
+/// from [`side_across`], `heights` its border heights there, from
+/// [`border_heights`], and `sign` which way it stacks.
 fn sample_lane(
     geoms: &[GeomRec],
     elevations: &[Cubic],
     superelevations: &[Cubic],
-    section_s: f64,
-    lane: &LaneDef,
     borders: &[LaneBorders],
+    heights: &[(f64, f64)],
     sign: f64,
     sample_s: &[f64],
 ) -> (Vec<Point>, Vec<Vector>) {
     sample_s
         .iter()
         .zip(borders)
-        .map(|(&s, b)| {
-            let s_lane = s - section_s;
+        .zip(heights)
+        .map(|((&s, b), &(inner, outer))| {
             let t = b.inner + sign * b.width / 2.0;
-            let (inner, outer) = height_at(lane, s_lane);
             let (point, hdg) = raised(
                 geoms,
                 elevations,

@@ -71,6 +71,15 @@ pub enum Warning {
         /// reference line.
         s: f64,
     },
+    /// A `<lateralProfile>` whose `<shape>`s start inside the road's right
+    /// edge. The spec says each profile covers the whole road. The crate
+    /// holds the first shape's value from its `t` out to the edge.
+    ShapeShortOfRoad {
+        /// The `<road id>` it is on.
+        road_id: String,
+        /// The profile's `s`.
+        s: f64,
+    },
 }
 
 /// Why a `<road>` baked nothing.
@@ -96,7 +105,8 @@ impl Warning {
             | Self::LaneDropped { road_id, .. }
             | Self::WidthAndBorder { road_id, .. }
             | Self::BorderWithLaneOffset { road_id, .. }
-            | Self::BorderCrossesInnerLane { road_id, .. } => road_id,
+            | Self::BorderCrossesInnerLane { road_id, .. }
+            | Self::ShapeShortOfRoad { road_id, .. } => road_id,
         }
     }
 }
@@ -139,6 +149,10 @@ impl fmt::Display for Warning {
             } => write!(
                 f,
                 "road {road_id:?}, lane section {section}: lane {lane}'s <border> crosses inside the lane within it at s {s:.2} m"
+            ),
+            Self::ShapeShortOfRoad { road_id, s } => write!(
+                f,
+                "road {road_id:?}: the <shape>s at s {s:.2} m start inside the road's right edge"
             ),
         }
     }

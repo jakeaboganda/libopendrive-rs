@@ -70,4 +70,12 @@ lanes stacked on each other, a lane with both, borders under a
 
     python3 tests/data/lane_borders.py
 
+`lateral_shapes.xodr` comes from `lateral_shapes.py` the same way. It has a
+crown that breaks on the center line, a parabolic crown flattening over
+50 m with a pole and a sign on it, a crown on a banked road, a raised
+sidewalk on a crown, and a profile that starts inside the road. Regenerate
+with
+
+    python3 tests/data/lateral_shapes.py
+
 [scenariogeneration]: https://github.com/pyoscx/scenariogeneration

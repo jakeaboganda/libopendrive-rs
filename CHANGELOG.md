@@ -43,6 +43,27 @@
   - Borders out of order are sorted rather than dropped.
 - The viewer's lane readout gives the lane's width at the hovered point.
 
+### Lateral shapes
+
+- A road's `<lateralProfile><shape>`s give its cross-section, such as a
+  crown. Each lane border stands at the shape under it plus the lane's
+  `<height>` there, along the road's normal, and the lane goes straight
+  across between them. Heights go linearly along `s` between profiles.
+  So a crowned road no longer imports flat.
+- A curve inside a lane is lost to the straight chord: `c w² / 4` at its
+  middle, 5.5 mm on a 3.5 m lane of a crown falling 2.5 % at 7 m out.
+- Each profile's `s` is a station of its lane sections.
+- Where the crate departs from the spec:
+  - The first profile holds before it. The spec's default there is 0.
+  - A profile that starts inside the road holds its first shape's value
+    out to the edge, and raises `Warning::ShapeShortOfRoad`. The spec
+    says each profile covers the road.
+  - A lane with `level="true"` is shaped like any other. The spec keeps it
+    out of the shape.
+  - An `attached` CRG over a shaped road answers without the shape.
+  - A shape without `s` or `t` is skipped, and a missing `a`, `b`, `c` or
+    `d` is 0. The spec requires all six. Shapes out of order are sorted.
+
 ## 0.3.1 - 2026-09-27
 
 ### Docs

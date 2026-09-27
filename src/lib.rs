@@ -56,6 +56,7 @@
 //! | `<paramPoly3>` | `aU`, `bU`, `cU`, `dU`, `aV`, `bV`, `cV`, `dV`, `pRange` |
 //! | `<elevationProfile><elevation>` | `s`, `a`, `b`, `c`, `d` |
 //! | `<lateralProfile><superelevation>` | `s`, `a`, `b`, `c`, `d` |
+//! | `<lateralProfile><shape>` | `s`, `t`, `a`, `b`, `c`, `d` |
 //! | `<lanes><laneOffset>` | `s`, `a`, `b`, `c`, `d` |
 //! | `<laneSection>` | `s` |
 //! | `<left>`, `<center>`, `<right>` | none |
@@ -285,6 +286,51 @@
 //! - The spec says the records come in ascending `sOffset`. Ones out of
 //!   order are sorted rather than dropped.
 //!
+//! # Lateral shapes
+//!
+//! A road's `<shape>`s give its cross-section, such as a crown or a
+//! crossfall. The shapes at one `s` form a profile: each is a cubic in `dt`
+//! from its `t`, held until the next. Between two profiles the height at a
+//! `t` goes linearly along `s`. The height stands off the road along its
+//! normal, which superelevation tilts, as a lane height does.
+//!
+//! The shape folds into the lane heights. Each lane border stands at the
+//! shape under it plus the lane's `<height>` there, and the lane goes
+//! straight across from one border to the other. Its centerline stands at
+//! the mean of the two, and [`Lane::bank`] adds the slope between them.
+//! Neighbouring lanes share a border height, so the mesh stays closed. A
+//! crown that breaks on a lane border is exact. A curve inside a lane is
+//! lost: the chord across a parabola `c t²` is `c w² / 4` off at its
+//! middle, 5.5 mm on a 3.5 m lane of a crown falling 2.5 % at 7 m out.
+//! [`LaneProvenance::heights`] still gives the `<height>`s only. Each
+//! profile's `s` is a station of every lane section it falls in.
+//!
+//! No other reader to compare against builds shapes. libOpenDRIVE logs
+//! that it does not support them, esmini reads only superelevation, and
+//! CARLA parses them but does not store them.
+//!
+//! The crate departs from the OpenDRIVE 1.9 spec here:
+//!
+//! - The spec's default shape is 0, so read literally the road steps from
+//!   flat up to the first profile at its `s`. The crate holds the first
+//!   profile before it, and the last after it, as a superelevation holds.
+//! - The spec says each profile covers the whole road. Where one starts
+//!   inside the road's right edge, the crate holds the first shape's value
+//!   from its `t` out to the edge, and raises [`Warning::ShapeShortOfRoad`].
+//!   The last shape runs on to the left edge, as each runs to the next.
+//! - The spec keeps a lane with `level="true"` out of the shape. The crate
+//!   does not read `level`, so it shapes such a lane like any other.
+//! - The spec's surface curves between a lane's borders. The crate's goes
+//!   straight across, as above.
+//! - Objects, signals and road marks do not stand on the shape yet. They
+//!   stand on the road without it.
+//! - The spec measures a lane height from the road including its shape. An
+//!   `attached` CRG adds its grid to the road without the shape, so a CRG
+//!   laid over a shaped road answers without it.
+//! - The spec requires `s`, `t`, `a`, `b`, `c` and `d`. A shape without `s`
+//!   or `t` is skipped, and a missing `a`, `b`, `c` or `d` is 0, as for
+//!   superelevation. Shapes out of order are sorted rather than dropped.
+//!
 //! # Lane heights
 //!
 //! A lane's `<height>`s raise its surface off the road, as a sidewalk or a
@@ -469,13 +515,9 @@
 //! `<semantics>`. Of road marks, it ignores `material` and a `<type>`'s
 //! `name`.
 //!
-//! Two omissions change the road you get back, rather than only dropping
-//! detail around it:
-//!
-//! - `<shape>`, the other lateralProfile child, so a crowned or cambered
-//!   cross-section imports flat across its width.
-//! - The center lane, lane 0, so it never becomes a [`Lane`]. Only its road
-//!   marks are read.
+//! One omission changes the road you get back, rather than only dropping
+//! detail around it: the center lane, lane 0, never becomes a [`Lane`].
+//! Only its road marks are read.
 //!
 //! # Coordinate frame
 //!
@@ -518,6 +560,8 @@
 //! - [`Warning::WidthAndBorder`], [`Warning::BorderWithLaneOffset`] and
 //!   [`Warning::BorderCrossesInnerLane`] for the lane borders the spec
 //!   forbids. See [Lane borders](#lane-borders).
+//! - [`Warning::ShapeShortOfRoad`] for a lateral profile that does not
+//!   cover the road. See [Lateral shapes](#lateral-shapes).
 //!
 //! Elements the crate does not read at all raise none. Real maps are full of
 //! them, and they would bury the rest. Other things it drops, such as a lane

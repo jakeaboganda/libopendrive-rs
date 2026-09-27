@@ -25,6 +25,12 @@ files declaring 1.4, 1.6 and 1.7.
 - `<elevationProfile>`, and `<lateralProfile>` superelevation baked as a real
   cant. The cross-section rolls about the reference line, so an outer lane
   rides higher and its surface normal leans.
+- `<lateralProfile>` shapes, so a crowned road has its crown. Each lane
+  border stands at the shape under it, and a lane goes straight across
+  between its borders. So a curve inside a lane is lost: 5.5 mm at the
+  middle of a 3.5 m lane on a crown falling 2.5 % at 7 m out. The first
+  profile holds before it, where the spec gives 0. Objects, signals and
+  road marks don't stand on the shape yet.
 - Per-lane widths, `laneOffset`, and multiple lane sections.
 - The whole lane cross-section, the carriageway included. `LaneType` names
   every function the format defines, among them sidewalks, kerbs, ramps and
@@ -165,14 +171,11 @@ no finite `length`, no `<planView>` or no geometry the importer can bake
 raises `Warning::RoadSkipped`. A lane with no `<width>` or `<border>` raises
 `Warning::LaneDropped`. The lane borders the spec forbids raise
 `Warning::WidthAndBorder`, `Warning::BorderWithLaneOffset` and
-`Warning::BorderCrossesInnerLane`. The elements below raise nothing.
+`Warning::BorderCrossesInnerLane`. A lateral profile that doesn't cover the
+road raises `Warning::ShapeShortOfRoad`. The elements below raise nothing.
 
 ## What it ignores
 
 The importer silently skips everything else in the file, `<geoReference>`
-included. Two omissions change the road you get back, not only the detail
-around it:
-
-- `<shape>`, the other `<lateralProfile>` child, so a crowned or cambered
-  cross-section imports flat across its width.
-- `<center>`, so lane 0 never becomes a `Lane`.
+included. One omission changes the road you get back, not only the detail
+around it: `<center>`, so lane 0 never becomes a `Lane`.

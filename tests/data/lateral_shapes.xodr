@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Written by lateral_shapes.py. -->
+<OpenDRIVE>
+  <header revMajor="1" revMinor="9" name="lateral_shapes" version="1.00"/>
+  <road name="" length="60" id="0" junction="-1">
+    <planView><geometry s="0" x="0" y="0" hdg="0" length="60"><line/></geometry></planView>
+    <lateralProfile><shape s="0" t="-7" a="-0.17500000000000002" b="0.025" c="0.0" d="0.0"/><shape s="0" t="0" a="0" b="-0.025" c="0.0" d="0.0"/></lateralProfile>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane><lane id="2" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane></left><center><lane id="0" type="none"><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane><lane id="-2" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane></right></laneSection></lanes>
+  </road>
+  <road name="" length="60" id="1" junction="-1">
+    <planView><geometry s="0" x="0" y="30" hdg="0" length="60"><line/></geometry></planView>
+    <lateralProfile><shape s="0" t="-7" a="-0.175" b="0.049999999999999996" c="-0.0035714285714285713" d="0.0"/><shape s="50" t="-7" a="0" b="0.0" c="0.0" d="0.0"/></lateralProfile>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane><lane id="2" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane></left><center><lane id="0" type="none"><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane><lane id="-2" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane></right></laneSection></lanes>
+    <objects><object id="1" name="Pole" type="pole" s="10" t="-1.75" zOffset="0" hdg="0" radius="0.05" height="2"/></objects>
+    <signals><signal id="2" name="Sign" s="10" t="1.75" zOffset="2" orientation="-" dynamic="no" country="DE" type="274" subtype="55" value="50" unit="km/h" height="0.6" width="0.6"/></signals>
+  </road>
+  <road name="" length="60" id="2" junction="-1">
+    <planView><geometry s="0" x="0" y="60" hdg="0" length="60"><line/></geometry></planView>
+    <lateralProfile><superelevation s="0" a="0.05" b="0" c="0" d="0"/><shape s="0" t="-7" a="-0.17500000000000002" b="0.025" c="0.0" d="0.0"/><shape s="0" t="0" a="0" b="-0.025" c="0.0" d="0.0"/></lateralProfile>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane><lane id="2" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane></left><center><lane id="0" type="none"><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane><lane id="-2" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane></right></laneSection></lanes>
+  </road>
+  <road name="" length="60" id="3" junction="-1">
+    <planView><geometry s="0" x="0" y="90" hdg="0" length="60"><line/></geometry></planView>
+    <lateralProfile><shape s="0" t="-5.5" a="-0.1375" b="0.025" c="0.0" d="0.0"/><shape s="0" t="0" a="0" b="-0.025" c="0.0" d="0.0"/></lateralProfile>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane></left><center><lane id="0" type="none"><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane><lane id="-2" type="sidewalk" level="false"><width sOffset="0" a="2" b="0" c="0" d="0"/><height sOffset="0" inner="0.12" outer="0.12"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane></right></laneSection></lanes>
+  </road>
+  <road name="" length="60" id="4" junction="-1">
+    <planView><geometry s="0" x="0" y="120" hdg="0" length="60"><line/></geometry></planView>
+    <lateralProfile><shape s="0" t="-2" a="0.1" b="0.0" c="0.0" d="0.0"/></lateralProfile>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane></left><center><lane id="0" type="none"><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><roadMark sOffset="0" type="solid" weight="standard" color="standard" width="0.12"/></lane></right></laneSection></lanes>
+  </road>
+</OpenDRIVE>
