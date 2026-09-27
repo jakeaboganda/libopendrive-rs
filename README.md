@@ -158,10 +158,15 @@ infinity, and one such value poisons every point derived from it.
 ## Visualization
 
 The crate doesn't render anything. [`viewer/`](viewer/README.md) has a
-three.js page that draws a baked map with its objects, tunnels and bridges.
-Hover anything to read what the crate knows about it.
+three.js page that draws a baked map with its objects, tunnels, bridges and
+OpenCRG surfaces. Hover anything to read what the crate knows about it.
 
 ![A traffic island's details in the viewer](viewer/objects.png)
+
+It draws CRG heights as a heat map over the road. Here are ASAM's scanned
+cobbles from `belgian_block.crg`, which `examples/crg_data.sh` downloads:
+
+![Scanned cobbles from ASAM's belgian_block.crg](viewer/crg-cobbles.png)
 
 `surface_mesh()` returns plain position, normal, and index buffers with no
 engine types in them, and a `LaneSpan` per lane saying which slice of those
