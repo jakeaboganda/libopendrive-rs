@@ -1,13 +1,9 @@
 # libopendrive
 
-A pure-Rust OpenDRIVE (`.xodr`) and OpenCRG (`.crg`) importer. Reads a map file
-and bakes it into a road network of polyline lanes, a drive-direction lane
-graph, and a triangle surface mesh.
-
-Where the map lays OpenCRG files on its roads, it reads them too, and gives a
-vehicle model the height, normal and friction under a wheel in `f64`. It
-parses them with the [`opencrg`](https://crates.io/crates/opencrg) crate and
-re-exports it, so `libopendrive::opencrg` also reads a `.crg` file on its own.
+A pure-Rust OpenDRIVE (`.xodr`) importer. It reads a map and bakes it into
+polyline lanes, a lane graph in the direction traffic drives, and a triangle
+surface mesh. It also reads the OpenCRG (`.crg`) files a map lays on its
+roads.
 
 No C++ dependency, no bindings, no `unsafe`.
 
@@ -28,171 +24,26 @@ let mesh = net.surface_mesh();
 mesh.validate()?;
 ```
 
-## Which OpenDRIVE version
+## What it reads
 
-The importer never reads `<header>`, so it never inspects `revMajor` or
-`revMinor` and never rejects a file for its declared version. Whether a file
-loads depends only on whether it uses the elements listed below, not on the
-revision it declares.
+- Road geometry, elevation and superelevation.
+- Lanes of every type, with their widths, offsets, heights and sections.
+- Links and junctions, as a lane graph.
+- Objects, with repeats, outlines, markings and borders.
+- Signals and the controllers that group them.
+- Road marks.
+- Tunnels and bridges.
+- OpenCRG surfaces, for the height, normal and friction under a wheel.
 
-Every one of those elements is in ASAM OpenDRIVE 1.9.0, the current revision.
-`poly3` is deprecated there in favor of `paramPoly3`, and a signal's
-`<positionRoad>` and `<positionInertial>` since 1.8. The importer reads them
-the same as any current element and prints no warning for using them. The
-test suite imports real files declaring 1.4, 1.6 and 1.7.
+It loads a file whatever OpenDRIVE version it declares.
+[docs/support.md](docs/support.md) covers each element, and the three it
+skips that change the road's shape.
 
-## What it imports
+## Viewer
 
-- Reference geometry: `line`, `arc`, `spiral` (clothoid), `paramPoly3`,
-  `poly3`.
-- `<elevationProfile>`, and `<lateralProfile>` superelevation baked as a real
-  cant. The cross-section rolls about the reference line, so an outer lane
-  rides higher and its surface normal leans.
-- Per-lane widths, `laneOffset`, and multiple lane sections.
-- The whole lane cross-section, the carriageway included. `LaneType` names
-  every function the format defines, among them sidewalks, kerbs, ramps and
-  tram track, and an unrecognised name bakes as `LaneType::Unknown` rather
-  than leaving a hole. `LaneType::is_drivable` separates the ones traffic
-  uses.
-- Lane widths that vary along a lane, so a gore area that opens out of a
-  point is drawn as the wedge it is.
-- Lane heights, so a sidewalk stands above the road beside it. A lane's
-  `<height>`s raise its centerline and tilt its surface, so the mesh and
-  `Lane::sample_at` see the kerb. Poles, signs and road marks on a sidewalk
-  stand on it. The step up to it is left open, as libOpenDRIVE and esmini
-  leave it. `load_*_with_provenance` gives the
-  heights at each centerline vertex.
-- Road/lane `<link>`s and `<junction>`s, resolved into a drive-direction lane
-  graph.
-- `<object>`s, from `RoadNetwork::objects`, in world coordinates on the road
-  surface.
-  - A plain object is a box or a cylinder with a heading, pitch and roll.
-    It leans with the grade and bank of the road under it, as in
-    libOpenDRIVE.
-  - A `<repeat>` with a `distance` becomes one object per step, so a row of
-    posts arrives as posts. A `<repeat>` with a `distance` of 0, such as a
-    guard rail, becomes one shape swept along the road. With a radius it is
-    a round pipe.
-  - An `<outline>`, in road or local coordinates, becomes a footprint polygon
-    with a height at every corner. An `outer="false"` outline is a hole cut
-    out of the outline round it. Under a `<repeat>` with a `distance`, the
-    outline is repeated at every step.
-  - An `<objectReference>` places the object it names again, at the
-    reference's own station.
-  - A `<marking>`, such as a crosswalk's stripes, becomes painted quads along
-    the outline edges it names, or along one side of the object's box if it
-    names none. A `<border>`, such as a kerb, becomes a band along outline
-    edges.
-  - `<validity>` picks the lanes an object applies to.
-  - `<parkingSpace>`, `<material>` and `<userData>` are kept on the object as
-    data.
-
-  Each object has an id to look it up by, a subtype, and whether it moves.
-  `load_*_with_provenance` gives its road, OpenDRIVE id, `(s, t)`,
-  orientation and valid length, as it does a lane's road and id.
-- `<tunnel>`s and `<bridge>`s, from `RoadNetwork::structures`, as the stretch
-  of each lane they cover. Call `structures_over(lane)` to find out whether a
-  lane runs through a tunnel or over a bridge, and where.
-- `<signal>`s, from `RoadNetwork::signals`: each sign or light's catalogue
-  codes, `value`, `unit` and `text` as the file gives them, the lanes it
-  applies to, and the pose and size of its board. A board stands upright
-  even on a banked road, and faces the traffic it addresses. A
-  `<positionRoad>` or `<positionInertial>` moves the board, such as onto a
-  gantry, and the signal still applies where its `(s, t)` says. A
-  `<signalReference>` applies the signal on another road too, adding the
-  lanes there. `RoadNetwork::controllers` groups the signals that always
-  show the same state, such as the lights of one approach, and each signal
-  lists its controllers. A signal keeps its `<dependency>` and `<reference>`
-  links as the ids of the signals and objects they name.
-  `load_*_with_provenance` gives its road, OpenDRIVE id, `(s, t)` and
-  orientation.
-- `<roadMark>`s, from `RoadNetwork::road_marks`, on every lane border and
-  the center line. Each mark names the lanes either side of it, and keeps
-  its type, weight, colour, width, height and which way traffic may cross
-  it. Its lines are quads lying on the road surface. A mark's
-  `<type><line>`s and `<explicit><line>`s are its lines, each with its own
-  width, colour, dashes, offset and rule, and its `<sway>`s move them
-  sideways. A mark without them gets stand-ins: a `solid` or
-  `broken` mark paints one line and a double type two, with widths from
-  libOpenDRIVE and dashes from esmini. A kerb, a grass edge and the other types that
-  aren't paint keep their meaning and paint nothing. The crate docs list
-  where it departs from the spec, such as reading a mark without a colour.
-  `load_*_with_provenance` gives its road, lane section, lane and stretch.
-
-- `<surface><CRG>` on roads and junctions, in all four modes, for elevation
-  and friction. The importer keeps the records. `RoadSurface` loads the
-  OpenCRG files they name and gives a vehicle model the height, normal and
-  friction under a point in `f64`. Off the CRG it answers from the surface
-  mesh, which the CRG does not change.
-
-  ```rust
-  use libopendrive::{load_file, opencrg::CrgGrid, RoadSurface, SurfaceHint};
-
-  let net = load_file("maps/track.xodr")?;
-  let mesh = net.surface_mesh();
-  let surface = RoadSurface::new(&net, &mesh, |file| {
-      CrgGrid::from_path(format!("maps/{file}")).ok()
-  });
-  let mut wheel = SurfaceHint::default();
-  let ground = surface.sample(12.0, -30.0, &mut wheel);
-  ```
-
-  Public maps that come with CRG files are hard to find, so
-  `examples/crg_to_xodr.rs` writes one for any CRG file: a road along the
-  file's reference line, with the file laid on it. `examples/crg_data.sh`
-  downloads five measured and test-course files from ASAM and Project Chrono,
-  and writes a map and a viewer scene for each. `examples/crg_profile.rs`
-  drives a wheel down a lane and writes what it rolls over as CSV.
-
-  ```sh
-  sh examples/crg_data.sh
-  cargo run --release --example crg_profile -- target/crg/country_road.xodr > profile.csv
-  ```
-
-For the exact element and attribute list, see
-[the crate docs](https://docs.rs/libopendrive).
-
-Geometry is cross-checked against the reference C++
-[libOpenDRIVE](https://github.com/pageldev/libOpenDRIVE).
-
-## What it ignores
-
-Everything else in the file, silently, including `<geoReference>`, and
-signal boards and semantics. Three omissions change the road you get back, not only
-the detail around it:
-
-- `<shape>`, the other lateralProfile child, so a crowned or cambered
-  cross-section imports flat across its width.
-- A lane's `<border>`, as opposed to an object's. A lane whose extent comes
-  from a border rather than a width element has nothing to sample, so the
-  importer drops it.
-- `<center>`, so lane 0 never becomes a `Lane`.
-
-## Coordinate frame
-
-Baked geometry is OpenDRIVE's own frame: right-handed, Z-up, metres, with the
-reference line in the X-Y plane and elevation along +Z. A point imports
-unchanged, so a coordinate you read out of the `.xodr` is the coordinate you
-get back. An OpenDRIVE left turn curves toward +Y, and positive lane offset `t`
-is to the left of the heading.
-
-Travel direction follows right-hand traffic: negative-id lanes run with `+s`,
-positive-id lanes against it.
-
-## Untrusted input
-
-A road the importer cannot interpret is skipped, not fatal. Losing a city map
-to one junk road is the worse failure. `load_str` still errors if the document
-yields no lanes at all. The parser rejects non-finite attribute values as it
-reads them. Rust's float parser accepts `NaN` and turns `1e400` into
-infinity, and one such value poisons every point derived from it.
-
-## Visualization
-
-The crate doesn't render anything. [`viewer/`](viewer/README.md) has a
-three.js page that draws a baked map with its objects, signals, tunnels,
-bridges and OpenCRG surfaces. Hover anything to read what the crate knows
-about it.
+The crate draws nothing. [`viewer/`](viewer/README.md) has a three.js page
+that draws a baked map. Hover a lane, object or signal to read what the crate
+knows about it.
 
 ```sh
 cargo run --example viewer_export --features serde -- tests/data/*.xodr
@@ -203,78 +54,18 @@ Then open <http://localhost:8000> and pick a map from the `map` list.
 
 ![A traffic island's details in the viewer](viewer/objects.png)
 
-It draws CRG heights as a heat map over the road. Here are ASAM's scanned
-cobbles from `belgian_block.crg`, which `examples/crg_data.sh` downloads:
+## More
 
-![Scanned cobbles from ASAM's belgian_block.crg](viewer/crg-cobbles.png)
+- [docs/design.md](docs/design.md): the coordinate frame, `Point` and
+  `Vector`, mesh buffers, the `serde` feature, bad input, and timings. Lane
+  lookups take about 0.4 us on CARLA's Town07.
+- [docs/support.md](docs/support.md): what the importer does with each
+  OpenDRIVE element.
+- [CHANGELOG.md](CHANGELOG.md)
 
-`surface_mesh()` returns plain position, normal, and index buffers with no
-engine types in them, and a `LaneSpan` per lane saying which slice of those
-buffers it owns. Buffers plus spans are enough to pick the lane under a
-cursor, or give one lane its own material without re-tessellating. The viewer
-uses the same spans to resolve a raycast hit to a lane.
-
-`object_mesh()` does the same for objects: every box, cylinder, outline and
-sweep tessellated into one mesh of outward-facing faces, with an `ObjectSpan`
-per object.
-
-The optional `serde` feature serializes the network and its mesh. The example
-at `examples/viewer_export.rs` uses it to bake maps straight to the JSON the
-viewer reads. You can also use it to cache an import. A `RoadNetwork`
-serializes its lanes, objects, structures, signals, road marks and CRG
-records, and
-rebuilds its index when deserialized, so the result behaves like a freshly
-imported map.
-
-```toml
-libopendrive = { version = "0.2", features = ["serde"] }
-```
-
-## Coordinate types
-
-A position is a `Point` and a direction is a `Vector`. They are separate types
-with the arithmetic that relates them, so `point - point` is a `Vector`,
-`point + vector` is a `Point`, and adding two positions does not compile.
-Neither does `nearest_lane(sample.up)`, which passes a direction where a
-position belongs. With one three-float type for both, it would compile.
-
-Both are `#[repr(C)]` structs of three public `f32` fields, so handing one to
-another math library is one call:
-
-```rust
-let v = glam::Vec3::from(point.to_array());
-```
-
-The required dependencies are `roxmltree`, `thiserror` and `opencrg`, which
-has none of its own. Nothing here constrains which math or engine crate you
-use, or its version.
-
-## Performance
-
-Lane and surface lookups are answered off a ground-plane index, so their cost
-tracks local road density rather than map size. On CARLA's Town07 (234 roads,
-947 lanes, 673 of them driving):
-
-| | per call |
-| --- | --- |
-| `nearest_lane` / `sample_near` | ~0.4 us |
-| `route` (across the map) | ~29 us |
-| `MeshSampler::height_at` | ~0.2 us |
-
-`RoadSurface::sample` on a CRG takes ~0.3 us with a warm `SurfaceHint` and
-~0.6 us without one, measured on `tests/data/crg.xodr`.
-
-Import is ~15 ms for that map.
-
-`cargo bench` reproduces these. `tests/budgets.rs` guards them in CI by racing
-each indexed lookup against the scan it replaced. Racing needs no fixed
-per-machine threshold, unlike timing a call directly.
-
-## Testing
-
-Map fixtures, tests, and benchmarks are excluded from the published crate, so
-run them from a git checkout. See `tests/data/README.md` for fixture
-provenance.
+The published crate leaves out the map fixtures, tests and benchmarks, so run
+them from a git checkout. `tests/data/README.md` says where each fixture comes
+from.
 
 MSRV is 1.85.
 
