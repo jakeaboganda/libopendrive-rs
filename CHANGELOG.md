@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1 - 2026-09-27
+
+### Docs
+
+- The README is shorter. The element-by-element OpenDRIVE support moved to
+  `docs/support.md`, and the coordinate frame, point types, meshes, `serde`,
+  bad input and timings moved to `docs/design.md`.
+- The `serde` snippet asks for version 0.3, not 0.2.
+- The list of ignored elements no longer says signals are ignored.
+
 ## 0.3.0 - 2026-09-27
 
 ### Lane heights
