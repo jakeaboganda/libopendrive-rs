@@ -82,7 +82,7 @@ pub enum ImportError {
 /// [`Lane`] stays format-neutral. Obtain it from [`load_str_with_provenance`]
 /// or [`load_file_with_provenance`], and look a lane up by its [`LaneId`]
 /// rather than by position.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LaneProvenance {
     /// The baked lane this record describes.
@@ -95,6 +95,29 @@ pub struct LaneProvenance {
     /// The original OpenDRIVE `<lane id>` (signed; negative right of the
     /// reference line, positive left).
     pub od_id: i32,
+    /// The lane's height off the road at each vertex of its centerline,
+    /// parallel to its [`Lane::center`] points, from its `<height>`s. Empty
+    /// for a lane level with the road all along. The baked lane already
+    /// stands at these heights.
+    ///
+    /// The spec holds each `<height>` until the next. These go straight from
+    /// one to the next, as libOpenDRIVE and esmini read them, and hold the
+    /// first before it and the last after it. A `<height>` missing `sOffset`,
+    /// `inner` or `outer` reads it as 0, and a negative `sOffset` as 0.
+    pub heights: Vec<LaneHeight>,
+}
+
+/// How far a lane's surface stands off the road at one station, from its
+/// `<height>`s: along the road's normal, at the lane's inner and outer
+/// border, in metres. The spec gives only these two. The lane goes straight
+/// across from one to the other, as libOpenDRIVE and esmini read it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct LaneHeight {
+    /// At the border nearer the reference line.
+    pub inner: f32,
+    /// At the border further from it.
+    pub outer: f32,
 }
 
 /// The OpenDRIVE identity of one baked object: which road and `<object>` it
@@ -362,6 +385,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
                 road_id: m.road.clone(),
                 section: m.section,
                 od_id: m.od_id,
+                heights: m.heights.clone(),
             })
             .collect(),
         objects: objects.provenance,
@@ -610,6 +634,61 @@ struct LaneDef {
     succ_link: Option<i32>,
     /// The road marks on its outer border.
     marks: Vec<MarkDef>,
+    /// Its `<height>`s, in order along it.
+    heights: Vec<HeightDef>,
+}
+
+/// A lane's `<height>`: how far its surface stands off the road, along the
+/// road's normal, at its inner and outer border, from `s_offset` metres into
+/// its lane section.
+struct HeightDef {
+    s_offset: f64,
+    inner: f64,
+    outer: f64,
+}
+
+/// A lane's `<height>`s, in order along it.
+///
+/// The spec requires `sOffset`, `inner` and `outer`, says `sOffset` is at
+/// least 0, and says the entries come in ascending `sOffset`. A missing one
+/// is 0, as libOpenDRIVE reads it. A negative `sOffset` is 0, and entries out
+/// of order are sorted rather than dropped.
+fn parse_heights(lane: roxmltree::Node) -> Vec<HeightDef> {
+    let mut heights: Vec<HeightDef> = lane
+        .children()
+        .filter(|n| n.has_tag_name("height"))
+        .map(|h| HeightDef {
+            s_offset: attr_f64(h, "sOffset").unwrap_or(0.0).max(0.0),
+            inner: attr_f64(h, "inner").unwrap_or(0.0),
+            outer: attr_f64(h, "outer").unwrap_or(0.0),
+        })
+        .collect();
+    heights.sort_by(|a, b| a.s_offset.total_cmp(&b.s_offset));
+    heights
+}
+
+/// A lane's height off the road at its inner and outer border, `s_lane`
+/// metres into its section. 0 for a lane with no `<height>`.
+///
+/// The spec's rule for lane geometry holds a height until the next one. The
+/// crate goes straight from one to the next instead, as libOpenDRIVE and
+/// esmini read them, and holds the last after it. Before the first, the
+/// first holds. The spec gives no height there, and libOpenDRIVE carries the
+/// first ramp on backwards.
+fn height_at(lane: &LaneDef, s_lane: f64) -> (f64, f64) {
+    let heights = &lane.heights;
+    let next = heights.partition_point(|h| h.s_offset <= s_lane + 1e-9);
+    match (next.checked_sub(1).map(|i| &heights[i]), heights.get(next)) {
+        (None, None) => (0.0, 0.0),
+        (Some(h), None) | (None, Some(h)) => (h.inner, h.outer),
+        (Some(a), Some(b)) => {
+            let f = (s_lane - a.s_offset) / (b.s_offset - a.s_offset);
+            (
+                a.inner + (b.inner - a.inner) * f,
+                a.outer + (b.outer - a.outer) * f,
+            )
+        }
+    }
 }
 
 /// A `<laneSection>`'s lanes as the file gives them. Only lanes with a
@@ -647,6 +726,7 @@ impl SectionDef {
                     pred_link,
                     succ_link,
                     marks: road_marks::parse(lane),
+                    heights: parse_heights(lane),
                 };
                 if id > 0 {
                     left.push(def);
@@ -1191,20 +1271,18 @@ fn emit_section(
 ) -> Vec<f64> {
     let (left, right) = (&def.left, &def.right);
     let bends = section_bends(geoms, lane_offsets, [left, right], s_start, s_end);
-    let sample_s = sample_positions(s_start, s_end, &bends);
-    // The bank profile is a road-level property (the cross-section's roll about
-    // the reference line), identical for every lane in the section, sampled
-    // parallel to `sample_s`. Collapse an all-flat profile to empty, the
-    // "flat lane" sentinel, so unbanked roads stay byte-identical.
-    let bank: Vec<f32> = sample_s
+    let knots: Vec<f64> = left
         .iter()
-        .map(|&s| active(superelevations, s).map(|e| e.eval(s)).unwrap_or(0.0) as f32)
+        .chain(right)
+        .flat_map(|l| &l.heights)
+        .map(|h| s_start + h.s_offset)
         .collect();
-    let bank = if bank.iter().all(|b| b.abs() < 1e-9) {
-        Vec::new()
-    } else {
-        bank
-    };
+    let sample_s = sample_positions(s_start, s_end, &bends, &knots);
+    let road_bank: Vec<f64> = sample_s
+        .iter()
+        .map(|&s| active(superelevations, s).map(|e| e.eval(s)).unwrap_or(0.0))
+        .collect();
+    let level_bank = unless_flat(road_bank.iter().map(|&b| b as f32).collect());
     for side in [left, right] {
         // Left lanes (positive id) offset toward +t and travel against +s;
         // right lanes (negative id) offset toward -t and travel with +s.
@@ -1257,6 +1335,7 @@ fn emit_section(
                 direction,
                 succ_link: lane.succ_link,
                 pred_link: lane.pred_link,
+                heights: lane_heights(lane, s_start, &sample_s),
             });
             emitted.push((id, out.len(), kind));
             let (width, widths) = width_profile(lane, s_start, &sample_s);
@@ -1267,9 +1346,11 @@ fn emit_section(
                 center,
                 width,
                 widths,
-                // Road-level roll, shared across the section's lanes; parallel to
-                // the sampled centerline. Empty when the road is flat.
-                bank: bank.clone(),
+                bank: if lane.heights.is_empty() {
+                    level_bank.clone()
+                } else {
+                    lane_bank(lane, sign, s_start, &sample_s, &road_bank)
+                },
                 // Filled by links::resolve once all lanes are registered.
                 successors: Vec::new(),
                 predecessors: Vec::new(),
@@ -1318,6 +1399,71 @@ fn road_axes(
     [along, cross(up, along), up]
 }
 
+/// A lane's bank at each of `sample_s`, parallel to them: the road's
+/// superelevation `road_bank`, plus the slope of the lane's heights across
+/// it, signed to raise its outer border when that is the higher. `sign` is
+/// 1.0 for a left lane and -1.0 for a right one. Empty for a lane flat
+/// across at every station, so a level road bakes as it did before lane
+/// heights.
+///
+/// The tessellator turns the lane's cross axis by this angle, so a lane half
+/// `w / 2` wide reaches `w / 2 * sin(atan(d / w))` up rather than `d / 2`,
+/// and `w / 2 * (1 - cos(atan(d / w)))` less far across. For a 0.1 m rise
+/// over a 2 m lane that is under 0.1 mm up and 1.3 mm across. It turns
+/// about the level tangent, so on a grade `g` the edges also sit `d / 2 * g`
+/// along the road from where the road's normal puts them.
+fn lane_bank(
+    lane: &LaneDef,
+    sign: f64,
+    s_start: f64,
+    sample_s: &[f64],
+    road_bank: &[f64],
+) -> Vec<f32> {
+    unless_flat(
+        sample_s
+            .iter()
+            .zip(road_bank)
+            .map(|(&s, &phi)| {
+                let (inner, outer) = height_at(lane, s - s_start);
+                let slope = (outer - inner).atan2(width_at(lane, s - s_start));
+                (phi + sign * slope) as f32
+            })
+            .collect(),
+    )
+}
+
+/// `bank`, or empty, the flat lane's profile, if it is 0 all along.
+fn unless_flat(bank: Vec<f32>) -> Vec<f32> {
+    if bank.iter().all(|b| b.abs() < 1e-9) {
+        Vec::new()
+    } else {
+        bank
+    }
+}
+
+/// A lane's heights at each of `sample_s`, parallel to them. Empty for a
+/// lane level with the road at every station.
+fn lane_heights(lane: &LaneDef, s_start: f64, sample_s: &[f64]) -> Vec<LaneHeight> {
+    if lane.heights.is_empty() {
+        return Vec::new();
+    }
+    let heights: Vec<LaneHeight> = sample_s
+        .iter()
+        .map(|&s| {
+            let (inner, outer) = height_at(lane, s - s_start);
+            LaneHeight {
+                inner: inner as f32,
+                outer: outer as f32,
+            }
+        })
+        .collect();
+    if heights.iter().all(|h| h.inner == 0.0 && h.outer == 0.0) {
+        Vec::new()
+    } else {
+        heights
+    }
+}
+
 fn cross([a, b, c]: [f64; 3], [x, y, z]: [f64; 3]) -> [f64; 3] {
     [b * z - c * y, c * x - a * z, a * y - b * x]
 }
@@ -1328,7 +1474,9 @@ fn unit(v: [f64; 3]) -> [f64; 3] {
 }
 
 /// Sample one lane's centerline to points in our coordinate frame, with the
-/// reference line's analytical heading at each sample.
+/// reference line's analytical heading at each sample. A raised lane's
+/// centerline stands off the road along its normal by the lane's height at
+/// its middle, halfway between its inner and outer height.
 ///
 /// The headings are the exact `hdg` of the underlying geometry record, not the
 /// chords between the points, so two sections sampled either side of the same
@@ -1355,7 +1503,14 @@ fn sample_lane(
             let base = active(lane_offsets, s).map(|o| o.eval(s)).unwrap_or(0.0);
             let inner_w: f64 = inner.iter().map(|l| width_at(l, s_lane)).sum();
             let t = base + sign * (inner_w + width_at(lane, s_lane) / 2.0);
-            let (point, hdg) = surface_at(geoms, elevations, superelevations, s, t);
+            let (inner, outer) = height_at(lane, s_lane);
+            let (point, hdg) = raised(
+                geoms,
+                elevations,
+                superelevations,
+                (s, t),
+                (inner + outer) / 2.0,
+            );
             // A lane offset laterally by a constant `t` is parallel to the
             // reference line, so it shares its heading. Where `t` varies with
             // `s` the lane's own tangent swings off it slightly; the reference
@@ -1396,6 +1551,26 @@ fn surface_at(
         (elev + t * sin_phi) as f32,
     );
     (point, hdg)
+}
+
+/// The road surface at `(s, t)` as [`surface_at`] gives it, stood off along
+/// the road's normal there by `height`.
+fn raised(
+    geoms: &[GeomRec],
+    elevations: &[Cubic],
+    superelevations: &[Cubic],
+    (s, t): (f64, f64),
+    height: f64,
+) -> (Point, f64) {
+    let (point, hdg) = surface_at(geoms, elevations, superelevations, s, t);
+    if height == 0.0 {
+        return (point, hdg);
+    }
+    let up = road_axes(geoms, elevations, superelevations, s)[2];
+    (
+        point + Vector::from_array(up.map(|c| (c * height) as f32)),
+        hdg,
+    )
 }
 
 fn width_at(lane: &LaneDef, s_lane: f64) -> f64 {
@@ -1442,7 +1617,11 @@ fn geom_at(geoms: &[GeomRec], s: f64) -> &GeomRec {
 /// metre, rather than jumping, because the mesh welds a sample much closer
 /// than the one before it away as a stub. So only the road near a tight
 /// curve is sampled finely, not the whole section around it.
-fn sample_positions(start: f64, end: f64, bends: &[f64]) -> Vec<f64> {
+///
+/// Every one of `knots` inside the stretch is a station too, such as where a
+/// lane's heights change pace. A step that would leave less than a step to
+/// the next knot goes halfway there instead, so no knot lands as a stub.
+fn sample_positions(start: f64, end: f64, bends: &[f64], knots: &[f64]) -> Vec<f64> {
     let n = bends.len().saturating_sub(1).max(1);
     let h = (end - start) / n as f64;
     // The step wanted at each probe, graded so it changes no faster than
@@ -1479,7 +1658,19 @@ fn sample_positions(start: f64, end: f64, bends: &[f64]) -> Vec<f64> {
         let inside = want[probe(s).ceil() as usize..=probe(s + reach).floor() as usize]
             .iter()
             .copied();
-        s += inside.fold(reach.min(want_at(s + reach)), f64::min);
+        let step = inside.fold(reach.min(want_at(s + reach)), f64::min);
+        let knot = knots
+            .iter()
+            .map(|k| k - s)
+            .filter(|&d| d > 1e-6 && s + d < end - 1e-6)
+            .fold(f64::INFINITY, f64::min);
+        s += if knot <= step {
+            knot
+        } else if knot < 2.0 * step {
+            knot / 2.0
+        } else {
+            step
+        };
     }
     ss.push(end);
     ss
@@ -4378,6 +4569,7 @@ mod tests {
             pred_link: None,
             succ_link: None,
             marks: Vec::new(),
+            heights: Vec::new(),
         };
         let road = |geom| {
             [GeomRec {
@@ -4406,9 +4598,12 @@ mod tests {
 
         // Samples every 2 m with no bend, closer to keep to SAMPLE_TURN, and
         // no closer than SAMPLE_MIN_STEP.
-        assert_eq!(sample_positions(0.0, 6.0, &[0.0; 25]), [0.0, 2.0, 4.0, 6.0]);
-        assert_eq!(sample_positions(0.0, 1.0, &[0.1; 5]), [0.0, 0.5, 1.0]);
-        assert_eq!(sample_positions(0.0, 1.0, &[10.0; 5]).len(), 5);
+        assert_eq!(
+            sample_positions(0.0, 6.0, &[0.0; 25], &[]),
+            [0.0, 2.0, 4.0, 6.0]
+        );
+        assert_eq!(sample_positions(0.0, 1.0, &[0.1; 5], &[]), [0.0, 0.5, 1.0]);
+        assert_eq!(sample_positions(0.0, 1.0, &[10.0; 5], &[]).len(), 5);
     }
 
     #[test]
@@ -4416,7 +4611,7 @@ mod tests {
         // 100 m of straight with one sharp probe in the middle.
         let mut bends = vec![0.0; 101];
         bends[50] = 10.0;
-        let ss = sample_positions(0.0, 100.0, &bends);
+        let ss = sample_positions(0.0, 100.0, &bends, &[]);
         let steps: Vec<f64> = ss.windows(2).map(|w| w[1] - w[0]).collect();
         // Fine at the spot, coarse well away from it.
         let at = |s: f64| steps[ss.iter().rposition(|&x| x <= s).unwrap()];
@@ -4615,5 +4810,153 @@ mod tests {
             frame(half, half, half).point([0.0, 1.0, 0.0]),
             [1.0, 3.0, 3.0],
         );
+    }
+
+    /// A straight 20 m road along +X, with a 3 m driving lane -1 and a 2 m
+    /// sidewalk -2 carrying `heights`, and `center` inside the center lane.
+    fn raised_road(heights: &str, center: &str) -> String {
+        format!(
+            r#"<OpenDRIVE><road id="1" length="20" junction="-1">
+  <planView><geometry s="0" x="0" y="0" hdg="0" length="20"><line/></geometry></planView>
+  <lanes><laneSection s="0">
+    <center><lane id="0" type="none">{center}</lane></center>
+    <right>
+      <lane id="-1" type="driving"><width sOffset="0" a="3" b="0" c="0" d="0"/></lane>
+      <lane id="-2" type="sidewalk"><width sOffset="0" a="2" b="0" c="0" d="0"/>{heights}</lane>
+    </right>
+  </laneSection></lanes>
+</road></OpenDRIVE>"#
+        )
+    }
+
+    /// The height of the sidewalk's centerline at the station at `x`.
+    fn sidewalk_z(xml: &str, x: f32) -> f32 {
+        let net = load_str(xml).unwrap();
+        let sidewalk = net
+            .lanes()
+            .iter()
+            .find(|l| l.kind == LaneType::Sidewalk)
+            .unwrap();
+        sidewalk
+            .center
+            .points()
+            .iter()
+            .find(|p| (p.x - x).abs() < 1e-4)
+            .unwrap_or_else(|| panic!("no station at {x}"))
+            .z
+    }
+
+    fn assert_z(got: f32, want: f32) {
+        assert!((got - want).abs() < 1e-6, "z {got}, want {want}");
+    }
+
+    /// At 4 m the kerb is 0.08 m, and the middle halfway to 0.2 m. Read as
+    /// steps, it would be 0.1 m until 10 m.
+    #[test]
+    fn heights_go_straight_from_one_to_the_next_rather_than_step() {
+        let xml = raised_road(
+            r#"<height sOffset="0" inner="0" outer="0.2"/>
+               <height sOffset="10" inner="0.2" outer="0.2"/>"#,
+            "",
+        );
+        assert_z(sidewalk_z(&xml, 4.0), 0.14);
+        assert_z(sidewalk_z(&xml, 10.0), 0.2);
+    }
+
+    #[test]
+    fn the_last_height_holds_after_it() {
+        let xml = raised_road(
+            r#"<height sOffset="0" inner="0" outer="0"/>
+               <height sOffset="10" inner="0.2" outer="0.2"/>"#,
+            "",
+        );
+        assert_z(sidewalk_z(&xml, 16.0), 0.2);
+    }
+
+    /// libOpenDRIVE would carry the ramp on back to 0.05 m at 4 m.
+    #[test]
+    fn the_first_height_holds_before_it() {
+        let xml = raised_road(
+            r#"<height sOffset="6" inner="0.1" outer="0.1"/>
+               <height sOffset="10" inner="0.2" outer="0.2"/>"#,
+            "",
+        );
+        assert_z(sidewalk_z(&xml, 4.0), 0.1);
+    }
+
+    #[test]
+    fn a_height_missing_an_attribute_reads_it_as_0() {
+        let no_inner = raised_road(r#"<height sOffset="0" outer="0.2"/>"#, "");
+        assert_z(sidewalk_z(&no_inner, 4.0), 0.1);
+        let no_outer = raised_road(r#"<height sOffset="0" inner="0.2"/>"#, "");
+        assert_z(sidewalk_z(&no_outer, 4.0), 0.1);
+        let no_s_offset = raised_road(
+            r#"<height inner="0.1" outer="0.1"/>
+               <height sOffset="10" inner="0.3" outer="0.3"/>"#,
+            "",
+        );
+        assert_z(sidewalk_z(&no_s_offset, 0.0), 0.1);
+        assert_z(sidewalk_z(&no_s_offset, 4.0), 0.18);
+    }
+
+    /// From -5 m the ramp would already be at 0.1667 m by 0 m.
+    #[test]
+    fn a_negative_height_s_offset_reads_as_0() {
+        let xml = raised_road(
+            r#"<height sOffset="-5" inner="0.1" outer="0.1"/>
+               <height sOffset="10" inner="0.3" outer="0.3"/>"#,
+            "",
+        );
+        assert_z(sidewalk_z(&xml, 0.0), 0.1);
+        assert_z(sidewalk_z(&xml, 4.0), 0.18);
+    }
+
+    #[test]
+    fn heights_out_of_order_are_sorted() {
+        let xml = raised_road(
+            r#"<height sOffset="10" inner="0.2" outer="0.2"/>
+               <height sOffset="0" inner="0" outer="0"/>"#,
+            "",
+        );
+        assert_z(sidewalk_z(&xml, 4.0), 0.08);
+        assert_z(sidewalk_z(&xml, 16.0), 0.2);
+    }
+
+    #[test]
+    fn a_second_height_at_the_same_s_offset_takes_over_there() {
+        let xml = raised_road(
+            r#"<height sOffset="0" inner="0.1" outer="0.1"/>
+               <height sOffset="10" inner="0.1" outer="0.1"/>
+               <height sOffset="10" inner="0.3" outer="0.3"/>"#,
+            "",
+        );
+        assert_z(sidewalk_z(&xml, 8.0), 0.1);
+        assert_z(sidewalk_z(&xml, 10.0), 0.3);
+        assert_z(sidewalk_z(&xml, 16.0), 0.3);
+    }
+
+    #[test]
+    fn heights_on_the_center_lane_are_ignored() {
+        let xml = raised_road("", r#"<height sOffset="0" inner="0.5" outer="0.5"/>"#);
+        let net = load_str(&xml).unwrap();
+        for lane in net.lanes() {
+            assert!(lane.bank.is_empty());
+            assert!(lane.center.points().iter().all(|p| p.z == 0.0));
+        }
+    }
+
+    #[test]
+    fn a_lane_without_heights_bakes_level_with_the_road() {
+        let (net, prov) = load_str_with_provenance(&raised_road("", "")).unwrap();
+        assert!(net.lanes().iter().all(|l| l.bank.is_empty()));
+        assert!(prov.lanes.iter().all(|p| p.heights.is_empty()));
+    }
+
+    #[test]
+    fn a_knot_becomes_a_station_and_never_a_stub() {
+        let ss = sample_positions(0.0, 10.0, &[0.0; 11], &[2.1, 5.0, 10.0, 12.0]);
+        assert_eq!(ss, [0.0, 1.05, 2.1, 3.55, 5.0, 7.0, 9.0, 10.0]);
+        let ss = sample_positions(0.0, 10.0, &[0.0; 11], &[4.0]);
+        assert_eq!(ss, [0.0, 2.0, 4.0, 6.0, 8.0, 10.0]);
     }
 }

@@ -56,6 +56,7 @@ pub(crate) struct LaneMeta {
     pub direction: Direction,
     pub succ_link: Option<i32>,
     pub pred_link: Option<i32>,
+    pub heights: Vec<super::LaneHeight>,
 }
 
 /// Accumulated during parsing; consumed by [`resolve`].

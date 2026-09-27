@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Lane heights
+
+- A lane's `<height>`s raise it off the road, along the road's normal. Its
+  centerline rises by the height halfway across it, and `Lane::bank` adds
+  the slope from its inner border to its outer one. So the surface mesh and
+  `Lane::sample_at` see a raised sidewalk. The step up to it stays open, as
+  libOpenDRIVE and esmini leave it.
+- `LaneProvenance::heights` gives a lane's `LaneHeight`, inner and outer,
+  at each centerline vertex.
+- A lane section has a station wherever a lane's heights change pace, so a
+  1 m kerb ramp bakes 1 m long.
+- The mesh tilts a raised lane rather than moving each edge to its height.
+  For a 0.1 m rise over 2 m, an edge is under 0.1 mm off its height and
+  1.3 mm inside its border. A quad on a kerb ramp is twisted, and its
+  triangles cut the corner by up to a quarter of the rise.
+- Where the crate departs from the spec:
+  - Heights go straight from one entry to the next, as libOpenDRIVE and
+    esmini read them, and the last holds after it. The spec's rule for
+    lane geometry holds each until the next.
+  - Heights go straight across the lane from `inner` to `outer`, as both
+    readers do. The spec gives only the two borders.
+  - The first entry holds before it. The spec gives no height there.
+  - A missing `sOffset`, `inner` or `outer` is 0, as libOpenDRIVE reads
+    it. The spec requires all three. A negative `sOffset` is 0.
+  - Entries out of order are sorted rather than dropped.
+  - Heights on the center lane are ignored. The spec forbids them.
+  - An `attached` CRG over a raised lane answers at road level. The spec
+    measures a height from the road including its surface.
+
 ### Road marks
 
 - Each `<roadMark>` imports as a `RoadMark` on `RoadNetwork::road_marks`,
@@ -116,6 +145,8 @@
   `Provenance` literal needs them or `..Default::default()`. The `serde`
   form of `RoadNetwork` has new `signals`, `controllers` and `road_marks`
   keys, so JSON written before does not load.
+- `LaneProvenance` has a new `heights` field, so a literal needs it. It no
+  longer derives `Eq`, since the heights are `f32`s.
 
 ## 0.2.1 - 2026-09-26
 

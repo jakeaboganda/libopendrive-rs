@@ -56,6 +56,11 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   uses.
 - Lane widths that vary along a lane, so a gore area that opens out of a
   point is drawn as the wedge it is.
+- Lane heights, so a sidewalk stands above the road beside it. A lane's
+  `<height>`s raise its centerline and tilt its surface, so the mesh and
+  `Lane::sample_at` see the kerb. The step up to it is left open, as
+  libOpenDRIVE and esmini leave it. `load_*_with_provenance` gives the
+  heights at each centerline vertex.
 - Road/lane `<link>`s and `<junction>`s, resolved into a drive-direction lane
   graph.
 - `<object>`s, from `RoadNetwork::objects`, in world coordinates on the road
@@ -152,13 +157,11 @@ Geometry is cross-checked against the reference C++
 ## What it ignores
 
 Everything else in the file, silently, including `<geoReference>`, and
-signal boards and semantics. Four omissions change the road you get back, not only
+signal boards and semantics. Three omissions change the road you get back, not only
 the detail around it:
 
 - `<shape>`, the other lateralProfile child, so a crowned or cambered
   cross-section imports flat across its width.
-- A lane's `<height>`, so a raised sidewalk or kerb imports level with the
-  road beside it.
 - A lane's `<border>`, as opposed to an object's. A lane whose extent comes
   from a border rather than a width element has nothing to sample, so the
   importer drops it.

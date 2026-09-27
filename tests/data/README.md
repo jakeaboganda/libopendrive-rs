@@ -54,4 +54,12 @@ sections, a road whose marks give `<type><line>`s, and one with
 
     uv run --with scenariogeneration==0.16.6 tests/data/road_marks.py
 
+`lane_heights.xodr` comes from `lane_heights.py` the same way. It has
+raised sidewalks, one flat and one with a kerb ramp, on a flat road, a
+banked and climbing road, a road with two lane sections, and an arc. The
+flat road also has poles, a sign and road marks on and beside them.
+Regenerate with
+
+    uv run --with scenariogeneration==0.16.6 tests/data/lane_heights.py
+
 [scenariogeneration]: https://github.com/pyoscx/scenariogeneration

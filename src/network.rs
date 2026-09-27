@@ -205,16 +205,18 @@ pub struct Lane {
     /// where it begins and 5 m wide further along, and a single width put it
     /// at neither.
     pub widths: Vec<f32>,
-    /// Per-centerline-vertex superelevation angle (radians, signed), parallel to
-    /// `center.points()`. Positive raises the **+offset** edge, the left-hand
+    /// Per-centerline-vertex cross-slope angle (radians, signed), parallel to
+    /// `center.points()`: the road's superelevation, plus the slope of an
+    /// OpenDRIVE lane's `<height>`s from its inner border to its outer one.
+    /// Positive raises the **+offset** edge, the left-hand
     /// normal of the centerline's *stored* tangent (its geometry direction), which
     /// for a `Backward` lane is opposite its travel direction. Consumers deriving
     /// a surface normal must roll about `center.tangents()`, not travel, or a
     /// backward lane's normal disagrees with its own (correct) baked heights.
     /// Empty means a flat lane (bank ≡ 0); any non-empty profile must have exactly
     /// `center.points().len()` entries. The centerline points already carry the
-    /// banked *height* (reference-line pivot); this angle is the surface tilt
-    /// that the mesh cant and [`Lane::sample_at`] read.
+    /// banked *height* (reference-line pivot) and any lane height; this angle
+    /// is the surface tilt that the mesh cant and [`Lane::sample_at`] read.
     pub bank: Vec<f32>,
     /// Lanes reachable by driving off this lane's exit (travel-direction) end.
     /// May fan out (a junction) or be empty (a dead end / unlinked lane). Built

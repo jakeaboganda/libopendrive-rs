@@ -61,6 +61,7 @@
 //! | `<left>`, `<center>`, `<right>` | none |
 //! | `<lane>` | `id`, `type` |
 //! | `<lane><width>` | `sOffset`, `a`, `b`, `c`, `d` |
+//! | `<lane><height>` | `sOffset`, `inner`, `outer` |
 //! | `<lane><roadMark>` | `sOffset`, `type`, `weight`, `color`, `width`, `height`, `laneChange` |
 //! | `<roadMark><type>` | `width` |
 //! | `<type><line>` | `length`, `space`, `tOffset`, `sOffset`, `rule`, `width`, `color` |
@@ -246,6 +247,56 @@
 //! baked network has no junctions, so each entry is in the
 //! [`ControllerProvenance`] of the controller it names.
 //!
+//! # Lane heights
+//!
+//! A lane's `<height>`s raise its surface off the road, as a sidewalk or a
+//! kerb stands above the lanes beside it. Each gives the height at the
+//! lane's inner and outer border, along the road's normal, from its
+//! `sOffset` in the lane section. The baked [`Lane`] stands at that height.
+//! Its centerline rises by the height halfway across it, and
+//! [`Lane::bank`] adds the slope from its inner border to its outer one. So
+//! the surface mesh and [`Lane::sample_at`] see the raised surface.
+//! [`LaneProvenance::heights`] gives the heights at each centerline vertex.
+//! Where a lane's heights change pace, its lane section has a station, so a
+//! ramp 1 m long bakes 1 m long.
+//!
+//! The tessellator tilts a raised lane's cross axis by its slope, rather
+//! than moving each edge to its own height. On a 0.1 m rise across a 2 m
+//! lane, that leaves the edges under 0.1 mm off their heights and 1.3 mm
+//! inside their borders. On a grade they also sit 0.05 m times the grade
+//! along the road from where the road's normal puts them, 1.5 mm at 3 %.
+//! Where a lane's kerb and outer edge change height at different paces, as
+//! on a ramp, each quad of its mesh is twisted, and its two triangles cut
+//! the corner by up to a quarter of the rise across that quad. Halfway up
+//! a 0.1 m kerb ramp the mesh is 25 mm off. libOpenDRIVE also meshes a lane
+//! as quads between its borders.
+//!
+//! The step between a raised lane and the lane beside it stays open. The
+//! spec defines no kerb face, and libOpenDRIVE and esmini draw none.
+//!
+//! The crate departs from the OpenDRIVE 1.9 spec here:
+//!
+//! - The spec's rule for lane geometry holds a height until the next one.
+//!   The crate goes straight from each height to the next, as libOpenDRIVE
+//!   and esmini do, and holds the last one after it. esmini's maps are
+//!   written for this reading. Read as steps, a sidewalk giving 0.02 m at
+//!   0 m and 2 m and 0.12 m at 3 m would jump at 3 m rather than ramp up
+//!   from 2 m.
+//! - The spec gives only the heights at a lane's two borders. The crate goes
+//!   straight across from one to the other, as both readers do.
+//! - The spec gives no height before a lane's first `<height>`. The first
+//!   one holds there. libOpenDRIVE carries the first ramp on backwards.
+//! - The spec requires `sOffset`, `inner` and `outer`. A missing one is 0,
+//!   as libOpenDRIVE reads it. A negative `sOffset` is 0, as the crate reads
+//!   a road mark's.
+//! - The spec says a lane's heights come in ascending `sOffset`. Ones out of
+//!   order are sorted rather than dropped.
+//! - The spec forbids heights on the center lane. The crate never bakes the
+//!   center lane, so it ignores them.
+//! - The spec measures a height from the road including its surface. An
+//!   `attached` CRG adds its grid to the road without the lane's height, so
+//!   a CRG laid over a raised lane answers at road level.
+//!
 //! # Road marks
 //!
 //! Each `<roadMark>` bakes to a [`RoadMark`] in [`RoadNetwork::road_marks`].
@@ -365,13 +416,11 @@
 //! `<semantics>`. Of road marks, it ignores `material` and a `<type>`'s
 //! `name`.
 //!
-//! Four omissions change the road you get back, rather than only dropping
+//! Three omissions change the road you get back, rather than only dropping
 //! detail around it:
 //!
 //! - `<shape>`, the other lateralProfile child, so a crowned or cambered
 //!   cross-section imports flat across its width.
-//! - A lane's `<height>`, so a raised sidewalk or kerb imports level with
-//!   the road beside it.
 //! - A lane's `<border>`, as opposed to an object's. A lane whose extent
 //!   comes from a border rather than a width element has nothing to sample,
 //!   so the importer drops it.
@@ -457,8 +506,8 @@ pub use object_mesh::ObjectSpan;
 pub use opencrg;
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ControllerProvenance,
-    ImportError, JunctionControllerProvenance, LaneProvenance, ObjectProvenance, Orientation,
-    Provenance, RoadMarkProvenance, SignalProvenance, SignalReferenceProvenance,
+    ImportError, JunctionControllerProvenance, LaneHeight, LaneProvenance, ObjectProvenance,
+    Orientation, Provenance, RoadMarkProvenance, SignalProvenance, SignalReferenceProvenance,
     StructureProvenance,
 };
 pub use road_mark::{

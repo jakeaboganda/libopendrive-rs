@@ -1,0 +1,232 @@
+<?xml version='1.0' encoding='utf-8'?>
+<OpenDRIVE>
+    <header name="lane_heights" revMajor="1" revMinor="5" date="2026-09-27 17:22:22.157106" north="0.0" south="0.0" east="0.0" west="0.0"/>
+    <road rule="RHT" id="0" junction="-1" length="60">
+        <link/>
+        <planView>
+            <geometry s="0" x="0" y="0" hdg="0" length="60">
+                <line/>
+            </geometry>
+        </planView>
+        <elevationProfile/>
+        <lateralProfile/>
+        <lanes>
+            <laneSection s="0">
+                <left>
+                    <lane id="2" type="sidewalk" level="false">
+                        <link/>
+                        <width a="2" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                        <height inner="0.12" outer="0.12" sOffset="0"/>
+                    </lane>
+                    <lane id="1" type="driving" level="false">
+                        <link/>
+                        <width a="3.5" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                </left>
+                <center>
+                    <lane id="0" type="none" level="false">
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                </center>
+                <right>
+                    <lane id="-1" type="driving" level="false">
+                        <link/>
+                        <width a="3.5" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                    <lane id="-2" type="sidewalk" level="false">
+                        <link/>
+                        <width a="2" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                        <height inner="0.02" outer="0.12" sOffset="0"/>
+                        <height inner="0.02" outer="0.12" sOffset="20"/>
+                        <height inner="0.12" outer="0.12" sOffset="21"/>
+                    </lane>
+                </right>
+            </laneSection>
+        </lanes>
+        <objects>
+            <object id="1" s="10" t="-4.5" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" height="2" name="SlopedPole" type="pole" orientation="none" hdg="0" radius="0.05"/>
+            <object id="2" s="30" t="-4.5" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" height="2" name="RaisedPole" type="pole" orientation="none" hdg="0" radius="0.05"/>
+            <object id="3" s="30" t="4.5" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" height="2" name="LeftPole" type="pole" orientation="none" hdg="0" radius="0.05"/>
+            <object id="4" s="30" t="-1.75" subtype="None" dynamic="no" zOffset="0" pitch="0" roll="0" height="2" name="RoadPole" type="pole" orientation="none" hdg="0" radius="0.05"/>
+        </objects>
+        <signals>
+            <signal id="5" s="15" t="4.5" subtype="55" dynamic="no" zOffset="2" pitch="0" roll="0" width="0.6" height="0.6" name="Sign" type="274" orientation="-" country="DE" hOffset="0" value="50" unit="km/h"/>
+        </signals>
+    </road>
+    <road rule="RHT" id="1" junction="-1" length="60">
+        <link/>
+        <planView>
+            <geometry s="0" x="0" y="-40" hdg="0" length="60">
+                <line/>
+            </geometry>
+        </planView>
+        <elevationProfile>
+            <elevation s="0" a="0" b="0.03" c="0" d="0"/>
+        </elevationProfile>
+        <lateralProfile>
+            <superelevation s="0" a="0.05" b="0" c="0" d="0"/>
+        </lateralProfile>
+        <lanes>
+            <laneSection s="0">
+                <left>
+                    <lane id="2" type="sidewalk" level="false">
+                        <link/>
+                        <width a="2" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                        <height inner="0.12" outer="0.12" sOffset="0"/>
+                    </lane>
+                    <lane id="1" type="driving" level="false">
+                        <link/>
+                        <width a="3.5" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                </left>
+                <center>
+                    <lane id="0" type="none" level="false">
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                </center>
+                <right>
+                    <lane id="-1" type="driving" level="false">
+                        <link/>
+                        <width a="3.5" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                    <lane id="-2" type="sidewalk" level="false">
+                        <link/>
+                        <width a="2" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                        <height inner="0.02" outer="0.12" sOffset="0"/>
+                        <height inner="0.02" outer="0.12" sOffset="20"/>
+                        <height inner="0.12" outer="0.12" sOffset="21"/>
+                    </lane>
+                </right>
+            </laneSection>
+        </lanes>
+    </road>
+    <road rule="RHT" id="2" junction="-1" length="60">
+        <link/>
+        <planView>
+            <geometry s="0" x="0" y="40" hdg="0" length="60">
+                <line/>
+            </geometry>
+        </planView>
+        <elevationProfile/>
+        <lateralProfile/>
+        <lanes>
+            <laneSection s="0">
+                <left>
+                    <lane id="2" type="sidewalk" level="false">
+                        <link/>
+                        <width a="2" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                    <lane id="1" type="driving" level="false">
+                        <link/>
+                        <width a="3.5" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                </left>
+                <center>
+                    <lane id="0" type="none" level="false">
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                </center>
+                <right>
+                    <lane id="-1" type="driving" level="false">
+                        <link/>
+                        <width a="3.5" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                    <lane id="-2" type="sidewalk" level="false">
+                        <link/>
+                        <width a="2" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                </right>
+            </laneSection>
+            <laneSection s="30">
+                <left>
+                    <lane id="2" type="sidewalk" level="false">
+                        <link/>
+                        <width a="2" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                    <lane id="1" type="driving" level="false">
+                        <link/>
+                        <width a="3.5" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                </left>
+                <center>
+                    <lane id="0" type="none" level="false">
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                </center>
+                <right>
+                    <lane id="-1" type="driving" level="false">
+                        <link/>
+                        <width a="3.5" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                    <lane id="-2" type="sidewalk" level="false">
+                        <link/>
+                        <width a="2" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                        <height inner="0" outer="0.1" sOffset="5"/>
+                        <height inner="0.15" outer="0.15" sOffset="7"/>
+                    </lane>
+                </right>
+            </laneSection>
+        </lanes>
+    </road>
+    <road rule="RHT" id="3" junction="-1" length="40.0">
+        <link/>
+        <planView>
+            <geometry s="0" x="0" y="80" hdg="0" length="40.0">
+                <arc curvature="0.04"/>
+            </geometry>
+        </planView>
+        <elevationProfile/>
+        <lateralProfile/>
+        <lanes>
+            <laneSection s="0">
+                <left>
+                    <lane id="2" type="sidewalk" level="false">
+                        <link/>
+                        <width a="2" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                        <height inner="0.12" outer="0.12" sOffset="0"/>
+                    </lane>
+                    <lane id="1" type="driving" level="false">
+                        <link/>
+                        <width a="3.5" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                </left>
+                <center>
+                    <lane id="0" type="none" level="false">
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                </center>
+                <right>
+                    <lane id="-1" type="driving" level="false">
+                        <link/>
+                        <width a="3.5" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                    </lane>
+                    <lane id="-2" type="sidewalk" level="false">
+                        <link/>
+                        <width a="2" b="0" c="0" d="0" sOffset="0"/>
+                        <roadMark sOffset="0" type="solid" weight="standard" color="standard"/>
+                        <height inner="0.12" outer="0.12" sOffset="0"/>
+                    </lane>
+                </right>
+            </laneSection>
+        </lanes>
+    </road>
+</OpenDRIVE>

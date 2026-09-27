@@ -331,6 +331,34 @@ fn friction_comes_with_the_height_under_it() {
     assert_near(got.z, 2.0 + 0.03 * 20.0, 1e-3);
 }
 
+/// The spec measures a lane's height from the road including its surface.
+/// An `attached` CRG adds its grid to the road without it, so over a raised
+/// lane it answers at road level, and the mesh beyond it at the lane's.
+#[test]
+fn an_attached_crg_over_a_raised_lane_answers_at_road_level() {
+    let flat_lane = r#"a="3.5" b="0" c="0" d="0"/></lane>"#;
+    let xml = road(
+        60.0,
+        LINE,
+        GRADE,
+        r#"<CRG file="p.crg" sStart="10" sEnd="40" orientation="same" mode="attached"/>"#,
+    );
+    let right = xml.rfind(flat_lane).unwrap() + flat_lane.len() - "</lane>".len();
+    let xml = format!(
+        r#"{}<height sOffset="0" inner="0.1" outer="0.1"/>{}"#,
+        &xml[..right],
+        &xml[right..]
+    );
+    let net = load_str(&xml).unwrap();
+    let mesh = net.surface_mesh();
+    let surface = surface(&net, &mesh, plane_crg(45.0, 4.0, ""));
+    let covered = at(&surface, xy(LINE, 20.0, -1.75, 0.0));
+    assert_near(covered.z, 2.0 + 0.03 * 20.0 + plane(20.0, -1.75), 1e-6);
+    let beyond = at(&surface, xy(LINE, 50.0, -1.75, 0.0));
+    assert_eq!(beyond.crg_height, None);
+    assert_near(beyond.z, 2.0 + 0.03 * 50.0 + 0.1, 1e-3);
+}
+
 #[test]
 fn off_the_stretch_or_without_the_file_the_mesh_answers() {
     let xml = road(
