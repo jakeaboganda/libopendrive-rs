@@ -181,7 +181,7 @@ pub enum LinePattern {
     /// nothing. It is continuous here, as esmini writes it for a solid line.
     Continuous,
     /// Dashes `length` metres long with `space` metres between them, from
-    /// the start of the line. The OpenDRIVE spec does not say what they are
+    /// the start of the line, to the end of the mark. The OpenDRIVE spec does not say what they are
     /// measured along. They are measured along the road's reference line, as
     /// libOpenDRIVE and esmini do, so a dash on the outside of a bend is
     /// longer.
@@ -190,6 +190,12 @@ pub enum LinePattern {
         length: f32,
         /// Metres left bare.
         space: f32,
+    },
+    /// One dash `length` metres long, from the start of the line, measured
+    /// the same way. What an `<explicit>` line in OpenDRIVE is.
+    Single {
+        /// Metres painted.
+        length: f32,
     },
 }
 
@@ -209,7 +215,7 @@ pub struct RoadMarkLine {
     /// says only that it is a lateral offset from the border. This reads it
     /// along +t on either side of the road, as libOpenDRIVE and esmini do, so
     /// a positive offset moves a right lane's line inward and a left lane's
-    /// outward.
+    /// outward. A mark's sway moves the pieces further, and is not in this.
     pub t_offset: f32,
     /// How far along the road the line starts after the start of its mark,
     /// in metres.
@@ -268,7 +274,14 @@ pub struct RoadMark {
     pub right: Option<LaneId>,
     /// Its painted lines. Empty for a mark that paints nothing.
     ///
-    /// A mark with `<type><line>`s paints those, whatever its type, except
+    /// A mark's `<sway>`s move every line sideways, each by its cubic from
+    /// its `ds` along the mark to the next, and not before the first. The
+    /// OpenDRIVE spec does not say which way. This reads it along +t, as
+    /// [`RoadMarkLine::t_offset`] is. The pieces follow the lane's stations,
+    /// so a sway is straight between them.
+    ///
+    /// A mark with `<type><line>`s or `<explicit><line>`s paints those,
+    /// whatever its type, except
     /// a mark of type `None`, which paints nothing. The OpenDRIVE spec gives
     /// no exception, but esmini writes a line of no width under every `none`
     /// mark and does not draw it. The spec does not say how a type looks. A mark the map

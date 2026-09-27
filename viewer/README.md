@@ -175,7 +175,8 @@ cargo run --example viewer_export --features serde -- tests/data/signals.xodr
 ## Road marks
 
 Each road mark's lines are painted on the road in their colour, cut into
-dashes where the crate dashes them. A mark that isn't paint, such as a kerb,
+dashes where the crate dashes them, and moved sideways where the mark
+sways. A mark that isn't paint, such as a kerb,
 or a mark of type `none`, draws nothing. The legend lists the colours in
 this map. A colour the page doesn't know is magenta.
 
@@ -190,14 +191,16 @@ The readout shows:
 - which way traffic may cross it
 - the lanes on its left and right, looking along the road's `+s`, or the
   road edge where there is none
-- each of its lines: continuous or its dash and gap lengths, how far along
-  the mark it starts and how far off the border it sits if not 0, its
-  width and colour, and its rule unless that is `none`
+- each of its lines: continuous, its dash and gap lengths, or its length
+  if it paints once, how far along the mark it starts and how far off the
+  border it sits if not 0, its width and colour, and its rule unless that
+  is `none`
 
 ![Hovering the double center line of the road mark test map](road-marks.png)
 
-`tests/data/road_marks.xodr` has every road mark type on one road. Bake it
-and pick `road_marks`:
+`tests/data/road_marks.xodr` has every road mark type on one road, a road
+of `<type><line>` marks, and a road with `<explicit>` lines and a sway.
+Bake it and pick `road_marks`:
 
 ```sh
 cargo run --example viewer_export --features serde -- tests/data/road_marks.xodr

@@ -49,7 +49,8 @@ controllers. Regenerate with
 
 `road_marks.xodr` comes from `road_marks.py` the same way. It has every
 road mark type on one straight, banked road with a laneOffset and two lane
-sections. Regenerate with
+sections, a road whose marks give `<type><line>`s, and one with
+`<explicit>` lines and a `<sway>`. Regenerate with
 
     uv run --with scenariogeneration==0.16.6 tests/data/road_marks.py
 

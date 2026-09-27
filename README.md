@@ -104,8 +104,9 @@ test suite imports real files declaring 1.4, 1.6 and 1.7.
   the center line. Each mark names the lanes either side of it, and keeps
   its type, weight, colour, width, height and which way traffic may cross
   it. Its lines are quads lying on the road surface. A mark's
-  `<type><line>`s are its lines, each with its own width, colour, dashes,
-  offset and rule. A mark without them gets stand-ins: a `solid` or
+  `<type><line>`s and `<explicit><line>`s are its lines, each with its own
+  width, colour, dashes, offset and rule, and its `<sway>`s move them
+  sideways. A mark without them gets stand-ins: a `solid` or
   `broken` mark paints one line and a double type two, with widths from
   libOpenDRIVE and dashes from esmini. A kerb, a grass edge and the other types that
   aren't paint keep their meaning and paint nothing. The crate docs list
@@ -150,8 +151,8 @@ Geometry is cross-checked against the reference C++
 
 ## What it ignores
 
-Everything else in the file, silently, including `<geoReference>`, signal
-boards and semantics, and a road mark's `<explicit>` and `<sway>`. Three omissions change the road you get back, not only
+Everything else in the file, silently, including `<geoReference>`, and
+signal boards and semantics. Three omissions change the road you get back, not only
 the detail around it:
 
 - `<shape>`, the other lateralProfile child, so a crowned or cambered

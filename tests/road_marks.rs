@@ -9,7 +9,8 @@
 //!
 //! Its road 1 is a flat 60 m straight from `(0, -30)` heading +X, with lanes
 //! 1 and -1 each 3 m wide, whose marks describe their lines with
-//! `<type><line>`.
+//! `<type><line>`. Road 2 is the same from `(0, 30)`, 40 m long, with
+//! `<explicit>` lines on lane -1 and a center mark that sways.
 
 use libopendrive::{
     load_file_with_provenance, LaneChange, LinePattern, LineRule, Point, Provenance, RoadMark,
@@ -377,6 +378,50 @@ fn a_lines_t_offset_moves_it_off_the_border() {
             (t + 0.07).abs() < 1e-4 || (t + 0.17).abs() < 1e-4,
             "an edge at t {t}"
         );
+    }
+}
+
+#[test]
+fn explicit_lines_paint_once() {
+    let (net, prov) = load(ROAD_MARKS);
+    let m = mark(&net, &prov, "2", 0, -1);
+    let [first, second] = m.lines.as_slice() else {
+        panic!("two lines, got {}", m.lines.len());
+    };
+    assert_eq!(first.pattern, LinePattern::Single { length: 2.0 });
+    assert_eq!((first.rule, first.width), (LineRule::Caution, 0.15));
+    assert_eq!(dashes_mm(first), [(5000, 7000)]);
+    assert_eq!(dashes_mm(second), [(20000, 23000)]);
+    for p in second.pieces.iter().flatten() {
+        let t = p.y - 30.0;
+        assert!(
+            (t + 2.875).abs() < 1e-4 || (t + 2.725).abs() < 1e-4,
+            "an edge at t {t}"
+        );
+    }
+}
+
+#[test]
+fn a_sway_moves_a_marks_lines_from_its_ds() {
+    let (net, prov) = load(ROAD_MARKS);
+    let line = &mark(&net, &prov, "2", 0, 0).lines[0];
+    assert_eq!(
+        (line.pattern, line.t_offset),
+        (LinePattern::Continuous, 0.0)
+    );
+    assert_eq!(dashes_mm(line), [(0, 40000)]);
+    // No sway before 10 m, then 0.05 a metre to 0.5 m at 20 m, and 0.5 m on.
+    let sway = |s: f32| (0.05 * (s - 10.0)).clamp(0.0, 0.5);
+    for q in &line.pieces {
+        for (p, side) in q.iter().zip([-1.0, -1.0, 1.0, 1.0]) {
+            let want = sway(p.x) + side * 0.06;
+            assert!(
+                (p.y - 30.0 - want).abs() < 1e-4,
+                "at s {} the edge is at t {}, want {want}",
+                p.x,
+                p.y - 30.0
+            );
+        }
     }
 }
 

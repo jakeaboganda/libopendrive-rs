@@ -465,8 +465,8 @@ fn controller_entry(c: &Controller, prov: Option<&ControllerProvenance>) -> Valu
 
 /// One road mark's viewer record: what it means, its OpenDRIVE provenance,
 /// the `laneId`s either side of it looking along `+s`, null at the edge of
-/// the road, and its lines. Each line's `pattern` is `continuous`, or
-/// `dashed` with a `length` and a `space`, its `rule` is what it tells
+/// the road, and its lines. Each line's `pattern` is `continuous`, `dashed`
+/// with a `length` and a `space`, or `single` with a `length`, its `rule` is what it tells
 /// traffic about crossing it, and its `pieces` are world-space quads.
 fn road_mark_entry(m: &RoadMark, prov: Option<&RoadMarkProvenance>) -> Value {
     json!({
@@ -498,6 +498,7 @@ fn road_mark_entry(m: &RoadMark, prov: Option<&RoadMarkProvenance>) -> Value {
                     LinePattern::Dashed { length, space } => {
                         json!({ "kind": "dashed", "length": length, "space": space })
                     }
+                    LinePattern::Single { length } => json!({ "kind": "single", "length": length }),
                 },
                 "pieces": pieces(&l.pieces),
             }))

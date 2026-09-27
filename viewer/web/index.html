@@ -971,7 +971,8 @@ function showRoadMarkTip(ev, rect, hit) {
 // colour, and its rule.
 function lineRow(l) {
   const p = l.pattern;
-  const pattern = p.kind === 'dashed' ? `${p.length} m on ${p.space} m off` : 'continuous';
+  const pattern = p.kind === 'dashed' ? `${p.length} m on ${p.space} m off`
+    : p.kind === 'single' ? `${p.length} m once` : 'continuous';
   const parts = [pattern];
   if (l.sOffset) parts.push(`from +${l.sOffset.toFixed(2)} m`);
   if (l.tOffset) parts.push(`tOffset ${l.tOffset.toFixed(2)} m`);

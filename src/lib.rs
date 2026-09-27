@@ -64,6 +64,9 @@
 //! | `<lane><roadMark>` | `sOffset`, `type`, `weight`, `color`, `width`, `height`, `laneChange` |
 //! | `<roadMark><type>` | `width` |
 //! | `<type><line>` | `length`, `space`, `tOffset`, `sOffset`, `rule`, `width`, `color` |
+//! | `<roadMark><explicit>` | none |
+//! | `<explicit><line>` | `length`, `tOffset`, `sOffset`, `rule`, `width` |
+//! | `<roadMark><sway>` | `ds`, `a`, `b`, `c`, `d` |
 //! | `<lane><link>` | `id` |
 //! | `<junction>` | `id` |
 //! | `<connection>` | `incomingRoad`, `connectingRoad`, `contactPoint` |
@@ -257,14 +260,15 @@
 //!
 //! Each of its [`RoadMark::lines`] is quads lying in the road surface, placed
 //! at the lane's own stations, so the paint lies on the lane mesh. A mark's
-//! `<type><line>`s are its lines, whatever its `type` other than `none`.
-//! Each is a
-//! [`RoadMarkLine`] with its own width, colour, [`LinePattern`] and
-//! [`LineRule`], repeating from its `sOffset` to the end of the mark,
-//! `tOffset` from the border. A mark with no lines gets stand-ins for its
-//! type: one line for `solid` and `broken`, two for a double type, and none
-//! for the rest. The marks of a lane section too short to bake do not bake
-//! either.
+//! `<type><line>`s and `<explicit><line>`s are its lines, whatever its
+//! `type` other than `none`. Each is a [`RoadMarkLine`] with its own width,
+//! colour, [`LinePattern`] and [`LineRule`], `tOffset` from the border. A
+//! `<type><line>` repeats from its `sOffset` to the end of the mark, and an
+//! `<explicit><line>` paints once. A mark with no lines gets stand-ins for
+//! its type: one line for `solid` and `broken`, two for a double type, and
+//! none for the rest. Each `<sway>` moves every line of the mark sideways by
+//! its cubic, from its `ds` along the mark to the next. The marks of a lane
+//! section too short to bake do not bake either.
 //!
 //! The crate departs from the OpenDRIVE 1.9 spec here:
 //!
@@ -287,6 +291,9 @@
 //!   The crate adds it along +t on either side, as libOpenDRIVE and esmini
 //!   both do. So a positive `tOffset` moves a right lane's line inward and a
 //!   left lane's outward.
+//! - The spec does not say which way a `<sway>` moves the lines either. The
+//!   crate reads it along +t, as it does `tOffset`, and moves nothing before
+//!   the first `ds`.
 //! - The spec gives no default `rule`. A line without one has
 //!   [`LineRule::None`].
 //! - The spec does not say how wide a line of each weight is, or how a type
@@ -353,8 +360,8 @@
 //! `<junctionGroup>`, `<station>`, an object's
 //! `<surface>`, and road `<type>` with its `<speed>`. Of signals, it ignores
 //! a signal's `<userData>`, the boards `<staticBoard>` and `<vmsBoard>`, and
-//! `<semantics>`. Of road marks, it ignores `material`, a `<type>`'s `name`,
-//! and a road mark's `<explicit>` and `<sway>`.
+//! `<semantics>`. Of road marks, it ignores `material` and a `<type>`'s
+//! `name`.
 //!
 //! Three omissions change the road you get back, rather than only dropping
 //! detail around it:

@@ -20,6 +20,8 @@
 - A mark's `<type><line>`s replace its stand-ins. Each `RoadMarkLine`
   keeps its width, colour, `LinePattern`, `sOffset`, `tOffset` and
   `LineRule`. A line without a width or colour takes its type's or mark's.
+- An `<explicit><line>` paints once, as `LinePattern::Single`. Each
+  `<sway>` moves the mark's lines sideways by its cubic, from its `ds`.
 - `RoadMarkProvenance` gives each mark's road, lane section, `<lane id>`,
   `s` and length.
 - Where the crate departs from the spec: a mark without a `color` is
@@ -31,8 +33,8 @@
   weight's apply in turn. A line with a `length` and `space` of 0 is
   continuous, as esmini means it, where the spec would paint nothing. A
   `none` mark paints nothing even with lines, as esmini draws it.
-  `tOffset` points along +t on both sides of the road, which the spec
-  does not say. Dashes are measured
+  `tOffset` and a sway point along +t on both sides of the road, which
+  the spec does not say, and a sway moves nothing before its `ds`. Dashes are measured
   along the reference line, which the spec does not say. Marks out of
   order are sorted rather than dropped. A lane with no `<width>` does not
   bake, so its marks go too, where the spec would draw them on its inner
