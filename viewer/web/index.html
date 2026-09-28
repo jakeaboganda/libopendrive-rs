@@ -240,6 +240,7 @@ let signalLink;              // dashed lines from the hovered board to where it 
 let roadMarks = [];          // the exported road mark table
 let roadMarkMesh = null;     // every road mark's lines; userData.pick(hit) is the hovered mark
 let warnings = [];           // the exported warnings, each with the lanes of the road it names
+let priorities = [];         // the exported junction priorities, by road id
 let walkers = [];            // the marker's branches: {lane, arc, side, dead}, as RoadNetwork::advance gives them
 let walkerMesh;              // a square at each branch of the marker
 
@@ -326,6 +327,7 @@ async function init() {
   buildRoadMarks(data);
   buildCrg(data);
   buildWarnings(data);
+  priorities = data.priorities ?? [];
   buildSidebar();
   buildLegend();
   frameOn(roadMesh);
@@ -1337,6 +1339,7 @@ function onHover(ev) {
   if (rule) rows.push(`rule ${escapeHtml(rule[2])}`);
   const access = alongAt(lane.access, s);
   if (access) rows.push(`access ${accessText(access[2])}`);
+  rows.push(...priorityRows(lane));
   const material = alongAt(lane.materials, s);
   if (material) rows.push(`material ${materialText(material[2])}`);
   const seen = alongAt(lane.visibility, s);
@@ -1652,6 +1655,18 @@ function materialText(m) {
     m.friction !== null && `friction ${m.friction.toFixed(2)}`,
     m.roughness !== null && `roughness ${m.roughness.toFixed(3)} m`,
   ].filter(Boolean).join('   ');
+}
+
+// Which roads the lane's road gives way to in its junction, and which give
+// way to it.
+function priorityRows(lane) {
+  const roads = (key, other) => priorities.filter(p => p[key] === lane.roadId)
+    .map(p => `road ${escapeHtml(String(p[other]))}`).join(', ');
+  const rows = [];
+  const yields = roads('low', 'high'), over = roads('high', 'low');
+  if (yields) rows.push(`gives way to ${yields}`);
+  if (over) rows.push(`has priority over ${over}`);
+  return rows;
 }
 
 // How far a driver can see from a lane, each way, as the file names them.

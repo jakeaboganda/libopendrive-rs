@@ -113,6 +113,8 @@ lit as you hover others. The readout shows:
   off the road at its inner and outer border at that point
 - the speed limit at that point, in km/h and mph, or `none` for no limit,
   and the road type, where the map gives them
+- which roads the lane's road gives way to in its junction, and which give
+  way to it, where the map gives junction priorities
 - the lane's rule, who may use it (`only` the users an allow names, or
   `all but` those a deny names) and its material, where the map gives them
 - how far a driver can see from the lane, forward, back, left and right,

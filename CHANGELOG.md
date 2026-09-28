@@ -11,6 +11,8 @@
   the network.
 - `Warning::PriorityDropped` names a `<priority>` whose `high` or `low` is
   no road the load baked.
+- The viewer's lane readout says which roads the lane's road gives way to,
+  and which give way to it.
 
 ### Lane direction
 

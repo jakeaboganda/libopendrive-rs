@@ -268,7 +268,21 @@ fn build_scene(
         "roadMarks": road_marks,
         "warnings": provenance.warnings.iter().map(warning_entry).collect::<Vec<_>>(),
         "geoReference": net.geo_reference(),
+        "priorities": priorities(net, provenance),
     })
+}
+
+/// Each junction priority: the `<road id>` with priority, the one that gives
+/// way to it, and the `<junction id>`.
+fn priorities(net: &RoadNetwork, provenance: &Provenance) -> Value {
+    let od_id = |road| net.road(road).map(|r| r.od_id());
+    net.priorities()
+        .iter()
+        .zip(&provenance.priorities)
+        .map(|(p, prov)| {
+            json!({ "high": od_id(p.high), "low": od_id(p.low), "junction": prov.junction_id })
+        })
+        .collect()
 }
 
 /// One warning's viewer record: its message, and the road it names.
