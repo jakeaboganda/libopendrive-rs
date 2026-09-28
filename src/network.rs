@@ -211,8 +211,9 @@ pub struct Lane {
     /// at neither. Each is measured across the surface, as `width` is.
     pub widths: Vec<f32>,
     /// Per-centerline-vertex cross-slope angle (radians, signed), parallel to
-    /// `center.points()`: the road's superelevation, plus the slope of an
-    /// OpenDRIVE lane's `<height>`s from its inner border to its outer one.
+    /// `center.points()`: the road's superelevation, plus the slope from the
+    /// lane's inner border to its outer one that its `<height>`s and the
+    /// road's lateral `<shape>`s give it.
     /// Positive raises the **+offset** edge, the left-hand
     /// normal of the centerline's *stored* tangent (its geometry direction), which
     /// for a `Backward` lane is opposite its travel direction. Consumers deriving

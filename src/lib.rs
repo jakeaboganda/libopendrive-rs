@@ -305,6 +305,10 @@
 //! [`LaneProvenance::heights`] still gives the `<height>`s only. Each
 //! profile's `s` is a station of every lane section it falls in.
 //!
+//! Objects, signals and road marks stand on the lane under them, so on the
+//! shape as the mesh has it. A mark on the center line lies flat at the
+//! shape there, on a crown's ridge.
+//!
 //! No other reader to compare against builds shapes. libOpenDRIVE logs
 //! that it does not support them, esmini reads only superelevation, and
 //! CARLA parses them but does not store them.
@@ -321,9 +325,8 @@
 //! - The spec keeps a lane with `level="true"` out of the shape. The crate
 //!   does not read `level`, so it shapes such a lane like any other.
 //! - The spec's surface curves between a lane's borders. The crate's goes
-//!   straight across, as above.
-//! - Objects, signals and road marks do not stand on the shape yet. They
-//!   stand on the road without it.
+//!   straight across, as above, and objects and signals stand on it, flush
+//!   with the mesh.
 //! - The spec measures a lane height from the road including its shape. An
 //!   `attached` CRG adds its grid to the road without the shape, so a CRG
 //!   laid over a shaped road answers without it.

@@ -30,7 +30,7 @@ files declaring 1.4, 1.6 and 1.7.
   between its borders. So a curve inside a lane is lost: 5.5 mm at the
   middle of a 3.5 m lane on a crown falling 2.5 % at 7 m out. The first
   profile holds before it, where the spec gives 0. Objects, signals and
-  road marks don't stand on the shape yet.
+  road marks stand on the shape as the mesh has it.
 - Per-lane widths, `laneOffset`, and multiple lane sections.
 - The whole lane cross-section, the carriageway included. `LaneType` names
   every function the format defines, among them sidewalks, kerbs, ramps and

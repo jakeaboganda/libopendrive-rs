@@ -1385,7 +1385,7 @@ struct BakedRoad {
 }
 
 /// One lane across the road at a station: the `t` of its inner and outer
-/// border, and its height at each.
+/// border, and its height at each, lateral shape included.
 struct Across {
     od_id: i32,
     inner_t: f64,
@@ -1413,33 +1413,42 @@ impl BakedRoad {
     /// reference line's heading. A point on the border between two lanes is
     /// on the inner one, as libOpenDRIVE finds it and as a road mark there
     /// belongs to it. A point past the outermost lane takes that lane's outer
-    /// height. libOpenDRIVE carries the lane's slope on instead.
+    /// height. libOpenDRIVE carries the lane's slope on instead. A point on
+    /// no lane takes the lateral shape under it.
     fn surface(&self, s: f64, t: f64) -> (Point, f64) {
         let height = self
             .section_at(s)
-            .filter(|section| section.def.raised())
-            .map_or(0.0, |section| {
+            .filter(|section| section.def.raised() || !self.shapes.is_empty())
+            .and_then(|section| {
                 self.across(section, s)
                     .filter(|a| f64::from(a.od_id.signum()) * (t - a.inner_t) > 0.0)
                     .last()
-                    .map_or(0.0, |a| {
-                        a.height(t.clamp(a.inner_t.min(a.outer_t), a.inner_t.max(a.outer_t)))
-                    })
-            });
+            })
+            .map_or_else(
+                || shape_at(&self.shapes, s, t),
+                |a| a.height(t.clamp(a.inner_t.min(a.outer_t), a.inner_t.max(a.outer_t))),
+            );
         self.raised(s, t, height)
     }
 
     /// The surface of the lane `od_id` of `section` at `(s, t)`, straight
     /// across the lane and on past its borders, so paint on its border lies
-    /// in it. The road's own surface for the center lane.
+    /// in it. For the center lane, the lateral shape on the center line, held
+    /// flat across, so its paint lies on a crown's ridge rather than under it.
     fn lane_surface(&self, section: &BakedSection, od_id: i32, s: f64, t: f64) -> (Point, f64) {
-        if !section.def.raised() {
+        if !section.def.raised() && self.shapes.is_empty() {
             return self.raised(s, t, 0.0);
         }
         let height = self
             .across(section, s)
             .find(|a| a.od_id == od_id)
-            .map_or(0.0, |a| a.height(t));
+            .map_or_else(
+                || {
+                    let base = active(&self.lane_offsets, s).map_or(0.0, |o| o.eval(s));
+                    shape_at(&self.shapes, s, base)
+                },
+                |a| a.height(t),
+            );
         self.raised(s, t, height)
     }
 
@@ -1476,7 +1485,8 @@ impl BakedRoad {
             .flat_map(move |(side, sign)| {
                 side.iter().zip(side_borders(side, sign, base, s_lane)).map(
                     move |(lane, borders)| {
-                        let (inner_height, outer_height) = height_at(lane, s_lane);
+                        let (inner_height, outer_height) =
+                            border_heights(lane, &self.shapes, s, s_lane, &borders);
                         Across {
                             od_id: lane.id,
                             inner_t: borders.inner,

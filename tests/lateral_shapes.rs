@@ -5,7 +5,8 @@
 //! closed form to check against.
 
 use libopendrive::{
-    load_file_with_provenance, Lane, LaneProvenance, Mesh, Point, Provenance, RoadNetwork, Warning,
+    load_file_with_provenance, Lane, LaneProvenance, Mesh, Point, Provenance, RoadNetwork, Shape,
+    Warning,
 };
 
 const FIXTURE: &str = "tests/data/lateral_shapes.xodr";
@@ -214,5 +215,63 @@ fn a_steep_crossfall_s_edges_land_on_their_borders() {
     for (across, up) in crossfall_misses() {
         assert!(across.abs() < 1e-4, "{across} m off across");
         assert!(up.abs() < 1e-4, "{up} m off up");
+    }
+}
+
+/// Road 1's lane -1 and lane 1 at s = 10, halfway across: the mean of the
+/// crown at their borders, as the mesh goes straight across.
+fn mid_lane_at_10() -> f64 {
+    (parabola(10.0, 0.0) + parabola(10.0, -3.5)) / 2.0
+}
+
+/// The pole stands on the mesh, straight across its lane, 8.75 mm below the
+/// spec's curved surface there: `k w² / 4`, faded to 0.8 by s = 10.
+#[test]
+fn an_object_mid_lane_stands_on_the_mesh_not_the_crown() {
+    let (net, _) = fixture();
+    let pole = &net.objects()[0];
+    let Shape::Solid { position, .. } = pole.shape else {
+        panic!("the pole is {:?}", pole.shape);
+    };
+    assert_near(position.z, mid_lane_at_10(), 1e-5, "pole z");
+    let under_the_crown = parabola(10.0, -1.75) - mid_lane_at_10();
+    assert!(
+        (under_the_crown - 0.00875).abs() < 1e-9,
+        "{under_the_crown}"
+    );
+}
+
+#[test]
+fn a_sign_stands_its_z_offset_above_the_shaped_lane() {
+    let (net, _) = fixture();
+    let sign = &net.signals()[0];
+    assert_near(sign.position.z, mid_lane_at_10() + 2.0, 1e-5, "board z");
+}
+
+/// Each mark on road 0 lies in its lane's slope, carried on past the lane's
+/// border. The crown is straight out from the center line on either side,
+/// so that is the crown under each corner. The center line's mark lies
+/// flat on the ridge.
+#[test]
+fn a_road_mark_lies_on_the_crown() {
+    let (net, prov) = fixture();
+    let marks: Vec<_> = prov
+        .road_marks
+        .iter()
+        .filter(|p| p.road_id == "0")
+        .collect();
+    assert_eq!(marks.len(), 5);
+    for p in marks {
+        let mark = net
+            .road_marks()
+            .iter()
+            .find(|m| m.id == p.road_mark)
+            .unwrap();
+        for corner in mark.lines.iter().flat_map(|l| &l.pieces).flatten() {
+            let y = f64::from(corner.y);
+            let want = -0.025 * y * f64::from(p.od_lane_id.signum());
+            let what = format!("lane {} mark z at y {y}", p.od_lane_id);
+            assert_near(corner.z, want, 1e-5, &what);
+        }
     }
 }

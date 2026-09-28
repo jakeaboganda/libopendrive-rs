@@ -53,6 +53,9 @@
 - A curve inside a lane is lost to the straight chord: `c w² / 4` at its
   middle, 5.5 mm on a 3.5 m lane of a crown falling 2.5 % at 7 m out.
 - Each profile's `s` is a station of its lane sections.
+- Objects, signals and road marks stand on the shape as the mesh has it,
+  straight across each lane rather than on the spec's curve. A center
+  line mark lies flat on a crown's ridge.
 - A tilted lane's `Lane::width` and `Lane::widths` are the chord across
   its surface, so its edges land on its borders. The plan width left each
   edge short: 1.3 mm on a 2 m lane rising 0.1 m, 7.4 cm on a 3.5 m lane
