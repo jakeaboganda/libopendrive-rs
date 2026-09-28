@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Cross paths
+
+- `RoadNetwork::cross_paths` gives each `<crossPath>` as a `CrossPath`: the
+  crossing road, and at each end the lane it joins, the `s` along that
+  lane's road, and the crossing road's lane. It joins lanes part way along
+  them, so it stays beside the lane graph. `Provenance::cross_paths` names
+  each one's junction and id.
+- `Warning::CrossPathDropped` names one whose roads or lanes the load
+  lacks. In ASAM's `UC_5Road_Junction`, three name an `s` past the end of
+  their road or a lane it lacks.
+
 ### Junction areas
 
 - `RoadNetwork::junction_areas` gives each junction with a `<boundary>` or

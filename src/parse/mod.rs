@@ -330,9 +330,23 @@ pub struct Provenance {
     /// [`RoadNetwork::priorities`](crate::RoadNetwork::priorities).
     #[cfg_attr(feature = "serde", serde(default))]
     pub priorities: Vec<PriorityProvenance>,
+    /// One per cross path, in step with
+    /// [`RoadNetwork::cross_paths`](crate::RoadNetwork::cross_paths).
+    pub cross_paths: Vec<CrossPathProvenance>,
     /// What the load dropped, or read against the spec, in file order.
     /// Empty for a clean file.
     pub warnings: Vec<Warning>,
+}
+
+/// The OpenDRIVE identity of one cross path: the `<junction>` and the
+/// `<crossPath id>` it came from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CrossPathProvenance {
+    /// The `<junction id>`.
+    pub junction_id: String,
+    /// The `<crossPath id>`, empty if it has none.
+    pub od_id: String,
 }
 
 /// The OpenDRIVE identity of one junction priority: the `<junction>` whose
@@ -425,6 +439,9 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     warnings.extend(dropped_neighbors);
     let (areas, area_warnings) = junction_areas::place(root, &roads);
     warnings.extend(area_warnings);
+    let (cross_paths, cross_path_provenance, cross_path_warnings) =
+        junction_areas::cross_paths(root, &roads);
+    warnings.extend(cross_path_warnings);
     // Resolve connectivity once all lanes exist and are registered.
     let (junctions, dropped) = links::junctions(root, &mut topo.roads);
     topo.junctions = junctions;
@@ -453,6 +470,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
         controllers: signals.controller_provenance,
         road_marks: road_marks.provenance,
         priorities: priority_provenance,
+        cross_paths: cross_path_provenance,
         warnings,
     };
     Ok((
@@ -473,7 +491,8 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             .with_roads(roads.into_iter().map(|(_, baked)| baked.road).collect())
             .with_priorities(priorities)
             .with_road_neighbors(neighbors)
-            .with_junction_areas(areas),
+            .with_junction_areas(areas)
+            .with_cross_paths(cross_paths),
         provenance,
     ))
 }

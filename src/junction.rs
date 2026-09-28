@@ -3,6 +3,35 @@
 
 use crate::coords::{Point, Vector};
 use crate::mesh::Mesh;
+use crate::network::LaneId;
+use crate::road::RoadId;
+
+/// A path across a junction's roads for pedestrians, from an OpenDRIVE
+/// `<crossPath>`: a crossing road, and the lanes it joins at each end, part
+/// way along them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CrossPath {
+    /// The road the path runs along.
+    pub crossing: RoadId,
+    /// Where it joins the lane its crossing road starts from.
+    pub start: CrossPathEnd,
+    /// Where it joins the lane its crossing road ends at.
+    pub end: CrossPathEnd,
+}
+
+/// One end of a [`CrossPath`]: the lane of another road it joins, where
+/// along that road, and the lane of the crossing road there.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CrossPathEnd {
+    /// The lane of the road at this end.
+    pub lane: LaneId,
+    /// How far along that road's reference line the path joins it.
+    pub s: f64,
+    /// The crossing road's lane at this end.
+    pub crossing_lane: LaneId,
+}
 
 /// A junction's area, from an OpenDRIVE junction's `<boundary>` and
 /// `<elevationGrid>`: the edge of the ground its traffic may use, sidewalks

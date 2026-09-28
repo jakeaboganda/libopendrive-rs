@@ -1,9 +1,11 @@
-//! Junction boundaries and elevation grids, placed once every road is baked.
+//! Junction boundaries, elevation grids and cross paths, placed once every
+//! road is baked.
 
 use super::{attr_f64, child, BakedRoad, Warning};
 use crate::coords::Point;
-use crate::junction::{ElevationGrid, GridRow, JunctionArea};
-use crate::road::Road;
+use crate::junction::{CrossPath, CrossPathEnd, ElevationGrid, GridRow, JunctionArea};
+use crate::network::LaneId;
+use crate::road::{Road, RoadSection};
 
 /// How far apart in plan, in metres, two boundary segments may leave off and
 /// begin before the boundary counts as open.
@@ -45,6 +47,82 @@ pub(super) fn place(
         });
     }
     (out, warnings)
+}
+
+/// Every `<crossPath>` of every junction, in file order, with its identity,
+/// and a warning for each whose roads or lanes the load lacks.
+pub(super) fn cross_paths(
+    root: roxmltree::Node,
+    roads: &[(roxmltree::Node, BakedRoad)],
+) -> (
+    Vec<CrossPath>,
+    Vec<super::CrossPathProvenance>,
+    Vec<Warning>,
+) {
+    let road = |id: Option<&str>| {
+        roads
+            .iter()
+            .map(|(_, r)| &r.road)
+            .find(|r| Some(r.od_id.as_str()) == id)
+    };
+    let (mut out, mut provenance, mut warnings) = (Vec::new(), Vec::new(), Vec::new());
+    for junction in root.children().filter(|n| n.has_tag_name("junction")) {
+        let junction_id = junction.attribute("id").unwrap_or_default();
+        for node in junction.children().filter(|n| n.has_tag_name("crossPath")) {
+            let crossing = road(node.attribute("crossingRoad"));
+            let end = |at: &str, link: Option<roxmltree::Node>, last: bool| {
+                let crossing = crossing?;
+                let at = road(node.attribute(at))?;
+                let link = link?;
+                let s = attr_f64(link, "s").filter(|s| at.on_road(*s))?;
+                let lane = |section: &RoadSection, name: &str| -> Option<LaneId> {
+                    let od_id = link.attribute(name)?.parse::<i32>().ok()?;
+                    section
+                        .lanes
+                        .iter()
+                        .find(|(id, _)| *id == od_id)
+                        .map(|&(_, l)| l)
+                };
+                let crossing_end = if last {
+                    crossing.sections.last()
+                } else {
+                    crossing.sections.first()
+                };
+                Some(CrossPathEnd {
+                    lane: lane(at.section_at(s)?, "from")?,
+                    s,
+                    crossing_lane: lane(crossing_end?, "to")?,
+                })
+            };
+            let od_id = node.attribute("id").unwrap_or_default().to_string();
+            match (
+                crossing,
+                end("roadAtStart", child(node, "startLaneLink"), false),
+                end("roadAtEnd", child(node, "endLaneLink"), true),
+            ) {
+                (Some(crossing), Some(start), Some(end)) => {
+                    out.push(CrossPath {
+                        crossing: crossing.id,
+                        start,
+                        end,
+                    });
+                    provenance.push(super::CrossPathProvenance {
+                        junction_id: junction_id.to_string(),
+                        od_id,
+                    });
+                }
+                _ => warnings.push(Warning::CrossPathDropped {
+                    junction_id: junction_id.to_string(),
+                    cross_path_id: od_id,
+                    road_id: node
+                        .attribute("crossingRoad")
+                        .unwrap_or_default()
+                        .to_string(),
+                }),
+            }
+        }
+    }
+    (out, provenance, warnings)
 }
 
 /// A junction's `<elevationGrid>`, on the straight line its `<planView>`

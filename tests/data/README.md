@@ -21,6 +21,12 @@ repeat, and some of its validities contradict their orientation.
 
 ## Written here
 
+`cross_paths.xodr` comes from `cross_paths.py`, which writes the XML
+itself. It has a crosswalk from one sidewalk of a road to the other, as a
+cross path, and one naming an `s` past the road's end. Regenerate with
+
+    python3 tests/data/cross_paths.py
+
 `demo.xodr` is the OpenDRIVE twin of the `demo_road` fixture in `src`.
 `testtrack.xodr` is a purpose-built vehicle-tuning track: straight, crest, dip,
 and three banked curves of known radius. The rest are minimal files aimed at

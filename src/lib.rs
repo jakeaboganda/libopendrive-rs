@@ -97,6 +97,9 @@
 //! | `<connection>` | `id`, `incomingRoad`, `connectingRoad`, `linkedRoad`, `contactPoint` |
 //! | `<laneLink>` | `from`, `to` |
 //! | `<junction><priority>` | `high`, `low` |
+//! | `<junction><crossPath>` | `id`, `crossingRoad`, `roadAtStart`, `roadAtEnd` |
+//! | `<crossPath><startLaneLink>` | `s`, `from`, `to` |
+//! | `<crossPath><endLaneLink>` | `s`, `from`, `to` |
 //! | `<junction><planView>` | its `<geometry>`'s `s`, `x`, `y`, `hdg` |
 //! | `<junction><boundary>` | none |
 //! | `<boundary><segment>` | `type`, `roadId`, `boundaryLane`, `sStart`, `sEnd`, `contactPoint`, `jointLaneStart`, `jointLaneEnd` |
@@ -157,6 +160,18 @@
 //! through a direct junction links in both directions. A connection
 //! missing its `incomingRoad`, or the road it leads into, is dropped with a
 //! [`Warning::ConnectionDropped`].
+//!
+//! A junction's `<crossPath>`s are paths for pedestrians across its roads,
+//! such as a crosswalk. Each is a [`CrossPath`] in
+//! [`RoadNetwork::cross_paths`]: the crossing road, and at each end the lane
+//! of the road it starts from or ends at, the `s` along that road, and the
+//! crossing road's lane there. The crossing road's lane at its start is in
+//! its first lane section, and at its end in its last. A cross path joins
+//! lanes part way along them, which [`Lane::successors`] can't, so it is
+//! kept beside the lane graph. One naming a road the load lacks, a lane
+//! that road does not have at its `s`, or an `s` off the road, is dropped
+//! with a [`Warning::CrossPathDropped`]. No other reader to compare against
+//! reads them.
 //!
 //! A junction's `<priority>`s say which of its roads gives way to which.
 //! Each is a [`Priority`] in [`RoadNetwork::priorities`], and
@@ -958,6 +973,8 @@
 //!   roads it joins.
 //! - [`Warning::JunctionLinkMissing`] for an incoming road whose `<link>`
 //!   leaves out its junction.
+//! - [`Warning::CrossPathDropped`] for a `<crossPath>` whose roads or lanes
+//!   the load lacks.
 //! - [`Warning::ElevationGridNotApplied`], [`Warning::ElevationGridDropped`],
 //!   [`Warning::BoundaryNotClosed`],
 //!   [`Warning::BoundarySegmentDropped`] and [`Warning::BoundaryClockwise`]
@@ -1037,7 +1054,7 @@ pub use crg::{
 pub use geo::{GeoOffset, GeoReference};
 pub use geometry::TooFewPoints;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
-pub use junction::{ElevationGrid, GridRow, JunctionArea};
+pub use junction::{CrossPath, CrossPathEnd, ElevationGrid, GridRow, JunctionArea};
 pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};
 pub use network::{Direction, Lane, LaneId, LaneType, RoadNetwork};
 pub use object::{
@@ -1049,9 +1066,9 @@ pub use object_mesh::ObjectSpan;
 pub use opencrg;
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ControllerProvenance,
-    ImportError, JunctionControllerProvenance, LaneHeight, LaneProvenance, ObjectProvenance,
-    Orientation, PriorityProvenance, Provenance, RoadEnd, RoadMarkProvenance, RoadSkipReason,
-    SignalProvenance, SignalReferenceProvenance, StructureProvenance, Warning,
+    CrossPathProvenance, ImportError, JunctionControllerProvenance, LaneHeight, LaneProvenance,
+    ObjectProvenance, Orientation, PriorityProvenance, Provenance, RoadEnd, RoadMarkProvenance,
+    RoadSkipReason, SignalProvenance, SignalReferenceProvenance, StructureProvenance, Warning,
 };
 pub use road::{LanePosition, Priority, Road, RoadId, RoadLane, RoadNeighbor, RoadPosition, Side};
 pub use road_mark::{

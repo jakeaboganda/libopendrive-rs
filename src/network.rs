@@ -10,7 +10,7 @@ use crate::crg::CrgSurface;
 use crate::geo::GeoReference;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
-use crate::junction::JunctionArea;
+use crate::junction::{CrossPath, JunctionArea};
 use crate::object::{Material, Object, ObjectId};
 use crate::road::{LanePosition, Priority, Road, RoadId, RoadLane, RoadNeighbor, RoadPosition};
 use crate::road_mark::{RoadMark, RoadMarkId};
@@ -282,6 +282,7 @@ pub struct RoadNetwork {
     priorities: Vec<Priority>,
     road_neighbors: Vec<RoadNeighbor>,
     junction_areas: Vec<JunctionArea>,
+    cross_paths: Vec<CrossPath>,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
     /// [`Self::nearest_lane`]. Derived from `lanes`, so it takes no part in
     /// equality.
@@ -316,6 +317,7 @@ impl PartialEq for RoadNetwork {
             && self.priorities == other.priorities
             && self.road_neighbors == other.road_neighbors
             && self.junction_areas == other.junction_areas
+            && self.cross_paths == other.cross_paths
     }
 }
 
@@ -350,6 +352,8 @@ struct NetworkData {
     road_neighbors: Vec<RoadNeighbor>,
     #[serde(default)]
     junction_areas: Vec<JunctionArea>,
+    #[serde(default)]
+    cross_paths: Vec<CrossPath>,
 }
 
 #[cfg(feature = "serde")]
@@ -373,6 +377,7 @@ impl From<NetworkData> for RoadNetwork {
             .with_priorities(data.priorities)
             .with_road_neighbors(data.road_neighbors)
             .with_junction_areas(data.junction_areas)
+            .with_cross_paths(data.cross_paths)
     }
 }
 
@@ -398,6 +403,7 @@ impl From<RoadNetwork> for NetworkData {
             priorities: net.priorities,
             road_neighbors: net.road_neighbors,
             junction_areas: net.junction_areas,
+            cross_paths: net.cross_paths,
         }
     }
 }
@@ -562,6 +568,7 @@ impl RoadNetwork {
             priorities: Vec::new(),
             road_neighbors: Vec::new(),
             junction_areas: Vec::new(),
+            cross_paths: Vec::new(),
             index,
             road_lanes: HashMap::new(),
             footprints: LaneIndex::default(),
@@ -640,6 +647,20 @@ impl RoadNetwork {
     /// in file order.
     pub fn junction_areas(&self) -> &[JunctionArea] {
         &self.junction_areas
+    }
+
+    /// This network with `cross_paths` over its junctions, replacing any it
+    /// had.
+    pub fn with_cross_paths(mut self, cross_paths: Vec<CrossPath>) -> Self {
+        self.cross_paths = cross_paths;
+        self
+    }
+
+    /// Every path across a junction's roads for pedestrians, in file order.
+    /// Each joins lanes part way along them, which [`Lane::successors`]
+    /// can't, so they are here rather than in the lane graph.
+    pub fn cross_paths(&self) -> &[CrossPath] {
+        &self.cross_paths
     }
 
     /// Every road, in the order the importer emitted them, which is file

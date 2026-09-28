@@ -182,6 +182,17 @@ pub enum Warning {
         /// The road of the two the load has, or `low` if it has neither.
         road_id: String,
     },
+    /// A `<crossPath>` whose `crossingRoad`, `roadAtStart` or `roadAtEnd`
+    /// names no baked road, or whose lane links name a lane, or an `s`, those
+    /// roads don't have. The crate drops it.
+    CrossPathDropped {
+        /// The `<junction id>`.
+        junction_id: String,
+        /// Its `id`, empty if it has none.
+        cross_path_id: String,
+        /// Its `crossingRoad`, empty if it has none.
+        road_id: String,
+    },
     /// A junction's `<elevationGrid>`. The spec says it overrides the height
     /// of the junction's roads, and blends into the roads coming in. The
     /// crate keeps the roads' own heights, and gives the grid's in
@@ -319,6 +330,7 @@ impl Warning {
             | Self::PriorityDropped { road_id, .. }
             | Self::NeighborDropped { road_id, .. }
             | Self::BoundarySegmentDropped { road_id, .. }
+            | Self::CrossPathDropped { road_id, .. }
             | Self::ConnectionDropped {
                 incoming_road_id: road_id,
                 ..
@@ -427,6 +439,14 @@ impl fmt::Display for Warning {
             } => write!(
                 f,
                 "road {road_id:?}, lane section {section}: lane {lane} links to road {to_road_id:?}, lane section {to_section}, lane {to_lane}, {gap:.2} m away"
+            ),
+            Self::CrossPathDropped {
+                junction_id,
+                cross_path_id,
+                road_id,
+            } => write!(
+                f,
+                "junction {junction_id:?}: <crossPath> {cross_path_id:?} on road {road_id:?} dropped"
             ),
             Self::ElevationGridNotApplied { junction_id } => write!(
                 f,

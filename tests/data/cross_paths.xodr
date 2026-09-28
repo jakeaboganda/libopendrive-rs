@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+  <header revMajor="1" revMinor="8" name="cross_paths"/>
+  <road name="" length="50" id="1" junction="-1">
+    <planView><geometry s="0" x="0" y="0" hdg="0" length="50"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane><lane id="2" type="sidewalk" level="false"><width sOffset="0" a="2" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane><lane id="-2" type="sidewalk" level="false"><width sOffset="0" a="2" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+  <road name="" length="9" id="20" junction="5">
+    <planView><geometry s="0" x="26" y="4.5" hdg="-1.5707963267948966" length="9"><line/></geometry></planView>
+    <lanes><laneSection s="0"><center><lane id="0" type="none"/></center><right><lane id="-1" type="walking" level="false"><width sOffset="0" a="2" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+  <junction id="5">
+    <crossPath id="0" crossingRoad="20" roadAtStart="1" roadAtEnd="1"><startLaneLink s="25" from="2" to="-1"/><endLaneLink s="25" from="-2" to="-1"/></crossPath>
+    <crossPath id="1" crossingRoad="20" roadAtStart="1" roadAtEnd="1"><startLaneLink s="80" from="2" to="-1"/><endLaneLink s="80" from="-2" to="-1"/></crossPath>
+  </junction>
+</OpenDRIVE>

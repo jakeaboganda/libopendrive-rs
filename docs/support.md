@@ -76,6 +76,8 @@ files declaring 1.4, 1.6 and 1.7.
   the height of that ground, with a mesh of it. The grid does not replace
   the height of the junction's roads, as the spec says it does, and a
   warning says so.
+- Junction `<crossPath>`s, as `RoadNetwork::cross_paths`: paths for
+  pedestrians across the junction's roads, joining lanes part way along.
 - Junction `<priority>`s, as `RoadNetwork::priorities`: which road of a
   junction gives way to which.
 - An incoming road whose `<link>` leaves out its common junction, which the
