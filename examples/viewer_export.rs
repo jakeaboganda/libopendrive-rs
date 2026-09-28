@@ -50,8 +50,8 @@ use libopendrive::{
     load_file_with_provenance, Access, Along, Controller, ControllerProvenance, Corner, CrgMode,
     CrgPurpose, CrgSurface, Direction, Extent, LaneId, LaneProvenance, LaneSpan, LinePattern,
     Marking, Mesh, Object, ObjectProvenance, Orientation, Point, Provenance, Referenced, RoadMark,
-    RoadMarkProvenance, RoadNetwork, RoadSurface, Shape, Signal, SignalProvenance, SpeedLimit,
-    Structure, StructureKind, StructureProvenance, SurfaceHint, Warning,
+    RoadMarkProvenance, RoadNetwork, RoadSurface, Shape, Side, Signal, SignalProvenance,
+    SpeedLimit, Structure, StructureKind, StructureProvenance, SurfaceHint, Warning,
 };
 use serde_json::{json, Map, Value};
 
@@ -269,6 +269,7 @@ fn build_scene(
         "warnings": provenance.warnings.iter().map(warning_entry).collect::<Vec<_>>(),
         "geoReference": net.geo_reference(),
         "priorities": priorities(net, provenance),
+        "roadNeighbors": road_neighbors(net),
     })
 }
 
@@ -281,6 +282,26 @@ fn priorities(net: &RoadNetwork, provenance: &Provenance) -> Value {
         .zip(&provenance.priorities)
         .map(|(p, prov)| {
             json!({ "high": od_id(p.high), "low": od_id(p.low), "junction": prov.junction_id })
+        })
+        .collect()
+}
+
+/// Each road `<neighbor>`: the `<road id>` that names it, the road beside
+/// it, `left` or `right`, and whether it runs the same way.
+fn road_neighbors(net: &RoadNetwork) -> Value {
+    let od_id = |road| net.road(road).map(|r| r.od_id());
+    net.road_neighbors()
+        .iter()
+        .map(|n| {
+            json!({
+                "road": od_id(n.road),
+                "neighbor": od_id(n.neighbor),
+                "side": match n.side {
+                    Side::Left => "left",
+                    Side::Right => "right",
+                },
+                "sameDirection": n.same_direction,
+            })
         })
         .collect()
 }

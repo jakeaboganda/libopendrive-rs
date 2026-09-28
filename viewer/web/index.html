@@ -241,6 +241,7 @@ let roadMarks = [];          // the exported road mark table
 let roadMarkMesh = null;     // every road mark's lines; userData.pick(hit) is the hovered mark
 let warnings = [];           // the exported warnings, each with the lanes of the road it names
 let priorities = [];         // the exported junction priorities, by road id
+let roadNeighbors = [];      // the exported road neighbors, by road id
 let walkers = [];            // the marker's branches: {lane, arc, side, dead}, as RoadNetwork::advance gives them
 let walkerMesh;              // a square at each branch of the marker
 
@@ -328,6 +329,7 @@ async function init() {
   buildCrg(data);
   buildWarnings(data);
   priorities = data.priorities ?? [];
+  roadNeighbors = data.roadNeighbors ?? [];
   buildSidebar();
   buildLegend();
   frameOn(roadMesh);
@@ -1336,6 +1338,9 @@ function onHover(ev) {
       .filter(Boolean).join('   '));
   }
   rows.push(...priorityRows(lane));
+  for (const n of roadNeighbors.filter(n => n.road === lane.roadId)) {
+    rows.push(`road ${escapeHtml(String(n.neighbor))} beside it on the ${n.side}, running ${n.sameDirection ? 'the same way' : 'the other way'}`);
+  }
   const rule = alongAt(lane.rules, s);
   if (rule) rows.push(`rule ${escapeHtml(rule[2])}`);
   const access = alongAt(lane.access, s);

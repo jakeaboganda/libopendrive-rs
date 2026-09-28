@@ -10,6 +10,7 @@
   lane changes from it. libOpenDRIVE reads it the same way.
 - `Warning::NeighborDropped` names one naming no baked road, or with a
   `side` or `direction` 1.4 doesn't allow.
+- The viewer's lane readout lists the roads beside the lane's road.
 
 ### Junction priority
 

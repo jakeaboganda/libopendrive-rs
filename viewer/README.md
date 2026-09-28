@@ -115,6 +115,8 @@ lit as you hover others. The readout shows:
   and the road type, where the map gives them
 - which roads the lane's road gives way to in its junction, and which give
   way to it, where the map gives junction priorities
+- the roads the lane's road names beside it, on which side and which way
+  they run, where the map gives `<neighbor>`s
 - the lane's rule, who may use it (`only` the users an allow names, or
   `all but` those a deny names) and its material, where the map gives them
 - how far a driver can see from the lane, forward, back, left and right,
