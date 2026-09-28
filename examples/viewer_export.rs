@@ -51,8 +51,8 @@ use libopendrive::{
     CrgPurpose, CrgSurface, CrossPathEnd, Direction, Extent, JunctionArea, JunctionGroupKind,
     LaneId, LaneProvenance, LaneSpan, LinePattern, Marking, Mesh, Object, ObjectProvenance,
     Orientation, Point, Provenance, Referenced, RoadMark, RoadMarkProvenance, RoadNetwork,
-    RoadSurface, Shape, Side, Signal, SignalProvenance, SpeedLimit, Structure, StructureKind,
-    StructureProvenance, SurfaceHint, Warning,
+    RoadSurface, RoadUser, Semantic, Shape, Side, Signal, SignalBoard, SignalProvenance,
+    SpeedLimit, Structure, StructureKind, StructureProvenance, SurfaceHint, Warning,
 };
 use serde_json::{json, Map, Value};
 
@@ -348,6 +348,86 @@ fn junction_area(area: &JunctionArea) -> Value {
     })
 }
 
+/// A signal semantic as the readout words it, such as `maximum speed 50
+/// km/h`.
+fn semantic_text(semantic: &Semantic) -> String {
+    let users = |users: &[RoadUser]| {
+        users
+            .iter()
+            .map(|u| match u {
+                RoadUser::Animal => "animals".to_string(),
+                RoadUser::Person(kind) | RoadUser::Vehicle(kind) => kind.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let amount = |value: &Option<f64>, unit: &Option<libopendrive::Unit>| {
+        [
+            value.map(|v| v.to_string()),
+            unit.map(|u| u.as_str().to_string()),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" ")
+    };
+    match semantic {
+        Semantic::Speed { kind, value, unit } => format!("{kind} speed {}", amount(value, unit)),
+        Semantic::Lane { kind } => format!("lane {kind}"),
+        Semantic::Priority { kind } => format!("priority {kind}"),
+        Semantic::Prohibited(u) => format!("no entry for {}", users(u)),
+        Semantic::Warning => "warning".into(),
+        Semantic::Routing => "routing".into(),
+        Semantic::StreetName => "street name".into(),
+        Semantic::Parking => "parking".into(),
+        Semantic::Tourist => "tourist information".into(),
+        Semantic::SupplementaryTime { kind, value } => {
+            format!("{kind} time {}", amount(value, &None))
+        }
+        Semantic::SupplementaryAllows(u) => format!("except {}", users(u)),
+        Semantic::SupplementaryProhibits(u) => format!("only {}", users(u)),
+        Semantic::SupplementaryDistance { kind, value, unit } => {
+            format!("{kind} distance {}", amount(value, unit))
+        }
+        Semantic::SupplementaryEnvironment { kind } => format!("in {kind}"),
+        Semantic::SupplementaryExplanatory => "explanation".into(),
+    }
+}
+
+/// A signal board's viewer record: its kind, and its signs or display
+/// areas, each with its position and what it says.
+fn board_entry(board: &SignalBoard) -> Value {
+    match board {
+        SignalBoard::Static(signs) => json!({
+            "kind": "static",
+            "signs": signs
+                .iter()
+                .map(|s| json!({
+                    "type": s.kind,
+                    "subtype": s.subtype,
+                    "value": s.value,
+                    "unit": s.unit.map(|u| u.as_str()),
+                    "text": s.text,
+                    "position": s.position.to_array(),
+                    "semantics": s.semantics.iter().map(semantic_text).collect::<Vec<_>>(),
+                }))
+                .collect::<Vec<_>>(),
+        }),
+        SignalBoard::Message(m) => json!({
+            "kind": "message",
+            "display": m.display,
+            "width": m.width,
+            "height": m.height,
+            "position": m.position.to_array(),
+            "areas": m
+                .areas
+                .iter()
+                .map(|a| json!({ "index": a.index, "position": a.position.to_array() }))
+                .collect::<Vec<_>>(),
+        }),
+    }
+}
+
 /// One warning's viewer record: its message, and the road it names.
 fn warning_entry(w: &Warning) -> Value {
     json!({ "message": w.to_string(), "roadId": w.road_id() })
@@ -486,6 +566,8 @@ fn signal_entry(s: &Signal, prov: Option<&SignalProvenance>) -> Value {
         "invalidated": s.invalidated,
         "temporary": s.temporary,
         "controllers": s.controllers.iter().map(|c| c.0).collect::<Vec<_>>(),
+        "semantics": s.semantics.iter().map(semantic_text).collect::<Vec<_>>(),
+        "boards": s.boards.iter().map(board_entry).collect::<Vec<_>>(),
         "dependencies": s
             .dependencies
             .iter()

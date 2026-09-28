@@ -238,6 +238,10 @@ another road. Then the line runs across to where it applies. A
 up with the rest, and another dashed line runs to it. The readout shows:
 
 - its name, and whether it is dynamic, invalidated or temporary
+- what it means, from its `<semantics>`, such as `maximum speed 50 km/h;
+  except bus`
+- each board it is: a static board's signs, with what each shows and means,
+  or a message board's display and its display areas
 - its country, `type` and `subtype`, as the map spells them
 - its value and unit, and its text
 - its road, OpenDRIVE id, `s`, `t` and orientation

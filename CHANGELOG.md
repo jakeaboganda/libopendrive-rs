@@ -13,6 +13,8 @@
 - The crate applies no semantic: a speed semantic sets no speed limit.
 - In ASAM's `UC_5Road_Junction`, 39 of the 64 signals give their priority
   or a parking rule this way.
+- The viewer's signal readout lists each semantic, and each board's signs
+  and display areas.
 
 ### Junction groups
 

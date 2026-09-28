@@ -1015,6 +1015,20 @@ function signalRows(sg) {
       `s ${sg.s.toFixed(2)} m   t ${sg.t.toFixed(2)} m`);
     rows.push(`orientation ${sg.orientation}   signalId ${sg.signalId}`);
   }
+  if (sg.semantics?.length) rows.push(`means ${sg.semantics.map(escapeHtml).join('; ')}`);
+  for (const b of sg.boards ?? []) {
+    if (b.kind === 'static') {
+      rows.push(`<b>static board</b> of ${b.signs.length} sign${b.signs.length === 1 ? '' : 's'}`);
+      for (const s of b.signs) {
+        const shows = s.value != null ? ` ${s.value}${s.unit ? ' ' + escapeHtml(s.unit) : ''}` : '';
+        const means = s.semantics.length ? `: ${s.semantics.map(escapeHtml).join('; ')}` : '';
+        rows.push(`  sign ${escapeHtml(s.type || '?')}${shows} at z ${s.position[2].toFixed(2)}${means}`);
+      }
+    } else if (b.kind === 'message') {
+      const size = b.width != null && b.height != null ? ` ${b.width} × ${b.height} m` : '';
+      rows.push(`<b>message board</b> ${escapeHtml(b.display || '')}${size}, ${b.areas.length} display area${b.areas.length === 1 ? '' : 's'}`);
+    }
+  }
   rows.push(...controllerRows(sg), ...linkRows(sg));
   for (const r of sg.signalReferences ?? []) {
     rows.push(`<b>reference</b> on road ${escapeHtml(r.roadId)}  ` +
