@@ -131,7 +131,7 @@ Two elements some readers take are not in the 1.9 schema, so they have no
 row above:
 
 - A road's `<link><neighbor>`, removed before 1.9. libOpenDRIVE reads it
-  (`OpenDriveMap.cpp:202`). The crate ignores it.
+  (`OpenDriveMap.cpp:202`), and so does the crate.
 - A lane's `<visibility>`. CARLA reads it (`LaneParser.cpp:139`), and so
   does the crate.
 

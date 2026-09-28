@@ -38,12 +38,18 @@
 //! version. Whether a file
 //! loads depends only on whether it uses the elements below.
 //!
-//! Every one of those elements but one is in ASAM OpenDRIVE 1.9.0, the
+//! Every one of those elements but two is in ASAM OpenDRIVE 1.9.0, the
 //! current revision. `poly3`, and a signal's `<positionRoad>` and
 //! `<positionInertial>`, are deprecated there, still specified, and still
 //! read here. A lane's `<visibility>` is not in 1.9 at all. The crate reads
 //! it from the older files that write it, as CARLA does. See
-//! [Lane visibility](#lane-visibility). The test suite imports real files
+//! [Lane visibility](#lane-visibility). A road's `<neighbor>`, from 1.4, is
+//! not in 1.9 either. The crate reads it as libOpenDRIVE does: each is a
+//! [`RoadNeighbor`] in [`RoadNetwork::road_neighbors`], the road beside a
+//! road, on its left or right, running the same way or the other. The crate
+//! derives no lane changes from it. One naming no baked road, or with a
+//! `side` or `direction` 1.4 doesn't allow, is dropped, with a
+//! [`Warning::NeighborDropped`]. The test suite imports real files
 //! declaring 1.4, 1.6 and 1.7.
 //!
 //! # Which elements
@@ -55,6 +61,7 @@
 //! | `<header><offset>` | `x`, `y`, `z`, `hdg` |
 //! | `<road>` | `id`, `length`, `junction`, `rule` |
 //! | `<road><link>` | `elementType`, `elementId`, `contactPoint` |
+//! | `<link><neighbor>` | `side`, `elementId`, `direction` |
 //! | `<road><type>` | `s`, `type` |
 //! | `<type><speed>` | `max`, `unit` |
 //! | `<planView><geometry>` | `s`, `x`, `y`, `hdg`, `length` |
@@ -893,7 +900,8 @@
 //! - [`Warning::JunctionLinkMissing`] for an incoming road whose `<link>`
 //!   leaves out its junction.
 //! - [`Warning::PriorityDropped`] for a junction `<priority>` naming a road
-//!   the load did not bake.
+//!   the load did not bake, and [`Warning::NeighborDropped`] for a road
+//!   `<neighbor>` the crate can't read.
 //! - [`Warning::RoadLengthMismatch`] for a road whose `length` is more than
 //!   1 cm from where its `<planView>` ends. The road bakes to its `length`.
 //! - [`Warning::LinkGap`] for a lane link whose lanes don't meet: more than
@@ -980,7 +988,7 @@ pub use parse::{
     Orientation, PriorityProvenance, Provenance, RoadEnd, RoadMarkProvenance, RoadSkipReason,
     SignalProvenance, SignalReferenceProvenance, StructureProvenance, Warning,
 };
-pub use road::{LanePosition, Priority, Road, RoadId, RoadLane, RoadPosition};
+pub use road::{LanePosition, Priority, Road, RoadId, RoadLane, RoadNeighbor, RoadPosition, Side};
 pub use road_mark::{
     LaneChange, LinePattern, LineRule, RoadMark, RoadMarkId, RoadMarkLine, RoadMarkType,
     RoadMarkWeight,

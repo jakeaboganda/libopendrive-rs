@@ -157,6 +157,19 @@ pub enum Warning {
         /// How far apart they are, in metres.
         gap: f64,
     },
+    /// A road `<neighbor>` naming no road the load baked, or whose `side` is
+    /// neither `left` nor `right`, or whose `direction` is neither `same`
+    /// nor `opposite`. The crate drops it.
+    NeighborDropped {
+        /// The `<road id>` whose `<link>` it is in.
+        road_id: String,
+        /// Its `elementId`, empty if it has none.
+        neighbor_id: String,
+        /// Its `side`, empty if it has none.
+        side: String,
+        /// Its `direction`, empty if it has none.
+        direction: String,
+    },
     /// A junction `<priority>` whose `high` or `low` names no road the load
     /// baked. The crate drops it.
     PriorityDropped {
@@ -262,6 +275,7 @@ impl Warning {
             | Self::LinkGap { road_id, .. }
             | Self::LaneNotLevel { road_id, .. }
             | Self::PriorityDropped { road_id, .. }
+            | Self::NeighborDropped { road_id, .. }
             | Self::ConnectionDropped {
                 incoming_road_id: road_id,
                 ..
@@ -366,6 +380,15 @@ impl fmt::Display for Warning {
             } => write!(
                 f,
                 "road {road_id:?}, lane section {section}: lane {lane} links to road {to_road_id:?}, lane section {to_section}, lane {to_lane}, {gap:.2} m away"
+            ),
+            Self::NeighborDropped {
+                road_id,
+                neighbor_id,
+                side,
+                direction,
+            } => write!(
+                f,
+                "road {road_id:?}: <neighbor> road {neighbor_id:?}, side {side:?}, direction {direction:?} dropped"
             ),
             Self::PriorityDropped {
                 junction_id,

@@ -14,9 +14,10 @@ Of `<header>`, the importer reads only the geo reference. It never inspects
 `revMajor` or `revMinor` and never rejects a file for its declared version. Whether a file
 loads depends only on whether it uses the elements listed below.
 
-Every one of those elements but a lane's `<visibility>` is in ASAM OpenDRIVE
-1.9.0, the current revision. 1.9 does not define `<visibility>`, and the
-importer reads it from the older files that write it, as CARLA does.
+Every one of those elements but a lane's `<visibility>` and a road's
+`<neighbor>` is in ASAM OpenDRIVE 1.9.0, the current revision. 1.9 defines
+neither, and the importer reads them from the older files that write them,
+as CARLA and libOpenDRIVE do.
 1.9.0 deprecates `poly3` in favour of `paramPoly3`, and 1.8 deprecated a
 signal's `<positionRoad>` and `<positionInertial>`. The importer reads them
 like any other element and raises no warning. The test suite imports real
@@ -68,6 +69,8 @@ files declaring 1.4, 1.6 and 1.7.
 - Direct junctions, which join roads end to end through a `linkedRoad`.
   Each connection links both ways, as esmini reads it, unless the junction
   gives the way back itself.
+- A road's `<neighbor>`s, from OpenDRIVE 1.4, as
+  `RoadNetwork::road_neighbors`: the road beside it, and which way it runs.
 - Junction `<priority>`s, as `RoadNetwork::priorities`: which road of a
   junction gives way to which.
 - An incoming road whose `<link>` leaves out its common junction, which the
@@ -241,7 +244,8 @@ road raises `Warning::ShapeShortOfRoad`. A road `rule` other than `RHT` or
 the roads it joins raises `Warning::ConnectionDropped`, and an incoming road
 whose `<link>` leaves out its junction raises `Warning::JunctionLinkMissing`.
 A junction `<priority>` naming a road the load didn't bake raises
-`Warning::PriorityDropped`. A road whose `length` isn't where its `<planView>` ends raises
+`Warning::PriorityDropped`, and a road `<neighbor>` the crate can't read
+raises `Warning::NeighborDropped`. A road whose `length` isn't where its `<planView>` ends raises
 `Warning::RoadLengthMismatch`, and a lane link between lanes more than
 10 cm apart raises `Warning::LinkGap`. A `<speed>` the
 crate can't read raises `Warning::SpeedLimitDropped`, and an `<access>`

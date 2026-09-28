@@ -109,6 +109,13 @@ Regenerate with
 
     python3 tests/data/lane_visibility.py
 
+`road_neighbors.xodr` comes from `road_neighbors.py`, which writes the XML
+itself. It has roads naming the roads beside them, the same way and the
+other, one naming a road the file lacks, and one with a `side` 1.4 doesn't
+allow. Regenerate with
+
+    python3 tests/data/road_neighbors.py
+
 `speed_limits.xodr` comes from `speed_limits.py`, which writes the XML
 itself. It has road types with speed limits in km/h, mph and none, lane
 speeds that override them, a road with two lane sections whose first type

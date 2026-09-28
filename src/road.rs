@@ -41,6 +41,32 @@ pub struct Priority {
     pub low: RoadId,
 }
 
+/// A road running beside another, from an OpenDRIVE road `<neighbor>`: the
+/// road that names it, which side of that road it is on, and whether it runs
+/// the same way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct RoadNeighbor {
+    /// The road whose `<link>` names it.
+    pub road: RoadId,
+    /// The road beside it.
+    pub neighbor: RoadId,
+    /// Which side of `road` it is on, looking along `road`'s `+s`.
+    pub side: Side,
+    /// Whether its `+s` runs the same way as `road`'s.
+    pub same_direction: bool,
+}
+
+/// The left or the right of a road, looking along its `+s`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Side {
+    /// Toward `+t`.
+    Left,
+    /// Toward `-t`.
+    Right,
+}
+
 /// A place on a lane: `s` along its road's reference line, and `offset`
 /// across from the lane's center, as esmini's `SetLanePos` takes them.
 ///

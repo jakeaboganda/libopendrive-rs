@@ -11,7 +11,7 @@ use crate::geo::GeoReference;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
 use crate::object::{Material, Object, ObjectId};
-use crate::road::{LanePosition, Priority, Road, RoadId, RoadLane, RoadPosition};
+use crate::road::{LanePosition, Priority, Road, RoadId, RoadLane, RoadNeighbor, RoadPosition};
 use crate::road_mark::{RoadMark, RoadMarkId};
 use crate::signal::{Controller, ControllerId, Signal, SignalId};
 use crate::structure::{Coverage, Structure, StructureId};
@@ -279,6 +279,7 @@ pub struct RoadNetwork {
     geo: GeoReference,
     roads: Vec<Road>,
     priorities: Vec<Priority>,
+    road_neighbors: Vec<RoadNeighbor>,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
     /// [`Self::nearest_lane`]. Derived from `lanes`, so it takes no part in
     /// equality.
@@ -311,6 +312,7 @@ impl PartialEq for RoadNetwork {
             && self.geo == other.geo
             && self.roads == other.roads
             && self.priorities == other.priorities
+            && self.road_neighbors == other.road_neighbors
     }
 }
 
@@ -341,6 +343,8 @@ struct NetworkData {
     roads: Vec<Road>,
     #[serde(default)]
     priorities: Vec<Priority>,
+    #[serde(default)]
+    road_neighbors: Vec<RoadNeighbor>,
 }
 
 #[cfg(feature = "serde")]
@@ -362,6 +366,7 @@ impl From<NetworkData> for RoadNetwork {
             .with_geo_reference(data.geo)
             .with_roads(data.roads)
             .with_priorities(data.priorities)
+            .with_road_neighbors(data.road_neighbors)
     }
 }
 
@@ -385,6 +390,7 @@ impl From<RoadNetwork> for NetworkData {
             geo: net.geo,
             roads: net.roads,
             priorities: net.priorities,
+            road_neighbors: net.road_neighbors,
         }
     }
 }
@@ -547,6 +553,7 @@ impl RoadNetwork {
             geo: GeoReference::default(),
             roads: Vec::new(),
             priorities: Vec::new(),
+            road_neighbors: Vec::new(),
             index,
             road_lanes: HashMap::new(),
             footprints: LaneIndex::default(),
@@ -599,6 +606,19 @@ impl RoadNetwork {
             .iter()
             .filter(move |p| p.low == road)
             .map(|p| p.high)
+    }
+
+    /// This network with `road_neighbors` beside its roads, replacing any it
+    /// had.
+    pub fn with_road_neighbors(mut self, road_neighbors: Vec<RoadNeighbor>) -> Self {
+        self.road_neighbors = road_neighbors;
+        self
+    }
+
+    /// Every road running beside another, as the roads name them, in the
+    /// order the importer emitted them: road by road, in file order.
+    pub fn road_neighbors(&self) -> &[RoadNeighbor] {
+        &self.road_neighbors
     }
 
     /// Every road, in the order the importer emitted them, which is file

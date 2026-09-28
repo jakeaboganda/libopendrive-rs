@@ -21,8 +21,8 @@ use crate::road::{
 use crate::{
     Border, ControllerId, Corner, Coverage, CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface,
     Direction, Extent, GeoOffset, GeoReference, Lane, LaneId, LaneType, Marking, Material, Object,
-    ObjectId, ObjectType, ParkingSpace, Polyline, Priority, RoadMarkId, RoadNetwork, Section,
-    Shape, SignalId, Structure, StructureId, StructureKind, UserData,
+    ObjectId, ObjectType, ParkingSpace, Polyline, Priority, RoadMarkId, RoadNeighbor, RoadNetwork,
+    Section, Shape, Side, SignalId, Structure, StructureId, StructureKind, UserData,
 };
 
 mod gaps;
@@ -420,6 +420,8 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     let signals = signals::place(root, &roads, &objects.provenance);
     let road_marks = road_marks::place(&roads);
     let properties = properties::place(roads.iter().map(|(_, road)| road), &lanes);
+    let (neighbors, dropped_neighbors) = road_neighbors(&roads);
+    warnings.extend(dropped_neighbors);
     // Resolve connectivity once all lanes exist and are registered.
     let (junctions, dropped) = links::junctions(root, &mut topo.roads);
     topo.junctions = junctions;
@@ -466,7 +468,8 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             .with_lane_visibility(properties.lane_visibility)
             .with_geo_reference(geo_reference(root))
             .with_roads(roads.into_iter().map(|(_, baked)| baked.road).collect())
-            .with_priorities(priorities),
+            .with_priorities(priorities)
+            .with_road_neighbors(neighbors),
         provenance,
     ))
 }
@@ -508,6 +511,53 @@ fn priorities(
         }
     }
     (out, provenance, warnings)
+}
+
+/// Every road `<neighbor>` naming a baked road, road by road in file order,
+/// and a warning for each the crate can't read. The spec that defined the
+/// element required `side`, `elementId` and `direction`.
+fn road_neighbors(roads: &[(roxmltree::Node, BakedRoad)]) -> (Vec<RoadNeighbor>, Vec<Warning>) {
+    let id_of = |od_id: &str| {
+        roads
+            .iter()
+            .find(|(_, r)| r.road.od_id == od_id)
+            .map(|(_, r)| r.road.id)
+    };
+    let (mut out, mut warnings) = (Vec::new(), Vec::new());
+    for (node, baked) in roads {
+        let neighbors = child(*node, "link")
+            .into_iter()
+            .flat_map(|l| l.children())
+            .filter(|n| n.has_tag_name("neighbor"));
+        for n in neighbors {
+            let text = |name| n.attribute(name).unwrap_or_default();
+            let side = match text("side") {
+                "left" => Some(Side::Left),
+                "right" => Some(Side::Right),
+                _ => None,
+            };
+            let same_direction = match text("direction") {
+                "same" => Some(true),
+                "opposite" => Some(false),
+                _ => None,
+            };
+            match (id_of(text("elementId")), side, same_direction) {
+                (Some(neighbor), Some(side), Some(same_direction)) => out.push(RoadNeighbor {
+                    road: baked.road.id,
+                    neighbor,
+                    side,
+                    same_direction,
+                }),
+                _ => warnings.push(Warning::NeighborDropped {
+                    road_id: baked.road.od_id.clone(),
+                    neighbor_id: text("elementId").to_string(),
+                    side: text("side").to_string(),
+                    direction: text("direction").to_string(),
+                }),
+            }
+        }
+    }
+    (out, warnings)
 }
 
 /// Every `<junction>` `<CRG>`, over the lanes of the roads in its junction.

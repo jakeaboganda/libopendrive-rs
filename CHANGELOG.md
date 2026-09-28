@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Road neighbors
+
+- `RoadNetwork::road_neighbors` lists each road `<neighbor>`, an element of
+  OpenDRIVE 1.4 that 1.9 no longer has, as a `RoadNeighbor`: the road beside
+  a road, its `Side`, and whether it runs the same way. The crate derives no
+  lane changes from it. libOpenDRIVE reads it the same way.
+- `Warning::NeighborDropped` names one naming no baked road, or with a
+  `side` or `direction` 1.4 doesn't allow.
+
 ### Junction priority
 
 - `RoadNetwork::priorities` lists each junction `<priority>` as a
