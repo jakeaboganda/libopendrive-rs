@@ -48,10 +48,11 @@ use std::process::ExitCode;
 use libopendrive::opencrg::CrgGrid;
 use libopendrive::{
     load_file_with_provenance, Access, Along, Controller, ControllerProvenance, Corner, CrgMode,
-    CrgPurpose, CrgSurface, Direction, Extent, LaneId, LaneProvenance, LaneSpan, LinePattern,
-    Marking, Mesh, Object, ObjectProvenance, Orientation, Point, Provenance, Referenced, RoadMark,
-    RoadMarkProvenance, RoadNetwork, RoadSurface, Shape, Side, Signal, SignalProvenance,
-    SpeedLimit, Structure, StructureKind, StructureProvenance, SurfaceHint, Warning,
+    CrgPurpose, CrgSurface, Direction, Extent, JunctionArea, LaneId, LaneProvenance, LaneSpan,
+    LinePattern, Marking, Mesh, Object, ObjectProvenance, Orientation, Point, Provenance,
+    Referenced, RoadMark, RoadMarkProvenance, RoadNetwork, RoadSurface, Shape, Side, Signal,
+    SignalProvenance, SpeedLimit, Structure, StructureKind, StructureProvenance, SurfaceHint,
+    Warning,
 };
 use serde_json::{json, Map, Value};
 
@@ -270,6 +271,7 @@ fn build_scene(
         "geoReference": net.geo_reference(),
         "priorities": priorities(net, provenance),
         "roadNeighbors": road_neighbors(net),
+        "junctionAreas": net.junction_areas().iter().map(junction_area).collect::<Vec<_>>(),
     })
 }
 
@@ -304,6 +306,17 @@ fn road_neighbors(net: &RoadNetwork) -> Value {
             })
         })
         .collect()
+}
+
+/// One junction area's viewer record: its `<junction id>`, its boundary as
+/// points, whether it has an elevation grid, and the mesh of its ground.
+fn junction_area(area: &JunctionArea) -> Value {
+    json!({
+        "junction": area.od_id,
+        "boundary": area.boundary.iter().map(|p| p.to_array()).collect::<Vec<_>>(),
+        "grid": area.grid.is_some(),
+        "mesh": buffers(&area.mesh()),
+    })
 }
 
 /// One warning's viewer record: its message, and the road it names.

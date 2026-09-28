@@ -202,6 +202,18 @@ bridge's name, type and `s` range to the readout.
 The sidebar lists tunnels and bridges above the lanes. Click one to
 highlight its lanes and frame the stretch it covers.
 
+## Junctions
+
+Where a junction gives a `<boundary>` or an `<elevationGrid>`, the viewer
+draws its ground in grey under the roads, and its boundary in amber. The
+ground comes from `JunctionArea::mesh`, at the grid's height, so the
+gaps between a junction's connecting roads are filled. Hover the ground to
+read its junction, the point and its height. The `junctions` checkbox
+hides both.
+
+The crate does not move the junction's roads onto the grid, so where a
+file's roads and grid disagree, the ground shows above or below the roads.
+
 ## Signals
 
 Each signal is a board of its `width` and `height`, standing on the middle

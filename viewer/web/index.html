@@ -79,6 +79,7 @@
       <label><input type="checkbox" id="objects" checked> objects</label>
       <label><input type="checkbox" id="tunnels" checked> tunnels</label>
       <label><input type="checkbox" id="bridges" checked> bridges</label>
+      <label><input type="checkbox" id="junctions" checked> junctions</label>
       <label><input type="checkbox" id="signals" checked> signals</label>
       <label><input type="checkbox" id="roadmarks" checked> road marks</label>
       <label id="crglabel"><input type="checkbox" id="crg" checked> CRG heights</label>
@@ -176,6 +177,10 @@ const LINK_COLORS = { 'successor': 0x3ddc84, 'predecessor': 0xff8c1a };
 // length in lane widths.
 const ARROW_COLOR = 0xffffff;
 
+// A junction's ground, and its boundary.
+const JUNCTION_COLOR = 0x5b6472;
+const JUNCTION_EDGE_COLOR = 0xf59e0b;
+
 // How far, in metres, [f] and [b] step the marker along the lanes, and its
 // colour on a branch that reached the distance and on one that ran out of
 // lanes.
@@ -242,6 +247,8 @@ let roadMarkMesh = null;     // every road mark's lines; userData.pick(hit) is t
 let warnings = [];           // the exported warnings, each with the lanes of the road it names
 let priorities = [];         // the exported junction priorities, by road id
 let roadNeighbors = [];      // the exported road neighbors, by road id
+let junctionMeshes = [];     // each junction area's ground; userData is its exported record
+let junctionLines = [];      // each junction area's boundary
 let walkers = [];            // the marker's branches: {lane, arc, side, dead}, as RoadNetwork::advance gives them
 let walkerMesh;              // a square at each branch of the marker
 
@@ -324,6 +331,7 @@ async function init() {
   buildOverlays(data);
   buildObjects(data);
   buildStructures(data);
+  buildJunctionAreas(data);
   buildSignals(data);
   buildRoadMarks(data);
   buildCrg(data);
@@ -335,7 +343,7 @@ async function init() {
   frameOn(roadMesh);
 
   applyMode();
-  for (const id of ['mode', 'flag', 'centerlines', 'boundaries', 'normals', 'objects', 'tunnels', 'bridges', 'signals', 'roadmarks', 'crg']) {
+  for (const id of ['mode', 'flag', 'centerlines', 'boundaries', 'normals', 'objects', 'tunnels', 'bridges', 'junctions', 'signals', 'roadmarks', 'crg']) {
     document.getElementById(id).addEventListener('change', applyMode);
   }
 
@@ -568,6 +576,7 @@ function applyMode() {
   if (markingMesh) markingMesh.visible = on('objects');
   for (const [kind, mesh] of Object.entries(structureTints)) mesh.visible = on(kind + 's');
   for (const m of signalMeshes) m.visible = on('signals');
+  for (const m of [...junctionMeshes, ...junctionLines]) m.visible = on('junctions');
   if (roadMarkMesh) roadMarkMesh.visible = on('roadmarks');
   if (!on('objects') && !on('signals') && !on('roadmarks')) objectOutline.visible = false;
   if (!on('signals')) signalLink.visible = false;
@@ -814,6 +823,46 @@ function buildBorders() {
 // --- Tunnels and bridges -----------------------------------------------------
 
 // A structure's stretch of its road, as the file gives it.
+// Each junction area's ground, drawn under the roads, and its boundary.
+function buildJunctionAreas(data) {
+  for (const area of data.junctionAreas ?? []) {
+    const m = area.mesh;
+    if (m.indices.length) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(m.positions, 3));
+      g.setAttribute('normal', new THREE.Float32BufferAttribute(m.normals, 3));
+      g.setIndex(m.indices);
+      const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+        color: JUNCTION_COLOR, roughness: 0.95, side: THREE.DoubleSide,
+        polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2,
+      }));
+      mesh.userData = area;
+      scene.add(mesh);
+      junctionMeshes.push(mesh);
+    }
+    if (area.boundary.length > 1) {
+      const pts = area.boundary.map(p => new THREE.Vector3(p[0], p[1], p[2] + 0.03));
+      const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts),
+        new THREE.LineBasicMaterial({ color: JUNCTION_EDGE_COLOR }));
+      line.renderOrder = 2;
+      scene.add(line);
+      junctionLines.push(line);
+    }
+  }
+}
+
+// The readout for a junction's ground.
+function showJunctionTip(ev, rect, hit) {
+  if (!selected) clearHighlight();
+  const area = hit.object.userData, p = hit.point;
+  placeTip(ev.clientX - rect.left, ev.clientY - rect.top, [
+    `<b>junction ${escapeHtml(String(area.junction))}</b>  ground`,
+    `x ${p.x.toFixed(2)}   y ${p.y.toFixed(2)}   z ${p.z.toFixed(2)}`,
+    area.grid ? 'height from its elevation grid' : 'no elevation grid: height from its boundary',
+    `boundary of ${area.boundary.length} points`,
+  ]);
+}
+
 function structureRange(s) {
   return `s ${s.s.toFixed(1)}–${(s.s + s.length).toFixed(1)} m`;
 }
@@ -1301,18 +1350,24 @@ function onHover(ev) {
     ((ev.clientX - rect.left) / rect.width) * 2 - 1,
     -((ev.clientY - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
-  const pickable = [roadMesh, ...[...objectMeshes, ...signalMeshes, roadMarkMesh].filter(m => m?.visible)];
+  const pickable = [roadMesh, ...[...objectMeshes, ...signalMeshes, roadMarkMesh, ...junctionMeshes].filter(m => m?.visible)];
   const hits = raycaster.intersectObjects(pickable, false);
   // Paint lies in the road surface, so it ties with the road under it. It
   // wins anything within a few centimetres.
   const mark = hits.find(h => h.object === roadMarkMesh);
-  const hit = mark && mark.distance - hits[0].distance < ROAD_MARK_PICK ? mark : hits[0];
+  // A junction's ground lies under its roads, so a road within a few
+  // centimetres of it wins.
+  const road = hits.find(h => h.object === roadMesh);
+  const ground = junctionMeshes.includes(hits[0]?.object) && road && road.distance - hits[0].distance < ROAD_MARK_PICK
+    ? road : hits[0];
+  const hit = mark && mark.distance - ground.distance < ROAD_MARK_PICK ? mark : ground;
   objectOutline.visible = false;
   signalLink.visible = false;
   travelArrow.visible = false;
   twoWayArrow.visible = false;
   if (!hit) { hideTip(); if (!selected) clearHighlight(); return; }
   if (hit.object === roadMarkMesh) return showRoadMarkTip(ev, rect, hit);
+  if (junctionMeshes.includes(hit.object)) return showJunctionTip(ev, rect, hit);
   if (signalMeshes.includes(hit.object)) return showSignalTip(ev, rect, hit);
   if (hit.object !== roadMesh) return showObjectTip(ev, rect, hit);
 

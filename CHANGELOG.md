@@ -16,6 +16,7 @@
   `BoundaryClockwise` name a boundary the spec doesn't allow. In ASAM's
   `UC_5Road_Junction`, road 384's lane offset leaves a 15 cm gap.
 - `Warning::road_id` is empty for a warning about a junction as a whole.
+- The viewer draws each junction's ground and outlines its boundary.
 
 ### Road neighbors
 
