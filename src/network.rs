@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
-use crate::along::{self, Access, Along, RoadType, SpeedLimit};
+use crate::along::{self, Access, Along, RoadType, SpeedLimit, Visibility};
 use crate::coords::Point;
 use crate::crg::CrgSurface;
 use crate::geo::GeoReference;
@@ -269,6 +269,7 @@ pub struct RoadNetwork {
     lane_rules: Vec<Along<String>>,
     lane_access: Vec<Along<Access>>,
     lane_materials: Vec<Along<Material>>,
+    lane_visibility: Vec<Along<Visibility>>,
     geo: GeoReference,
     roads: Vec<Road>,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
@@ -299,6 +300,7 @@ impl PartialEq for RoadNetwork {
             && self.lane_rules == other.lane_rules
             && self.lane_access == other.lane_access
             && self.lane_materials == other.lane_materials
+            && self.lane_visibility == other.lane_visibility
             && self.geo == other.geo
             && self.roads == other.roads
     }
@@ -324,6 +326,8 @@ struct NetworkData {
     #[serde(default)]
     lane_materials: Vec<Along<Material>>,
     #[serde(default)]
+    lane_visibility: Vec<Along<Visibility>>,
+    #[serde(default)]
     geo: GeoReference,
     #[serde(default)]
     roads: Vec<Road>,
@@ -344,6 +348,7 @@ impl From<NetworkData> for RoadNetwork {
             .with_lane_rules(data.lane_rules)
             .with_lane_access(data.lane_access)
             .with_lane_materials(data.lane_materials)
+            .with_lane_visibility(data.lane_visibility)
             .with_geo_reference(data.geo)
             .with_roads(data.roads)
     }
@@ -365,6 +370,7 @@ impl From<RoadNetwork> for NetworkData {
             lane_rules: net.lane_rules,
             lane_access: net.lane_access,
             lane_materials: net.lane_materials,
+            lane_visibility: net.lane_visibility,
             geo: net.geo,
             roads: net.roads,
         }
@@ -525,6 +531,7 @@ impl RoadNetwork {
             lane_rules: Vec::new(),
             lane_access: Vec::new(),
             lane_materials: Vec::new(),
+            lane_visibility: Vec::new(),
             geo: GeoReference::default(),
             roads: Vec::new(),
             index,
@@ -896,6 +903,25 @@ impl RoadNetwork {
     /// the map doesn't say. Where two meet, the later one holds.
     pub fn lane_material_at(&self, lane: LaneId, s: f32) -> Option<&Material> {
         along::at(&self.lane_materials, lane, s)
+    }
+
+    /// This network with `lane_visibility` along its lanes, replacing any it
+    /// had.
+    pub fn with_lane_visibility(mut self, lane_visibility: Vec<Along<Visibility>>) -> Self {
+        self.lane_visibility = along::sorted(lane_visibility);
+        self
+    }
+
+    /// How far a driver can see from each lane, sorted by lane, then along
+    /// it, from OpenDRIVE `<visibility>`s. None where the map doesn't say.
+    pub fn lane_visibility(&self) -> &[Along<Visibility>] {
+        &self.lane_visibility
+    }
+
+    /// How far a driver can see from `lane` `s` metres along it, or `None`
+    /// where the map doesn't say. Where two meet, the later one holds.
+    pub fn lane_visibility_at(&self, lane: LaneId, s: f32) -> Option<&Visibility> {
+        along::at(&self.lane_visibility, lane, s)
     }
 
     /// This network placed on the earth by `geo`, replacing any geo

@@ -389,6 +389,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
                 warnings.extend(baked.shape_warnings());
                 warnings.extend(baked.speed_warnings());
                 warnings.extend(baked.access_warnings());
+                warnings.extend(baked.visibility_warnings());
                 roads.push((road, baked));
             }
             Err(reason) => warnings.push(Warning::RoadSkipped {
@@ -443,6 +444,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             .with_lane_rules(properties.lane_rules)
             .with_lane_access(properties.lane_access)
             .with_lane_materials(properties.lane_materials)
+            .with_lane_visibility(properties.lane_visibility)
             .with_geo_reference(geo_reference(root))
             .with_roads(roads.into_iter().map(|(_, baked)| baked.road).collect()),
         provenance,
@@ -507,6 +509,7 @@ struct LaneDef {
     rules: Vec<(f64, String)>,
     access: Vec<(f64, properties::AccessDef)>,
     materials: Vec<(f64, Material)>,
+    visibility: Vec<(f64, properties::VisibilityDef)>,
 }
 
 /// A `<lateralProfile>`'s `<shape>`s, grouped into profiles by `s`, in
@@ -630,6 +633,7 @@ impl SectionDef {
                     rules: properties::lane_rules(lane),
                     access: properties::lane_access(lane),
                     materials: properties::lane_materials(lane),
+                    visibility: properties::lane_visibility(lane),
                 };
                 let geom = LaneGeom {
                     id,

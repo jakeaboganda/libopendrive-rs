@@ -12,7 +12,9 @@ Of `<header>`, the importer reads only the geo reference. It never inspects
 `revMajor` or `revMinor` and never rejects a file for its declared version. Whether a file
 loads depends only on whether it uses the elements listed below.
 
-Every one of those elements is in ASAM OpenDRIVE 1.9.0, the current revision.
+Every one of those elements but a lane's `<visibility>` is in ASAM OpenDRIVE
+1.9.0, the current revision. 1.9 does not define `<visibility>`, and the
+importer reads it from the older files that write it, as CARLA does.
 1.9.0 deprecates `poly3` in favour of `paramPoly3`, and 1.8 deprecated a
 signal's `<positionRoad>` and `<positionInertial>`. The importer reads them
 like any other element and raises no warning. The test suite imports real
@@ -71,6 +73,10 @@ files declaring 1.4, 1.6 and 1.7.
   Access is `Access::Allow` or `Access::Deny` with the road users the file
   names, in `<restriction>`s or the older `restriction` attribute. A deny
   of `none` lifts the restrictions before it.
+- Lane `<visibility>`s, as stretches along each lane:
+  `RoadNetwork::lane_visibility`. OpenDRIVE 1.9 does not define the
+  element. The crate reads it as CARLA does, from older files. One with a
+  distance the crate can't read raises a warning.
 
 ## Road and lane positions
 
@@ -224,7 +230,9 @@ road raises `Warning::ShapeShortOfRoad`. A road `rule` other than `RHT` or
 the roads it joins raises `Warning::ConnectionDropped`. A `<speed>` the
 crate can't read raises `Warning::SpeedLimitDropped`, and an `<access>`
 whose `rule` is neither `allow` nor `deny` raises `Warning::AccessDropped`.
-A lane outside a level lane that isn't level raises `Warning::LaneNotLevel`.
+A lane outside a level lane that isn't level raises `Warning::LaneNotLevel`,
+and a `<visibility>` with a distance the crate can't read raises
+`Warning::VisibilityDropped`.
 The elements below raise nothing.
 
 ## What it ignores

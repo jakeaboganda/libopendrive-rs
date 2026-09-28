@@ -129,6 +129,22 @@ pub enum Warning {
         /// Its `rule`, as the file writes it. Empty if it has none.
         rule: String,
     },
+    /// A lane `<visibility>` with a distance missing, not a number, or below
+    /// 0. The lane has no visibility from its `sOffset` to the next
+    /// `<visibility>`.
+    VisibilityDropped {
+        /// The `<road id>` it is on.
+        road_id: String,
+        /// Where it starts, in metres along the reference line.
+        s: f64,
+        /// The `<lane id>` whose `<visibility>` it is.
+        lane: i32,
+        /// The first distance the crate can't read: `forward`, `back`,
+        /// `left` or `right`.
+        distance: String,
+        /// Its value, as the file writes it. Empty if it has none.
+        value: String,
+    },
     /// A `<lane>` without `level="true"` outside one with it. The spec
     /// says every lane outside a level lane is level too. The crate holds
     /// it level.
@@ -170,6 +186,7 @@ impl Warning {
             | Self::UnknownTrafficRule { road_id, .. }
             | Self::SpeedLimitDropped { road_id, .. }
             | Self::AccessDropped { road_id, .. }
+            | Self::VisibilityDropped { road_id, .. }
             | Self::LaneNotLevel { road_id, .. }
             | Self::ConnectionDropped {
                 incoming_road_id: road_id,
@@ -255,6 +272,16 @@ impl fmt::Display for Warning {
             } => write!(
                 f,
                 "road {road_id:?}: lane {lane}'s <access> at s {s:.2} m dropped, rule {rule:?} is neither allow nor deny"
+            ),
+            Self::VisibilityDropped {
+                road_id,
+                s,
+                lane,
+                distance,
+                value,
+            } => write!(
+                f,
+                "road {road_id:?}: lane {lane}'s <visibility> at s {s:.2} m dropped, {distance} {value:?} is not a distance"
             ),
             Self::LaneNotLevel {
                 road_id,

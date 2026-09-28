@@ -38,10 +38,13 @@
 //! version. Whether a file
 //! loads depends only on whether it uses the elements below.
 //!
-//! Every one of those elements is in ASAM OpenDRIVE 1.9.0, the current
-//! revision. `poly3`, and a signal's `<positionRoad>` and
+//! Every one of those elements but one is in ASAM OpenDRIVE 1.9.0, the
+//! current revision. `poly3`, and a signal's `<positionRoad>` and
 //! `<positionInertial>`, are deprecated there, still specified, and still
-//! read here. The test suite imports real files declaring 1.4, 1.6 and 1.7.
+//! read here. A lane's `<visibility>` is not in 1.9 at all. The crate reads
+//! it from the older files that write it, as CARLA does. See
+//! [Lane visibility](#lane-visibility). The test suite imports real files
+//! declaring 1.4, 1.6 and 1.7.
 //!
 //! # Which elements
 //!
@@ -75,6 +78,7 @@
 //! | `<lane><access>` | `sOffset`, `rule`, `restriction` |
 //! | `<access><restriction>` | `type` |
 //! | `<lane><material>` | `sOffset`, `surface`, `friction`, `roughness` |
+//! | `<lane><visibility>` | `sOffset`, `forward`, `back`, `left`, `right` |
 //! | `<lane><roadMark>` | `sOffset`, `type`, `weight`, `color`, `width`, `height`, `laneChange` |
 //! | `<roadMark><type>` | `width` |
 //! | `<type><line>` | `length`, `space`, `tOffset`, `sOffset`, `rule`, `width`, `color` |
@@ -577,6 +581,31 @@
 //! - A missing or negative `sOffset` is 0, and entries out of order are
 //!   sorted, as for a `<speed>`.
 //!
+//! # Lane visibility
+//!
+//! [`RoadNetwork::lane_visibility`] says how far a driver can see from each
+//! lane, as [`Along`] stretches of a [`Visibility`]: the distance ahead,
+//! behind, to the left and to the right, in metres.
+//! [`RoadNetwork::lane_visibility_at`] reads it at a point. Each
+//! `<visibility>` holds from its `sOffset` to the next, or to the end of its
+//! lane section, as a lane's `<rule>` does.
+//!
+//! OpenDRIVE 1.9 does not define `<visibility>`, and no map in the test
+//! corpus or among ASAM's 1.9 examples uses it. CARLA reads its `sOffset`,
+//! `forward`, `back`, `left` and `right`, and the crate reads the same.
+//! esmini and libOpenDRIVE ignore it.
+//!
+//! The crate reads the element this way:
+//!
+//! - Neither CARLA nor the attribute names say whether `forward` is the way
+//!   the lane's traffic runs or the road's `+s`. The crate keeps the four
+//!   distances as the file names them and turns none of them.
+//! - A `<visibility>` with a distance missing, not a number, or below 0 is
+//!   dropped, with a [`Warning::VisibilityDropped`]. CARLA reads a missing
+//!   one as 0. The lane then has no visibility up to the next `<visibility>`.
+//! - A missing or negative `sOffset` is 0, and entries out of order are
+//!   sorted, as for a `<speed>`.
+//!
 //! # Road surfaces
 //!
 //! Each `<CRG>` under a road's or a junction's `<surface>` becomes a
@@ -824,6 +853,8 @@
 //!   [Speed limits and road types](#speed-limits-and-road-types).
 //! - [`Warning::LaneNotLevel`] for a lane outside a level lane that is not
 //!   level. See [Level lanes](#level-lanes).
+//! - [`Warning::VisibilityDropped`] for a `<visibility>` with a distance it
+//!   can't read. See [Lane visibility](#lane-visibility).
 //!
 //! Elements the crate does not read at all raise none. Real maps are full of
 //! them, and they would bury the rest. Other things it drops, such as a lane
@@ -869,7 +900,7 @@ mod structure;
 mod fixtures;
 
 pub use advance::Advance;
-pub use along::{Access, Along, RoadType, SpeedLimit};
+pub use along::{Access, Along, RoadType, SpeedLimit, Visibility};
 pub use coords::{Point, Vector};
 pub use crg::{
     CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface, RoadSurface, SurfaceHint, SurfaceSample,

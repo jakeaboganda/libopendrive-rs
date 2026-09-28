@@ -80,7 +80,8 @@ of the spec. So far that is a skipped road, a lane with no `<width>` or
 `<border>`, the lane borders the spec forbids, a lateral profile short
 of the road, a road `rule` the spec does not allow, a junction
 connection without the roads it joins, a `<speed>` or `<access>` it can't
-read, and a lane outside a level lane that isn't level. It
+read, a lane outside a level lane that isn't level, and a `<visibility>`
+it can't read. It
 doesn't warn for elements it doesn't read, such as `<userData>`, which real
 maps are full of. [support.md](support.md) lists those.
 

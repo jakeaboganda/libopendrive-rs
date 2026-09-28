@@ -1,11 +1,11 @@
 //! What holds along each baked lane: its road's `<type>`s, its speed
 //! limits from its own `<speed>`s or its road's, and its own `<rule>`s,
-//! `<access>`es and `<material>`s.
+//! `<access>`es, `<material>`s and `<visibility>`s.
 
 use super::{along, attr_f64, material, BakedRoad, Warning};
 use crate::coords::Point;
 use crate::road::RoadSection;
-use crate::{Access, Along, Lane, LaneId, Material, RoadType, SpeedLimit};
+use crate::{Access, Along, Lane, LaneId, Material, RoadType, SpeedLimit, Visibility};
 
 /// A `<speed>` as the file gives it.
 #[derive(Clone, PartialEq)]
@@ -199,6 +199,53 @@ pub(super) fn lane_access(lane: roxmltree::Node) -> Vec<(f64, AccessDef)> {
     out
 }
 
+/// A lane's `<visibility>` as the file gives it.
+#[derive(Clone, PartialEq)]
+pub(super) enum VisibilityDef {
+    Seen(Visibility),
+    /// The first distance the crate can't read, and its text. Empty if the
+    /// file leaves it out.
+    Unreadable {
+        distance: &'static str,
+        value: String,
+    },
+}
+
+impl VisibilityDef {
+    /// A `<visibility>`. A distance missing, not a number, or below 0 is
+    /// unreadable.
+    fn parse(node: roxmltree::Node) -> Self {
+        let distance = |name: &'static str| attr_f64(node, name).filter(|v| *v >= 0.0).ok_or(name);
+        let read = || -> Result<Visibility, &'static str> {
+            Ok(Visibility {
+                forward: distance("forward")? as f32,
+                back: distance("back")? as f32,
+                left: distance("left")? as f32,
+                right: distance("right")? as f32,
+            })
+        };
+        match read() {
+            Ok(seen) => Self::Seen(seen),
+            Err(distance) => Self::Unreadable {
+                distance,
+                value: node.attribute(distance).unwrap_or_default().to_string(),
+            },
+        }
+    }
+
+    fn visibility(&self) -> Option<Visibility> {
+        match self {
+            Self::Seen(seen) => Some(*seen),
+            Self::Unreadable { .. } => None,
+        }
+    }
+}
+
+/// A lane's `<visibility>`s.
+pub(super) fn lane_visibility(lane: roxmltree::Node) -> Vec<(f64, VisibilityDef)> {
+    by_offset(lane, "visibility", |n| Some(VisibilityDef::parse(n)))
+}
+
 /// The [`RoadType`] an OpenDRIVE `<type>` names. An absent or unrecognised
 /// type is [`RoadType::Unknown`].
 fn road_type(od_type: Option<&str>) -> RoadType {
@@ -227,6 +274,7 @@ pub(super) struct Placed {
     pub lane_rules: Vec<Along<String>>,
     pub lane_access: Vec<Along<Access>>,
     pub lane_materials: Vec<Along<Material>>,
+    pub lane_visibility: Vec<Along<Visibility>>,
 }
 
 /// Place the speed limits, road types, rules, access and materials along
@@ -270,12 +318,15 @@ pub(super) fn place<'a>(roads: impl Iterator<Item = &'a BakedRoad>, lanes: &[Lan
                 let rules = own_stretches(sec, &def.rules, |r| Some(r.clone()));
                 let access = own_stretches(sec, &def.access, AccessDef::access);
                 let materials = own_stretches(sec, &def.materials, |m| Some(m.clone()));
+                let visibility = own_stretches(sec, &def.visibility, VisibilityDef::visibility);
                 out.lane_rules
                     .extend(on_lane(id, points, &sec.stations, rules));
                 out.lane_access
                     .extend(on_lane(id, points, &sec.stations, access));
                 out.lane_materials
                     .extend(on_lane(id, points, &sec.stations, materials));
+                out.lane_visibility
+                    .extend(on_lane(id, points, &sec.stations, visibility));
             }
         }
     }
@@ -367,6 +418,31 @@ impl BakedRoad {
                         }),
                         AccessDef::Restricted(_) | AccessDef::Unrestricted => None,
                     })
+                })
+            })
+            .collect()
+    }
+
+    /// Each lane `<visibility>` with a distance the crate can't read,
+    /// section by section.
+    pub(super) fn visibility_warnings(&self) -> Vec<Warning> {
+        self.sections()
+            .flat_map(|(sec, def)| {
+                def.left.iter().chain(&def.right).flat_map(move |l| {
+                    l.visibility
+                        .iter()
+                        .filter_map(move |(offset, def)| match def {
+                            VisibilityDef::Unreadable { distance, value } => {
+                                Some(Warning::VisibilityDropped {
+                                    road_id: self.road.od_id.clone(),
+                                    s: sec.start + offset,
+                                    lane: l.id,
+                                    distance: distance.to_string(),
+                                    value: value.clone(),
+                                })
+                            }
+                            VisibilityDef::Seen(_) => None,
+                        })
                 })
             })
             .collect()

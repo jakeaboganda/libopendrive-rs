@@ -76,6 +76,13 @@ across two lane sections. Regenerate with
 
     python3 tests/data/lane_rules.py
 
+`lane_visibility.xodr` comes from `lane_visibility.py`, which writes the
+XML itself. It has lane visibilities out of order, one without `sOffset`,
+and two with a distance the crate can't read, across two lane sections.
+Regenerate with
+
+    python3 tests/data/lane_visibility.py
+
 `speed_limits.xodr` comes from `speed_limits.py`, which writes the XML
 itself. It has road types with speed limits in km/h, mph and none, lane
 speeds that override them, a road with two lane sections whose first type

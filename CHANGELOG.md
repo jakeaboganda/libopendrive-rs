@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Lane visibility
+
+- `RoadNetwork::lane_visibility` and `lane_visibility_at` read each lane's
+  `<visibility>`s as `Along` stretches of a `Visibility`: the distance a
+  driver can see ahead, behind, left and right, in metres. Each holds to
+  the next or to the end of its lane section.
+- OpenDRIVE 1.9 does not define `<visibility>`. The crate reads it as
+  CARLA does, and keeps the four distances as the file names them.
+- `Warning::VisibilityDropped` names a `<visibility>` with a distance
+  missing, not a number, or below 0. The crate drops it. CARLA reads a
+  missing one as 0.
+
 ### Moving along the lanes
 
 - `RoadNetwork::advance` moves a `LanePosition` a distance along the lanes,

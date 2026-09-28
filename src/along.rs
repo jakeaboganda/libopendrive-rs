@@ -59,6 +59,26 @@ pub enum Access {
     Deny(Vec<String>),
 }
 
+/// How far a driver can see from a lane, in metres, from an OpenDRIVE
+/// `<visibility>`: its four distances as the file names them.
+///
+/// OpenDRIVE 1.9 does not define `<visibility>`. The crate reads it as
+/// CARLA does, from the older files that write it. Neither says whether
+/// `forward` runs with the lane's traffic or along the road's `+s`, so the
+/// crate keeps the file's four distances and turns none of them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Visibility {
+    /// Ahead.
+    pub forward: f32,
+    /// Behind.
+    pub back: f32,
+    /// To the left.
+    pub left: f32,
+    /// To the right.
+    pub right: f32,
+}
+
 /// What a road is for, which sets the traffic rules on it.
 ///
 /// The OpenDRIVE spec's road types. A type this crate does not recognise
