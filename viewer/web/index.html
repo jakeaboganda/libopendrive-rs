@@ -1279,6 +1279,7 @@ function onHover(ev) {
     `x ${p.x.toFixed(2)}   y ${p.y.toFixed(2)}   z ${p.z.toFixed(2)}`,
     `s ${s.toFixed(2)} m   t ${t.toFixed(2)} m`,
     `width ${laneWidth(lane, i, u).toFixed(2)} m   heading ${vec3(heading)}`,
+    `cross slope ${slopeText(laneSlope(lane, i, u))}`,
   ];
   const raised = laneHeight(lane, i, u);
   if (raised) {
@@ -1537,9 +1538,6 @@ function heading(lane, i, u) {
   return [h[0] / len, h[1] / len, h[2] / len];
 }
 
-// The lane's height off the road at its inner and outer border, a fraction
-// `u` along segment `i`, lerped between the segment's two vertices. Null for a
-// lane level with the road.
 // The lane's width at segment `i`, fraction `u` along it, as
 // `Lane::width_at` gives it.
 function laneWidth(lane, i, u) {
@@ -1548,6 +1546,23 @@ function laneWidth(lane, i, u) {
   return w[i] + (w[Math.min(i + 1, w.length - 1)] - w[i]) * u;
 }
 
+// The lane's cross slope at segment `i`, fraction `u` along it, as a percent
+// rising toward +t: the tangent of its `bank`.
+function laneSlope(lane, i, u) {
+  const b = lane.bank;
+  if (!b || !b.length) return 0;
+  return Math.tan(b[i] + (b[Math.min(i + 1, b.length - 1)] - b[i]) * u) * 100;
+}
+
+// Where the lane goes up or down toward +t, and by how much.
+function slopeText(percent) {
+  if (Math.abs(percent) < 0.05) return 'level';
+  return `${Math.abs(percent).toFixed(1)} % ${percent > 0 ? 'up' : 'down'} toward +t`;
+}
+
+// The lane's height off the road at its inner and outer border, a fraction
+// `u` along segment `i`, lerped between the segment's two vertices. Null for a
+// lane level with the road.
 function laneHeight(lane, i, u) {
   const a = lane.heights && lane.heights[i], b = lane.heights && lane.heights[i + 1];
   if (!a || !b) return null;

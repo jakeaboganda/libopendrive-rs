@@ -611,6 +611,11 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
         "widths".into(),
         json!(lane.map(|l| l.widths.clone()).unwrap_or_default()),
     );
+    // Parallel to `centerline`, or empty for a flat lane.
+    entry.insert(
+        "bank".into(),
+        json!(lane.map(|l| l.bank.clone()).unwrap_or_default()),
+    );
     let ids = |ids: &[LaneId]| ids.iter().map(|l| l.0).collect::<Vec<_>>();
     entry.insert(
         "successors".into(),

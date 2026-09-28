@@ -94,8 +94,11 @@ lit as you hover others. The readout shows:
 - the road id, the OpenDRIVE lane id and the lane type
 - the surface point `x, y, z`, and `s` and `t` along the lane
 - the lane's width at that point, which grows along a lane that opens out
-  of nothing, whether its widths or its `<border>`s shape it
+  of nothing, whether its widths or its `<border>`s shape it. A tilted
+  lane's is measured across its surface.
 - the lane's heading
+- its cross slope at that point, in percent up or down toward +t, from
+  superelevation, lateral shape and lane heights together
 - on a lane raised by its `<height>`s, such as a sidewalk, how far it stands
   off the road at its inner and outer border at that point
 - its successors and predecessors, by road, lane section and OpenDRIVE
