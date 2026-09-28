@@ -11,6 +11,7 @@
 - `Warning::JunctionReferenceDropped` names a reference to a junction the
   file lacks, and `Warning::UnknownJunctionGroupType` a `type` the spec
   does not allow, read as unknown.
+- The viewer's lane readout names the lane's junction and its group.
 
 ### Cross-section surfaces
 

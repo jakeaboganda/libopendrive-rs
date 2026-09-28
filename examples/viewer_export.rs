@@ -48,11 +48,11 @@ use std::process::ExitCode;
 use libopendrive::opencrg::CrgGrid;
 use libopendrive::{
     load_file_with_provenance, Access, Along, Controller, ControllerProvenance, Corner, CrgMode,
-    CrgPurpose, CrgSurface, CrossPathEnd, Direction, Extent, JunctionArea, LaneId, LaneProvenance,
-    LaneSpan, LinePattern, Marking, Mesh, Object, ObjectProvenance, Orientation, Point, Provenance,
-    Referenced, RoadMark, RoadMarkProvenance, RoadNetwork, RoadSurface, Shape, Side, Signal,
-    SignalProvenance, SpeedLimit, Structure, StructureKind, StructureProvenance, SurfaceHint,
-    Warning,
+    CrgPurpose, CrgSurface, CrossPathEnd, Direction, Extent, JunctionArea, JunctionGroupKind,
+    LaneId, LaneProvenance, LaneSpan, LinePattern, Marking, Mesh, Object, ObjectProvenance,
+    Orientation, Point, Provenance, Referenced, RoadMark, RoadMarkProvenance, RoadNetwork,
+    RoadSurface, Shape, Side, Signal, SignalProvenance, SpeedLimit, Structure, StructureKind,
+    StructureProvenance, SurfaceHint, Warning,
 };
 use serde_json::{json, Map, Value};
 
@@ -272,6 +272,19 @@ fn build_scene(
         "priorities": priorities(net, provenance),
         "roadNeighbors": road_neighbors(net),
         "junctionAreas": net.junction_areas().iter().map(junction_area).collect::<Vec<_>>(),
+        "junctionGroups": net
+            .junction_groups()
+            .iter()
+            .map(|g| {
+                let kind = match g.kind {
+                    JunctionGroupKind::Roundabout => "roundabout",
+                    JunctionGroupKind::ComplexJunction => "complex junction",
+                    JunctionGroupKind::HighwayInterchange => "highway interchange",
+                    _ => "junction group",
+                };
+                json!({ "id": g.od_id, "name": g.name, "kind": kind, "junctions": g.junctions })
+            })
+            .collect::<Vec<_>>(),
         "crossPaths": net
             .cross_paths()
             .iter()
@@ -672,6 +685,8 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
 
     let mut entry = Map::new();
     entry.insert("laneId".into(), json!(span.lane.0));
+    let road = net.road_lane(span.lane).and_then(|at| net.road(at.road));
+    entry.insert("junction".into(), json!(road.and_then(|r| r.junction())));
     entry.insert("roadId".into(), json!(prov.map(|p| p.road_id.as_str())));
     entry.insert("section".into(), json!(prov.map(|p| p.section)));
     entry.insert("odLaneId".into(), json!(prov.map(|p| p.od_id)));

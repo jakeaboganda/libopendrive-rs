@@ -113,6 +113,8 @@ lit as you hover others. The readout shows:
   off the road at its inner and outer border at that point
 - the speed limit at that point, in km/h and mph, or `none` for no limit,
   and the road type, where the map gives them
+- the junction the lane's road is part of, and the group it is in, such as
+  a roundabout, where the map groups junctions
 - which roads the lane's road gives way to in its junction, and which give
   way to it, where the map gives junction priorities
 - the cross paths a crossing road's lane carries, from which lane and `s`
