@@ -11,7 +11,7 @@ use crate::geo::GeoReference;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
 use crate::object::{Material, Object, ObjectId};
-use crate::road::{Road, RoadId, RoadLane, RoadPosition};
+use crate::road::{LanePosition, Road, RoadId, RoadLane, RoadPosition};
 use crate::road_mark::{RoadMark, RoadMarkId};
 use crate::signal::{Controller, ControllerId, Signal, SignalId};
 use crate::structure::{Coverage, Structure, StructureId};
@@ -659,6 +659,70 @@ impl RoadNetwork {
         })
     }
 
+    /// The point on `at.lane`'s surface at its position, or `None` if there
+    /// is no such lane on a road, or `s` is off the lane's section.
+    ///
+    /// The surface is the lane's own, carried on flat past its borders, so an
+    /// `offset` past the lane's edge stays level with the lane rather than
+    /// stepping onto a kerb beside it. At `offset` 0 it is the lane's center,
+    /// where the baked centerline stands at each of its points.
+    pub fn lane_point(&self, at: LanePosition) -> Option<Point> {
+        let on = self.road_lane(at.lane)?;
+        let road = self.road(on.road)?;
+        let section = road.section(on.section)?;
+        if !(section.start..=section.end).contains(&at.s) {
+            return None;
+        }
+        let lane = road.across(section, at.s).find(|a| a.od_id == on.od_id)?;
+        let t = (lane.inner_t + lane.outer_t) / 2.0 + at.offset;
+        Some(road.lane_surface(section, on.od_id, at.s, t).0)
+    }
+
+    /// The lane position of `point`: the lane under or over it on the road
+    /// [`Self::road_position`] finds, of any type, with the offset from its
+    /// center. `None` on a network without roads.
+    ///
+    /// The lane is the one whose borders hold the road `t`. A point on the
+    /// border between two lanes is on the inner one, and one past the
+    /// outermost lane on that lane. A point on the center line is on the
+    /// first right lane, or the first left one where there is none.
+    pub fn lane_position(&self, point: Point) -> Option<LanePosition> {
+        let at = self.road_position(point)?;
+        let road = self.road(at.road)?;
+        let section = road.section_at(at.s)?;
+        let innermost = |od_id: i32| road.across(section, at.s).find(|a| a.od_id == od_id);
+        let lane = road
+            .lane_at(section, at.s, at.t)
+            .or_else(|| innermost(-1))
+            .or_else(|| innermost(1))?;
+        let (_, id) = *section
+            .lanes
+            .iter()
+            .find(|(od_id, _)| *od_id == lane.od_id)?;
+        Some(LanePosition {
+            lane: id,
+            s: at.s,
+            offset: at.t - (lane.inner_t + lane.outer_t) / 2.0,
+        })
+    }
+
+    /// How far along `at.lane`'s centerline, from its first point, the lane
+    /// position is: the `s` of [`Projection`], of the [`Along`] stretches and
+    /// of [`Lane::sample_at`]. `None` if there is no such lane on a road, or
+    /// `s` is off the lane's section.
+    ///
+    /// A lane position's `s` is its road's, measured along the reference
+    /// line. The two drift apart on a bend, and under a lane offset. See
+    /// [Lane positions](crate#lane-positions).
+    pub fn centerline_s(&self, at: LanePosition) -> Option<f32> {
+        let on = self.road_lane(at.lane)?;
+        let section = self.road(on.road)?.section(on.section)?;
+        let lane = self.lane(at.lane)?;
+        (section.start..=section.end)
+            .contains(&at.s)
+            .then(|| crate::road::along(lane.center.points(), &section.stations, at.s))
+    }
+
     /// Where `point` projects onto `lane`'s centerline over `segments`, and
     /// how far outside the lane's reach it is in plan: past half its width
     /// and [`FOOTPRINT_MARGIN`]. A lower bound on its distance from the lane.
@@ -978,7 +1042,9 @@ impl RoadNetwork {
 
     /// The driving lane whose centerline is nearest `point`, with the
     /// projection onto it. That is the lane a body is in, and its lane-keeping
-    /// error.
+    /// error. The projection's `s` is along the lane's baked centerline, not
+    /// its road. [`Self::lane_position`] gives the road's, on the exact lane
+    /// surface.
     ///
     /// Answered through the ground-plane index built in [`RoadNetwork::new`],
     /// so the cost tracks the local lane density rather than the size of the

@@ -44,8 +44,8 @@ mesh.validate()?;
 - OpenCRG surfaces, for the height, normal and friction under a wheel.
 - The geo reference: the PROJ string and offset, kept unapplied.
 
-It keeps each road, so a caller can turn `(road, s, t)` into a point on
-the road surface and a point back into road coordinates.
+It keeps each road, so a caller can turn `(road, s, t)` or `(lane, s,
+offset)` into a point on the road surface, and a point back.
 
 It loads a file whatever OpenDRIVE version it declares. Where it drops part
 of a bad file, it says so in `Provenance::warnings`.

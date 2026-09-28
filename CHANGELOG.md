@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Lane positions
+
+- `RoadNetwork::lane_point` turns a `LanePosition`, a lane with a road `s`
+  and an offset from its center toward `+t`, into the point on the lane's
+  surface. `RoadNetwork::lane_position` turns a point back, on the lane of
+  any type whose borders hold its road `t`. Both are exact, and follow
+  esmini's `SetLanePos`.
+- `RoadNetwork::centerline_s` turns a lane position's road `s` into the
+  distance along the lane's baked centerline, which `Projection`, the
+  `Along` stretches and `Lane::sample_at` use. The two drift apart on a
+  bend: by up to 21 % of the distance across the test corpus.
+- `Projection` and the `Along` stretches stay on the centerline's `s`.
+  `nearest_lane`'s point is within 1.1 cm of the exact center for 99 % of
+  the points tried, so moving them to road `s` would break every caller
+  for no gain in where they land.
+
 ### Road coordinates
 
 - The network keeps its roads. `RoadNetwork::roads`, `road` and

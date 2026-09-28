@@ -704,6 +704,35 @@
 //! A network built with [`RoadNetwork::new`], or serialized before roads were
 //! kept, has none, so the road queries answer `None`.
 //!
+//! Where a road bends tighter than its lanes are wide, as some exports do at
+//! a sharp turn, its outer lanes fold over its inner ones. A point there has
+//! more than one road position, and the crate returns one of them.
+//!
+//! # Lane positions
+//!
+//! A [`LanePosition`] is a lane, a road `s`, and an offset from the lane's
+//! center toward `+t`, as esmini's `SetLanePos` takes them.
+//! [`RoadNetwork::lane_point`] turns one into the point on the lane's
+//! surface, and [`RoadNetwork::lane_position`] turns a point back, on the
+//! lane of any type whose borders hold the road `t`. At offset 0 a lane
+//! position is on the lane's center, where the baked centerline stands.
+//!
+//! A lane has two kinds of `s`. A [`LanePosition`], like a [`RoadPosition`],
+//! a signal's or an object's, measures it along the road's reference line.
+//! [`Projection`], the [`Along`] stretches and [`Lane::sample_at`] measure it
+//! along the lane's baked centerline. On a bend the two drift apart by the
+//! lane's `t` over the radius, and under a changing lane offset by how far
+//! the lane swings. Across the test corpus the drift reaches 21 % of the
+//! distance, 85 m along a 400 m spiral. [`RoadNetwork::centerline_s`] turns a
+//! lane position's `s` into the centerline's, to read a speed limit or a
+//! [`Lane::sample_at`] there.
+//!
+//! [`RoadNetwork::nearest_lane`] projects onto the baked centerline, which
+//! runs straight between points at most 2 m and 0.05 rad apart. Across the
+//! corpus its point is within 0.06 mm of the lane's exact center at the
+//! median, 6 mm at the 95th percentile and 1.1 cm at the 99th.
+//! [`RoadNetwork::lane_position`] is exact, and costs about ten times as much.
+//!
 //! # Geo reference
 //!
 //! [`RoadNetwork::geo_reference`] gives the `<geoReference>` PROJ string and
@@ -821,7 +850,7 @@ pub use parse::{
     Orientation, Provenance, RoadMarkProvenance, RoadSkipReason, SignalProvenance,
     SignalReferenceProvenance, StructureProvenance, Warning,
 };
-pub use road::{Road, RoadId, RoadLane, RoadPosition};
+pub use road::{LanePosition, Road, RoadId, RoadLane, RoadPosition};
 pub use road_mark::{
     LaneChange, LinePattern, LineRule, RoadMark, RoadMarkId, RoadMarkLine, RoadMarkType,
     RoadMarkWeight,

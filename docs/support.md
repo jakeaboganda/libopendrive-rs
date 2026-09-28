@@ -72,7 +72,7 @@ files declaring 1.4, 1.6 and 1.7.
   names, in `<restriction>`s or the older `restriction` attribute. A deny
   of `none` lifts the restrictions before it.
 
-## Road coordinates
+## Road and lane positions
 
 - `RoadNetwork::roads` keeps each road's reference line, profiles and lane
   sections. `road_point` turns a road `s` and `t` into the point on the
@@ -82,6 +82,10 @@ files declaring 1.4, 1.6 and 1.7.
 - `road_position` takes the road whose surface is nearest in 3D, so a point
   on a bridge finds the bridge. Where roads overlap in a junction, which
   road comes back is not defined; `road_position_on` picks one.
+- `lane_point` and `lane_position` do the same by lane: a road `s` and an
+  offset from the lane's center, as esmini's `SetLanePos` takes them.
+  `centerline_s` turns that road `s` into the distance along the lane's
+  baked centerline, which `nearest_lane` and the speed limits use.
 
 ## Objects
 

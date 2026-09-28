@@ -30,6 +30,24 @@ pub struct RoadPosition {
     pub t: f64,
 }
 
+/// A place on a lane: `s` along its road's reference line, and `offset`
+/// across from the lane's center, as esmini's `SetLanePos` takes them.
+///
+/// `s` is the road's, not the distance along the lane's own centerline, so a
+/// lane position and a road position at one place share it. `offset` is
+/// along the road's `+t`, positive to the left of the reference line
+/// whichever way the lane's traffic runs. Both are in metres.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct LanePosition {
+    /// The lane.
+    pub lane: LaneId,
+    /// How far along its road's reference line.
+    pub s: f64,
+    /// How far across from its center, positive toward `+t`.
+    pub offset: f64,
+}
+
 /// Where a lane lies on its road: the road, the lane section, and its
 /// OpenDRIVE `<lane id>`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -658,16 +676,22 @@ impl Road {
         let height = self
             .section_at(s)
             .filter(|section| section.raised() || !self.shapes.is_empty())
-            .and_then(|section| {
-                self.across(section, s)
-                    .filter(|a| f64::from(a.od_id.signum()) * (t - a.inner_t) > 0.0)
-                    .last()
-            })
+            .and_then(|section| self.lane_at(section, s, t))
             .map_or_else(
                 || shape_at(&self.shapes, s, t),
                 |a| a.height(t.clamp(a.inner_t.min(a.outer_t), a.inner_t.max(a.outer_t))),
             );
         self.raised_xyz(s, t, height)
+    }
+
+    /// The lane of `section` at `(s, t)`: the outermost on the side of `t`
+    /// whose inner border `t` lies beyond. So a point on the border between
+    /// two lanes is on the inner one, and a point past the outermost lane on
+    /// that lane. `None` on the center line, or on a side with no lanes.
+    pub(crate) fn lane_at(&self, section: &RoadSection, s: f64, t: f64) -> Option<Across> {
+        self.across(section, s)
+            .filter(|a| f64::from(a.od_id.signum()) * (t - a.inner_t) > 0.0)
+            .last()
     }
 
     /// The surface of the lane `od_id` of `section` at `(s, t)`, straight
@@ -762,6 +786,11 @@ impl Road {
         (s, t)
     }
 
+    /// The lane section with this index among the road's `<laneSection>`s.
+    pub(crate) fn section(&self, index: usize) -> Option<&RoadSection> {
+        self.sections.iter().find(|section| section.index == index)
+    }
+
     /// The lane section at `s`. On a boundary, the one starting there.
     pub(crate) fn section_at(&self, s: f64) -> Option<&RoadSection> {
         self.sections
@@ -844,6 +873,23 @@ impl Road {
             .map(|&(_, id)| id)
             .collect()
     }
+}
+
+/// How far along a lane road station `s` is, in metres from its first
+/// point. `points` are the lane's centerline, sampled at the road
+/// `stations`, one each.
+pub(crate) fn along(points: &[Point], stations: &[f64], s: f64) -> f32 {
+    debug_assert_eq!(points.len(), stations.len());
+    let i = stations
+        .partition_point(|&x| x <= s)
+        .saturating_sub(1)
+        .min(stations.len().saturating_sub(2));
+    let before: f32 = points[..=i]
+        .windows(2)
+        .map(|w| w[0].distance_to(w[1]))
+        .sum();
+    let f = ((s - stations[i]) / (stations[i + 1] - stations[i])).clamp(0.0, 1.0);
+    before + points[i].distance_to(points[i + 1]) * f as f32
 }
 
 /// Whether the lane `od_id` is in one of the `validity` ranges, or there are

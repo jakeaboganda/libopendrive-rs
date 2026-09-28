@@ -14,8 +14,9 @@ use crate::coords::{Point, Vector};
 use crate::crg::Stretch;
 use crate::object::orient;
 use crate::road::{
-    active, height_at, is_valid, side_borders, side_heights, Cubic, GeomRec, GeomShape, HeightDef,
-    LaneBorders, LaneExtent, LaneGeom, Road, RoadId, RoadSection, ShapeProfile, TrafficRule,
+    active, along, height_at, is_valid, side_borders, side_heights, Cubic, GeomRec, GeomShape,
+    HeightDef, LaneBorders, LaneExtent, LaneGeom, Road, RoadId, RoadSection, ShapeProfile,
+    TrafficRule,
 };
 use crate::{
     Border, ControllerId, Corner, Coverage, CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface,
@@ -1853,23 +1854,6 @@ fn place_structures(
             length,
         });
     }
-}
-
-/// How far along a lane road station `s` is, in metres from its first
-/// point. `points` are the lane's centerline, sampled at the road
-/// `stations`, one each.
-fn along(points: &[Point], stations: &[f64], s: f64) -> f32 {
-    debug_assert_eq!(points.len(), stations.len());
-    let i = stations
-        .partition_point(|&x| x <= s)
-        .saturating_sub(1)
-        .min(stations.len().saturating_sub(2));
-    let before: f32 = points[..=i]
-        .windows(2)
-        .map(|w| w[0].distance_to(w[1]))
-        .sum();
-    let f = ((s - stations[i]) / (stations[i + 1] - stations[i])).clamp(0.0, 1.0);
-    before + points[i].distance_to(points[i + 1]) * f as f32
 }
 
 /// Every `<object>` in the document by its id, with the road it is on, for
