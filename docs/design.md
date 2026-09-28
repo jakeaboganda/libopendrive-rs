@@ -72,7 +72,8 @@ logging crate. A clean file allocates no warnings.
 The crate warns where it drops something, or reads a file that breaks a rule
 of the spec. So far that is a skipped road, a lane with no `<width>` or
 `<border>`, the lane borders the spec forbids, a lateral profile short
-of the road, and a road `rule` the spec does not allow. It
+of the road, a road `rule` the spec does not allow, and a junction
+connection without the roads it joins. It
 doesn't warn for elements it doesn't read, such as `<userData>`, which real
 maps are full of. [support.md](support.md) lists those.
 

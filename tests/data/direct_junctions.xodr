@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+  <header revMajor="1" revMinor="8" name="direct_junctions"/>
+  <road name="" length="50" id="0" junction="-1">
+    <link><successor elementType="junction" elementId="8"/></link>
+    <planView><geometry s="0" x="0" y="0" hdg="0" length="50"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane><lane id="-2" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+  <road name="" length="50" id="1" junction="-1">
+    <link><predecessor elementType="junction" elementId="8"/></link>
+    <planView><geometry s="0" x="50" y="0" hdg="0" length="50"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+  <road name="" length="50" id="2" junction="-1">
+    <link><predecessor elementType="junction" elementId="8"/></link>
+    <planView><geometry s="0" x="50" y="-3.5" hdg="-0.3" length="50"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+  <road name="" length="50" id="3" junction="-1">
+    <link><successor elementType="junction" elementId="9"/></link>
+    <planView><geometry s="0" x="0" y="20" hdg="0" length="50"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+  <road name="" length="50" id="4" junction="-1">
+    <link><predecessor elementType="junction" elementId="9"/></link>
+    <planView><geometry s="0" x="50" y="20" hdg="0" length="50"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+  <junction name="" id="8" type="direct">
+    <connection id="0" incomingRoad="0" linkedRoad="1" contactPoint="start"><laneLink from="1" to="1"/><laneLink from="-1" to="-1"/></connection>
+    <connection id="1" incomingRoad="0" linkedRoad="2" contactPoint="start"><laneLink from="-2" to="-1"/></connection>
+    <connection id="2" incomingRoad="0" contactPoint="start"><laneLink from="-1" to="-1"/></connection>
+  </junction>
+  <junction name="" id="9" type="direct">
+    <connection id="0" incomingRoad="3" linkedRoad="4" contactPoint="start"><laneLink from="1" to="1"/><laneLink from="-1" to="-1"/></connection>
+    <connection id="1" incomingRoad="4" linkedRoad="3" contactPoint="end"><laneLink from="1" to="1"/><laneLink from="-1" to="-1"/></connection>
+  </junction>
+  <junction name="" id="10" type="default">
+    <connection id="0" incomingRoad="3" contactPoint="start"><laneLink from="-1" to="-1"/></connection>
+  </junction>
+</OpenDRIVE>

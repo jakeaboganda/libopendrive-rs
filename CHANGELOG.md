@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Direct junctions
+
+- Fix: a `type="direct"` junction's connections link its roads. The crate
+  required a `connectingRoad` on every `<connection>`, so it dropped every
+  direct connection, which names a `linkedRoad` instead. On esmini's
+  `soderleden.xodr`, the six drivable lanes that meet at junction 8 now
+  link across it.
+- `Warning::ConnectionDropped` names a connection without an
+  `incomingRoad`, or without the road it leads into. The crate used to
+  drop it silently.
+- Where the crate departs from the spec:
+  - A direct connection also links its linked road back into its incoming
+    road, as esmini reads it, unless the junction gives that connection
+    itself. The spec does not say.
+
 ### Left-hand traffic
 
 - Fix: a road with `rule="LHT"` drives its left lanes along `+s` and its

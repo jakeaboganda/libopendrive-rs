@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 
+use super::Warning;
 use crate::{Direction, Lane, LaneId};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -36,8 +37,10 @@ pub(crate) struct RoadInfo {
     pub successor: Option<LinkTarget>,
 }
 
-/// One `<junction>` `<connection>`: an incoming road flows through a connecting
-/// road, with per-lane `from -> to` links.
+/// One `<junction>` `<connection>`: an incoming road flows into a connecting
+/// road, with per-lane `from -> to` links. In a `type="direct"` junction the
+/// connecting road is the `linkedRoad`, which the incoming road runs
+/// straight into.
 pub(crate) struct JunctionConn {
     pub incoming_road: String,
     pub connecting_road: String,
@@ -230,35 +233,99 @@ pub(crate) fn lane_link(lane: roxmltree::Node) -> (Option<i32>, Option<i32>) {
     (id("predecessor"), id("successor"))
 }
 
-/// Parse every `<junction>` in the document into `id -> connections`.
-pub(crate) fn junctions(root: roxmltree::Node) -> HashMap<String, Vec<JunctionConn>> {
+/// Parse every `<junction>` in the document into `id -> connections`, and
+/// warn of each connection dropped for lacking a road. `roads` gives each
+/// road's links, to find where a direct junction's incoming road meets it.
+pub(crate) fn junctions(
+    root: roxmltree::Node,
+    roads: &HashMap<String, RoadInfo>,
+) -> (HashMap<String, Vec<JunctionConn>>, Vec<Warning>) {
     let mut out = HashMap::new();
+    let mut warnings = Vec::new();
     for j in root.children().filter(|n| n.has_tag_name("junction")) {
         let Some(jid) = j.attribute("id") else {
             continue;
         };
-        let conns = j
-            .children()
-            .filter(|n| n.has_tag_name("connection"))
-            .filter_map(|c| {
-                Some(JunctionConn {
-                    incoming_road: c.attribute("incomingRoad")?.to_string(),
-                    connecting_road: c.attribute("connectingRoad")?.to_string(),
-                    contact: contact_of(c),
-                    lane_links: c
-                        .children()
-                        .filter(|n| n.has_tag_name("laneLink"))
-                        .filter_map(|l| {
-                            Some((
-                                l.attribute("from")?.parse().ok()?,
-                                l.attribute("to")?.parse().ok()?,
-                            ))
-                        })
-                        .collect(),
-                })
-            })
-            .collect();
+        let direct = j.attribute("type") == Some("direct");
+        let target = if direct {
+            "linkedRoad"
+        } else {
+            "connectingRoad"
+        };
+        let mut conns = Vec::new();
+        for c in j.children().filter(|n| n.has_tag_name("connection")) {
+            let (Some(incoming), Some(connecting)) =
+                (c.attribute("incomingRoad"), c.attribute(target))
+            else {
+                warnings.push(Warning::ConnectionDropped {
+                    incoming_road_id: c.attribute("incomingRoad").unwrap_or_default().to_string(),
+                    junction_id: jid.to_string(),
+                    connection_id: c.attribute("id").unwrap_or_default().to_string(),
+                });
+                continue;
+            };
+            conns.push(JunctionConn {
+                incoming_road: incoming.to_string(),
+                connecting_road: connecting.to_string(),
+                contact: contact_of(c),
+                lane_links: c
+                    .children()
+                    .filter(|n| n.has_tag_name("laneLink"))
+                    .filter_map(|l| {
+                        Some((
+                            l.attribute("from")?.parse().ok()?,
+                            l.attribute("to")?.parse().ok()?,
+                        ))
+                    })
+                    .collect(),
+            });
+        }
+        if direct {
+            let back = reversed(jid, &conns, roads);
+            conns.extend(back);
+        }
         out.insert(jid.to_string(), conns);
     }
-    out
+    (out, warnings)
+}
+
+/// The connections of direct junction `jid` run the other way, from the
+/// linked road back into the incoming road, where `conns` does not already
+/// give that pair. The incoming road meets the junction at the end whose
+/// road link names it, as esmini finds it. A pair whose incoming road names
+/// the junction at neither end gets none.
+fn reversed(
+    jid: &str,
+    conns: &[JunctionConn],
+    roads: &HashMap<String, RoadInfo>,
+) -> Vec<JunctionConn> {
+    let names_junction = |target: &Option<LinkTarget>| {
+        target
+            .as_ref()
+            .is_some_and(|t| t.elem == ElemType::Junction && t.id == jid)
+    };
+    conns
+        .iter()
+        .filter(|c| {
+            !conns.iter().any(|o| {
+                o.incoming_road == c.connecting_road && o.connecting_road == c.incoming_road
+            })
+        })
+        .filter_map(|c| {
+            let road = roads.get(&c.incoming_road)?;
+            let contact = if names_junction(&road.successor) {
+                Contact::End
+            } else if names_junction(&road.predecessor) {
+                Contact::Start
+            } else {
+                return None;
+            };
+            Some(JunctionConn {
+                incoming_road: c.connecting_road.clone(),
+                connecting_road: c.incoming_road.clone(),
+                contact,
+                lane_links: c.lane_links.iter().map(|&(from, to)| (to, from)).collect(),
+            })
+        })
+        .collect()
 }

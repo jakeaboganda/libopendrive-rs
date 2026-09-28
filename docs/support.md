@@ -55,6 +55,9 @@ files declaring 1.4, 1.6 and 1.7.
 - A road's `rule`, so a left-hand-traffic road drives its left lanes along
   `+s`. A value other than `RHT` or `LHT` reads as `RHT` and raises a
   warning.
+- Direct junctions, which join roads end to end through a `linkedRoad`.
+  Each connection links both ways, as esmini reads it, unless the junction
+  gives the way back itself.
 
 ## Objects
 
@@ -177,7 +180,9 @@ raises `Warning::RoadSkipped`. A lane with no `<width>` or `<border>` raises
 `Warning::WidthAndBorder`, `Warning::BorderWithLaneOffset` and
 `Warning::BorderCrossesInnerLane`. A lateral profile that doesn't cover the
 road raises `Warning::ShapeShortOfRoad`. A road `rule` other than `RHT` or
-`LHT` raises `Warning::UnknownTrafficRule`. The elements below raise nothing.
+`LHT` raises `Warning::UnknownTrafficRule`. A junction connection without
+the roads it joins raises `Warning::ConnectionDropped`. The elements below
+raise nothing.
 
 ## What it ignores
 

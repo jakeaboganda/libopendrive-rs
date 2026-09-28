@@ -29,7 +29,8 @@ mesh.validate()?;
 - Road geometry, elevation, superelevation and lateral shape.
 - Lanes of every type, with their widths, borders, offsets, heights and
   sections.
-- Links and junctions, as a lane graph, in right- or left-hand traffic.
+- Links and junctions, direct junctions included, as a lane graph, in
+  right- or left-hand traffic.
 - Objects, with repeats, outlines, markings and borders.
 - Signals and the controllers that group them.
 - Road marks.

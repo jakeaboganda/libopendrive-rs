@@ -395,7 +395,9 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     let signals = signals::place(root, &roads, &objects.provenance);
     let road_marks = road_marks::place(&roads);
     // Resolve connectivity once all lanes exist and are registered.
-    topo.junctions = links::junctions(root);
+    let (junctions, dropped) = links::junctions(root, &topo.roads);
+    topo.junctions = junctions;
+    warnings.extend(dropped);
     links::resolve(&mut lanes, &topo);
     // The parser already recorded each lane's OpenDRIVE origin while baking;
     // surface it rather than reconstructing lane-id order downstream.

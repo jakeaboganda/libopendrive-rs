@@ -71,8 +71,8 @@
 //! | `<explicit><line>` | `length`, `tOffset`, `sOffset`, `rule`, `width` |
 //! | `<roadMark><sway>` | `ds`, `a`, `b`, `c`, `d` |
 //! | `<lane><link>` | `id` |
-//! | `<junction>` | `id` |
-//! | `<connection>` | `incomingRoad`, `connectingRoad`, `contactPoint` |
+//! | `<junction>` | `id`, `type` |
+//! | `<connection>` | `id`, `incomingRoad`, `connectingRoad`, `linkedRoad`, `contactPoint` |
 //! | `<laneLink>` | `from`, `to` |
 //! | `<objects><object>` | `id`, `type`, `subtype`, `name`, `dynamic`, `orientation`, `validLength`, `s`, `t`, `zOffset`, `hdg`, `pitch`, `roll`, `length`, `width`, `height`, `radius` |
 //! | `<objects><objectReference>` | `id`, `s`, `t`, `zOffset`, `orientation`, `validLength` |
@@ -101,10 +101,13 @@
 //! | `<road><surface><CRG>` | `file`, `mode`, `purpose`, `orientation`, `sStart`, `sEnd`, `sOffset`, `tOffset`, `hOffset`, `xOffset`, `yOffset`, `zOffset`, `zScale` |
 //! | `<junction><surface><CRG>` | `file`, `mode`, `purpose`, `xOffset`, `yOffset`, `hOffset`, `zOffset`, `zScale` |
 //!
-//! Five attribute values steer the import:
+//! Six attribute values steer the import:
 //!
 //! - `<road rule>` is `LHT` for left-hand traffic, or right-hand traffic
 //!   for `RHT` or none. See [Coordinate frame](#coordinate-frame).
+//! - `<junction type>` is `direct`, or a common junction for any other
+//!   value. A direct junction's connections lead into their `linkedRoad`,
+//!   and a common junction's into their `connectingRoad`.
 //! - `<lane type>` chooses the [`LaneType`] a lane bakes as. A name this
 //!   crate does not recognise bakes as [`LaneType::Unknown`], so no lane is
 //!   ever dropped for its type.
@@ -116,6 +119,16 @@
 //! `<link>`s and `<junction>`s resolve into a drive-direction lane graph.
 //! "Successor" means "a lane you can drive into off this lane's exit end",
 //! not a raw mirror of the file's `+s` links.
+//!
+//! A direct junction joins roads end to end, with no connecting road
+//! between them. Each `<laneLink>` there says which lane of the linked road
+//! carries on from a lane of the incoming road. The spec does not say
+//! whether traffic also crosses from the linked road back into the
+//! incoming one. The crate reads each connection both ways, as esmini
+//! does, unless the junction gives the way back itself. So a two-way road
+//! through a direct junction links in both directions. A connection
+//! missing its `incomingRoad`, or the road it leads into, is dropped with a
+//! [`Warning::ConnectionDropped`].
 //!
 //! Each `<object>` bakes to one or more [`Object`]s in world coordinates,
 //! sitting on the road surface. As in libOpenDRIVE, an object's own frame
@@ -574,6 +587,8 @@
 //!   cover the road. See [Lateral shapes](#lateral-shapes).
 //! - [`Warning::UnknownTrafficRule`] for a road `rule` other than `RHT` or
 //!   `LHT`. See [Coordinate frame](#coordinate-frame).
+//! - [`Warning::ConnectionDropped`] for a junction connection without the
+//!   roads it joins.
 //!
 //! Elements the crate does not read at all raise none. Real maps are full of
 //! them, and they would bury the rest. Other things it drops, such as a lane

@@ -88,6 +88,18 @@ pub enum Warning {
         /// The value of its `rule`.
         rule: String,
     },
+    /// A junction `<connection>` without an `incomingRoad`, or without the
+    /// road it leads into: a `connectingRoad`, or a `linkedRoad` in a
+    /// `type="direct"` junction. The spec requires both. The crate drops the
+    /// connection, so no lane links across it.
+    ConnectionDropped {
+        /// Its `incomingRoad`, empty if it has none.
+        incoming_road_id: String,
+        /// The `<junction id>` it is in.
+        junction_id: String,
+        /// Its `<connection id>`, empty if it has none.
+        connection_id: String,
+    },
 }
 
 /// Why a `<road>` baked nothing.
@@ -115,7 +127,11 @@ impl Warning {
             | Self::BorderWithLaneOffset { road_id, .. }
             | Self::BorderCrossesInnerLane { road_id, .. }
             | Self::ShapeShortOfRoad { road_id, .. }
-            | Self::UnknownTrafficRule { road_id, .. } => road_id,
+            | Self::UnknownTrafficRule { road_id, .. }
+            | Self::ConnectionDropped {
+                incoming_road_id: road_id,
+                ..
+            } => road_id,
         }
     }
 }
@@ -166,6 +182,14 @@ impl fmt::Display for Warning {
             Self::UnknownTrafficRule { road_id, rule } => write!(
                 f,
                 "road {road_id:?}: rule {rule:?} is neither \"RHT\" nor \"LHT\", read as \"RHT\""
+            ),
+            Self::ConnectionDropped {
+                incoming_road_id,
+                junction_id,
+                connection_id,
+            } => write!(
+                f,
+                "junction {junction_id:?}: connection {connection_id:?} from road {incoming_road_id:?} dropped, it lacks the road it comes from or leads into"
             ),
         }
     }

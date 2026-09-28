@@ -61,6 +61,14 @@ allow. Regenerate with
 
     python3 tests/data/traffic_rule.py
 
+`direct_junctions.xodr` comes from `direct_junctions.py`, which writes the
+XML itself. It has a road splitting in two through a direct junction that
+gives its connections one way, two roads joined through one that gives
+them both ways, and a connection of each junction type without the road
+it leads into. Regenerate with
+
+    python3 tests/data/direct_junctions.py
+
 `lane_heights.xodr` comes from `lane_heights.py` the same way. It has
 raised sidewalks, one flat and one with a kerb ramp, on a flat road, a
 banked and climbing road, a road with two lane sections, and an arc. The
