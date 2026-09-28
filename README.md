@@ -38,6 +38,7 @@ mesh.validate()?;
 - Road marks.
 - Tunnels and bridges.
 - OpenCRG surfaces, for the height, normal and friction under a wheel.
+- The geo reference: the PROJ string and offset, kept unapplied.
 
 It loads a file whatever OpenDRIVE version it declares. Where it drops part
 of a bad file, it says so in `Provenance::warnings`.

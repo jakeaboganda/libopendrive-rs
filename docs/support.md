@@ -8,8 +8,8 @@ Geometry is cross-checked against the reference C++
 
 ## Which OpenDRIVE version
 
-The importer never reads `<header>`, so it never inspects `revMajor` or
-`revMinor` and never rejects a file for its declared version. Whether a file
+Of `<header>`, the importer reads only the geo reference. It never inspects
+`revMajor` or `revMinor` and never rejects a file for its declared version. Whether a file
 loads depends only on whether it uses the elements listed below.
 
 Every one of those elements is in ASAM OpenDRIVE 1.9.0, the current revision.
@@ -184,6 +184,15 @@ sh examples/crg_data.sh
 cargo run --release --example crg_profile -- target/crg/country_road.xodr > profile.csv
 ```
 
+## Geo reference
+
+- `RoadNetwork::geo_reference` keeps the `<geoReference>` PROJ string and
+  the `<offset>` as the file gives them. The importer applies neither, so
+  points stay in the file's frame.
+- A missing or unreadable `<offset>` attribute reads as 0, as in esmini.
+- The spec's offset takes the map's frame to the projected one. Some
+  exporters, `netconvert` among them, write the opposite sign.
+
 ## Warnings
 
 `Provenance::warnings` lists what a load dropped from a bad file. A road with
@@ -202,6 +211,5 @@ The elements below raise nothing.
 
 ## What it ignores
 
-The importer silently skips everything else in the file, `<geoReference>`
-included. One omission changes the road you get back, not only the detail
+The importer silently skips everything else in the file. One omission changes the road you get back, not only the detail
 around it: `<center>`, so lane 0 never becomes a `Lane`.

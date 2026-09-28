@@ -15,9 +15,9 @@ use crate::crg::{RefPoint, Stretch};
 use crate::object::orient;
 use crate::{
     Border, ControllerId, Corner, Coverage, CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface,
-    Direction, Extent, Lane, LaneId, LaneType, Marking, Material, Object, ObjectId, ObjectType,
-    ParkingSpace, Polyline, RoadMarkId, RoadNetwork, Section, Shape, SignalId, Structure,
-    StructureId, StructureKind, UserData,
+    Direction, Extent, GeoOffset, GeoReference, Lane, LaneId, LaneType, Marking, Material, Object,
+    ObjectId, ObjectType, ParkingSpace, Polyline, RoadMarkId, RoadNetwork, Section, Shape,
+    SignalId, Structure, StructureId, StructureKind, UserData,
 };
 
 mod links;
@@ -436,7 +436,8 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             .with_road_types(properties.road_types)
             .with_lane_rules(properties.lane_rules)
             .with_lane_access(properties.lane_access)
-            .with_lane_materials(properties.lane_materials),
+            .with_lane_materials(properties.lane_materials)
+            .with_geo_reference(geo_reference(root)),
         provenance,
     ))
 }
@@ -1064,6 +1065,31 @@ fn material(node: roxmltree::Node) -> Material {
         surface: node.attribute("surface").unwrap_or_default().to_string(),
         friction: attr_f64(node, "friction").map(|v| v as f32),
         roughness: attr_f64(node, "roughness").map(|v| v as f32),
+    }
+}
+
+/// The `<header>`'s `<geoReference>` and `<offset>`. A missing or unreadable
+/// offset attribute reads as 0, as in esmini.
+fn geo_reference(root: roxmltree::Node) -> GeoReference {
+    let Some(header) = root.children().find(|n| n.has_tag_name("header")) else {
+        return GeoReference::default();
+    };
+    let child = |tag| header.children().find(|n| n.has_tag_name(tag));
+    GeoReference {
+        proj: child("geoReference")
+            .and_then(|g| g.text())
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(String::from),
+        offset: child("offset").map(|o| {
+            let at = |name| attr_f64(o, name).unwrap_or(0.0);
+            GeoOffset {
+                x: at("x"),
+                y: at("y"),
+                z: at("z"),
+                hdg: at("hdg"),
+            }
+        }),
     }
 }
 

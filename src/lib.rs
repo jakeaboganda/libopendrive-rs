@@ -33,8 +33,9 @@
 //!
 //! # Which OpenDRIVE version
 //!
-//! The importer does not read `<header>`. It never inspects `revMajor` or
-//! `revMinor`, and it never rejects a file for its version. Whether a file
+//! Of `<header>`, the importer reads only the geo reference. It never
+//! inspects `revMajor` or `revMinor`, and it never rejects a file for its
+//! version. Whether a file
 //! loads depends only on whether it uses the elements below.
 //!
 //! Every one of those elements is in ASAM OpenDRIVE 1.9.0, the current
@@ -46,6 +47,9 @@
 //!
 //! | Element | Attributes read |
 //! | --- | --- |
+//! | `<header>` | none |
+//! | `<header><geoReference>` | its text |
+//! | `<header><offset>` | `x`, `y`, `z`, `hdg` |
 //! | `<road>` | `id`, `length`, `junction`, `rule` |
 //! | `<road><link>` | `elementType`, `elementId`, `contactPoint` |
 //! | `<road><type>` | `s`, `type` |
@@ -619,11 +623,11 @@
 //!
 //! # What the importer ignores
 //!
-//! Everything else in the file, silently. That includes `<geoReference>`,
-//! `<junctionGroup>`, `<station>`, and an object's `<surface>`. Of signals,
-//! it ignores a signal's `<userData>`, the boards `<staticBoard>` and
-//! `<vmsBoard>`, and `<semantics>`. Of road marks, it ignores `material`,
-//! and the `name` of a mark's type. Of road types, it ignores `country`.
+//! Everything else in the file, silently. That includes `<junctionGroup>`,
+//! `<station>`, and an object's `<surface>`. Of signals, it ignores a
+//! signal's `<userData>`, the boards `<staticBoard>` and `<vmsBoard>`, and
+//! `<semantics>`. Of road marks, it ignores `material`, and the `name` of a
+//! mark's type. Of road types, it ignores `country`.
 //!
 //! One omission changes the road you get back, rather than only dropping
 //! detail around it: the center lane, lane 0, never becomes a [`Lane`].
@@ -651,6 +655,23 @@
 //! The spec allows only `RHT` and `LHT`. The crate reads any other value as
 //! `RHT`, the spec's default, and raises [`Warning::UnknownTrafficRule`].
 //! esmini also reads `lht` as left-hand traffic. The crate does not.
+//!
+//! # Geo reference
+//!
+//! [`RoadNetwork::geo_reference`] gives the `<geoReference>` PROJ string and
+//! the `<offset>` as the file has them, and applies neither. Points stay in
+//! the file's frame, as [Coordinate frame](#coordinate-frame) says. To place
+//! the map on the earth, apply the offset and then the projection, with a
+//! library such as PROJ.
+//!
+//! The spec rotates a point by the offset's `hdg` and then adds its `x`,
+//! `y` and `z`. Not every exporter agrees: `netconvert` writes the offset
+//! that takes the projected frame back to the map's. Check a map's sign
+//! against a known point before relying on it.
+//!
+//! A missing or unreadable `<offset>` attribute reads as 0, as in esmini. A
+//! blank `<geoReference>` reads as none, which the spec takes to mean a
+//! local Cartesian frame.
 //!
 //! # Robustness
 //!
@@ -712,6 +733,7 @@
 mod along;
 mod coords;
 mod crg;
+mod geo;
 mod geometry;
 mod grid;
 mod mesh;
@@ -732,6 +754,7 @@ pub use coords::{Point, Vector};
 pub use crg::{
     CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface, RoadSurface, SurfaceHint, SurfaceSample,
 };
+pub use geo::{GeoOffset, GeoReference};
 pub use geometry::TooFewPoints;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
 pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};

@@ -6,6 +6,7 @@ use std::ops::Range;
 use crate::along::{self, Access, Along, RoadType, SpeedLimit};
 use crate::coords::Point;
 use crate::crg::CrgSurface;
+use crate::geo::GeoReference;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
 use crate::object::{Material, Object, ObjectId};
@@ -244,9 +245,9 @@ pub struct Lane {
 /// `nearest_lane` with a lane that is no longer there.
 ///
 /// Serializes as its lanes, objects, structures, signals, controllers, road
-/// marks and CRG surfaces; the index is rebuilt on the way back in, so a network that
-/// crossed a process boundary is indistinguishable from one that was just
-/// imported.
+/// marks, CRG surfaces, what holds along each lane and geo reference; the
+/// index is rebuilt on the way back in, so a network that crossed a process
+/// boundary is indistinguishable from one that was just imported.
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(
     feature = "serde",
@@ -266,6 +267,7 @@ pub struct RoadNetwork {
     lane_rules: Vec<Along<String>>,
     lane_access: Vec<Along<Access>>,
     lane_materials: Vec<Along<Material>>,
+    geo: GeoReference,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
     /// [`Self::nearest_lane`]. Derived from `lanes`, so it takes no part in
     /// equality.
@@ -273,8 +275,8 @@ pub struct RoadNetwork {
 }
 
 /// Two networks are equal when their lanes, objects, structures, signals,
-/// controllers, road marks, CRG surfaces, speed limits and road types are;
-/// the index is a function of the lanes.
+/// controllers, road marks, CRG surfaces, what holds along each lane and geo
+/// references are; the index is a function of the lanes.
 impl PartialEq for RoadNetwork {
     fn eq(&self, other: &Self) -> bool {
         self.lanes == other.lanes
@@ -289,6 +291,7 @@ impl PartialEq for RoadNetwork {
             && self.lane_rules == other.lane_rules
             && self.lane_access == other.lane_access
             && self.lane_materials == other.lane_materials
+            && self.geo == other.geo
     }
 }
 
@@ -311,6 +314,8 @@ struct NetworkData {
     lane_access: Vec<Along<Access>>,
     #[serde(default)]
     lane_materials: Vec<Along<Material>>,
+    #[serde(default)]
+    geo: GeoReference,
 }
 
 #[cfg(feature = "serde")]
@@ -328,6 +333,7 @@ impl From<NetworkData> for RoadNetwork {
             .with_lane_rules(data.lane_rules)
             .with_lane_access(data.lane_access)
             .with_lane_materials(data.lane_materials)
+            .with_geo_reference(data.geo)
     }
 }
 
@@ -347,6 +353,7 @@ impl From<RoadNetwork> for NetworkData {
             lane_rules: net.lane_rules,
             lane_access: net.lane_access,
             lane_materials: net.lane_materials,
+            geo: net.geo,
         }
     }
 }
@@ -468,6 +475,7 @@ impl RoadNetwork {
             lane_rules: Vec::new(),
             lane_access: Vec::new(),
             lane_materials: Vec::new(),
+            geo: GeoReference::default(),
             index,
         }
     }
@@ -599,6 +607,19 @@ impl RoadNetwork {
     /// the map doesn't say. Where two meet, the later one holds.
     pub fn lane_material_at(&self, lane: LaneId, s: f32) -> Option<&Material> {
         along::at(&self.lane_materials, lane, s)
+    }
+
+    /// This network placed on the earth by `geo`, replacing any geo
+    /// reference it had.
+    pub fn with_geo_reference(mut self, geo: GeoReference) -> Self {
+        self.geo = geo;
+        self
+    }
+
+    /// Where the map sits on the earth: its `<geoReference>` and `<offset>`,
+    /// unapplied. See [Geo reference](crate#geo-reference).
+    pub fn geo_reference(&self) -> &GeoReference {
+        &self.geo
     }
 
     /// The OpenCRG files the map lays on its roads, in map order. Load them

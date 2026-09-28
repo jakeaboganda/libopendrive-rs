@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Geo reference
+
+- `RoadNetwork::geo_reference` returns a `GeoReference`: the
+  `<geoReference>` PROJ string, trimmed, and the `<offset>` as a
+  `GeoOffset`. The importer applies neither, so points stay in the file's
+  frame. A missing or unreadable offset attribute reads as 0.
+- `RoadNetwork::with_geo_reference` sets it. It serializes with the network,
+  and a network serialized before it deserializes with none.
+- The viewer shows the PROJ string and offset under the map's name.
+
 ### Level lanes
 
 - A lane with `level="true"` is kept out of the superelevation and the

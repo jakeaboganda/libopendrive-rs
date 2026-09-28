@@ -10,6 +10,10 @@ unchanged, so a coordinate you read out of the `.xodr` is the coordinate you
 get back. An OpenDRIVE left turn curves toward +Y, and positive lane offset
 `t` is to the left of the heading.
 
+The `<geoReference>` and `<offset>` are kept on the network, not applied.
+Reprojecting would pull in PROJ, and exporters disagree on the offset's
+sign, so a consumer that needs world coordinates applies them itself.
+
 Travel direction follows each road's `rule`. Under right-hand traffic, the
 default, negative-id lanes run with `+s` and positive-id lanes against it.
 Under `rule="LHT"` it is the other way round.
