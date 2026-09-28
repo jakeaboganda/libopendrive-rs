@@ -1281,6 +1281,12 @@ function onHover(ev) {
     `width ${laneWidth(lane, i, u).toFixed(2)} m   heading ${vec3(heading)}`,
     `cross slope ${slopeText(laneSlope(lane, i, u))}`,
   ];
+  const limit = alongAt(lane.speedLimits, s);
+  const roadType = alongAt(lane.roadTypes, s);
+  if (limit || roadType) {
+    rows.push([limit && `speed limit ${speedText(limit[2])}`, roadType && `road ${roadType[2]}`]
+      .filter(Boolean).join('   '));
+  }
   const raised = laneHeight(lane, i, u);
   if (raised) {
     rows.push(`height  inner ${raised[0].toFixed(3)} m   outer ${raised[1].toFixed(3)} m`);
@@ -1544,6 +1550,21 @@ function laneWidth(lane, i, u) {
   const w = lane.widths;
   if (!w || !w.length) return lane.width;
   return w[i] + (w[Math.min(i + 1, w.length - 1)] - w[i]) * u;
+}
+
+// The stretch of `list`, each `[from, to, value]` in lane order, under `s`
+// metres along the lane. Where two meet, the later one holds, as
+// `RoadNetwork::speed_limit_at` has it.
+function alongAt(list, s) {
+  let found;
+  for (const stretch of list || []) if (stretch[0] <= s && s <= stretch[1]) found = stretch;
+  return found;
+}
+
+// A speed limit in m/s, in km/h and mph, or `none` for no limit (null).
+function speedText(mps) {
+  if (mps === null) return 'none';
+  return `${(mps * 3.6).toFixed(0)} km/h   ${(mps / 0.44704).toFixed(0)} mph`;
 }
 
 // The lane's cross slope at segment `i`, fraction `u` along it, as a percent

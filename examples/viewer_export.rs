@@ -18,7 +18,7 @@
 //! the lane is for, the lanes before and after it, the mesh slice it owns (so a
 //! picked triangle resolves to a lane), and its centerline with the heading at each point (so the viewer can
 //! project the cursor to `(s, t)` and read out the same heading the crate
-//! would). Each object entry is its type, name, and shape: a pose and extent
+//! would), and the speed limits and road types along it. Each object entry is its type, name, and shape: a pose and extent
 //! for a solid, or world-space corners for an outline or a sweep. The object
 //! mesh from [`RoadNetwork::object_mesh`] comes too, in the same flat buffers
 //! with each object's slice of it. A structure table lists the tunnels and
@@ -46,11 +46,11 @@ use std::process::ExitCode;
 
 use libopendrive::opencrg::CrgGrid;
 use libopendrive::{
-    load_file_with_provenance, Controller, ControllerProvenance, Corner, CrgMode, CrgPurpose,
-    CrgSurface, Direction, Extent, LaneId, LaneProvenance, LaneSpan, LinePattern, Marking, Mesh,
-    Object, ObjectProvenance, Orientation, Point, Provenance, Referenced, RoadMark,
-    RoadMarkProvenance, RoadNetwork, RoadSurface, Shape, Signal, SignalProvenance, Structure,
-    StructureKind, StructureProvenance, SurfaceHint, Warning,
+    load_file_with_provenance, Along, Controller, ControllerProvenance, Corner, CrgMode,
+    CrgPurpose, CrgSurface, Direction, Extent, LaneId, LaneProvenance, LaneSpan, LinePattern,
+    Marking, Mesh, Object, ObjectProvenance, Orientation, Point, Provenance, Referenced, RoadMark,
+    RoadMarkProvenance, RoadNetwork, RoadSurface, Shape, Signal, SignalProvenance, SpeedLimit,
+    Structure, StructureKind, StructureProvenance, SurfaceHint, Warning,
 };
 use serde_json::{json, Map, Value};
 
@@ -637,7 +637,31 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
     entry.insert("centerline".into(), json!(centerline));
     entry.insert("headings".into(), json!(headings));
     entry.insert("heights".into(), json!(heights));
+    let limit = |l: &SpeedLimit| match l {
+        SpeedLimit::Max(mps) => json!(mps),
+        SpeedLimit::Unlimited => Value::Null,
+    };
+    entry.insert(
+        "speedLimits".into(),
+        json!(stretches(net.speed_limits(), span.lane, limit)),
+    );
+    entry.insert(
+        "roadTypes".into(),
+        json!(stretches(
+            net.road_types(),
+            span.lane,
+            |t| json!(t.as_str())
+        )),
+    );
     Value::Object(entry)
+}
+
+/// The stretches of `list` on `lane`, each `[from, to, value]`.
+fn stretches<T>(list: &[Along<T>], lane: LaneId, value: impl Fn(&T) -> Value) -> Vec<Value> {
+    list.iter()
+        .filter(|a| a.lane == lane)
+        .map(|a| json!([a.from, a.to, value(&a.value)]))
+        .collect()
 }
 
 /// How many grid cells each loaded CRG file may add to the overlay.

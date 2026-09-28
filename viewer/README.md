@@ -102,6 +102,8 @@ lit as you hover others. The readout shows:
   superelevation, lateral shape and lane heights together
 - on a lane raised by its `<height>`s, such as a sidewalk, how far it stands
   off the road at its inner and outer border at that point
+- the speed limit at that point, in km/h and mph, or `none` for no limit,
+  and the road type, where the map gives them
 - its successors and predecessors, by road, lane section and OpenDRIVE
   lane id
 - the crate's internal `LaneId`
