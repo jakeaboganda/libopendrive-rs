@@ -181,6 +181,10 @@ const ARROW_COLOR = 0xffffff;
 const JUNCTION_COLOR = 0x5b6472;
 const JUNCTION_EDGE_COLOR = 0xf59e0b;
 
+// A railway platform, and a switch.
+const PLATFORM_COLOR = 0xa3a3a3;
+const SWITCH_COLOR = 0xef4444;
+
 // How far, in metres, [f] and [b] step the marker along the lanes, and its
 // colour on a branch that reached the distance and on one that ran out of
 // lanes.
@@ -251,6 +255,7 @@ let junctionMeshes = [];     // each junction area's ground; userData is its exp
 let junctionLines = [];      // each junction area's boundary
 let crossPaths = [];         // the exported cross paths, by lane id
 let junctionGroups = [];     // the exported junction groups
+let railMeshes = [];         // platforms and switches; userData.rail is the exported record
 let walkers = [];            // the marker's branches: {lane, arc, side, dead}, as RoadNetwork::advance gives them
 let walkerMesh;              // a square at each branch of the marker
 
@@ -334,6 +339,7 @@ async function init() {
   buildObjects(data);
   buildStructures(data);
   buildJunctionAreas(data);
+  buildRailways(data);
   buildSignals(data);
   buildRoadMarks(data);
   buildCrg(data);
@@ -581,6 +587,7 @@ function applyMode() {
   for (const [kind, mesh] of Object.entries(structureTints)) mesh.visible = on(kind + 's');
   for (const m of signalMeshes) m.visible = on('signals');
   for (const m of [...junctionMeshes, ...junctionLines]) m.visible = on('junctions');
+  for (const m of railMeshes) m.visible = on('objects');
   if (roadMarkMesh) roadMarkMesh.visible = on('roadmarks');
   if (!on('objects') && !on('signals') && !on('roadmarks')) objectOutline.visible = false;
   if (!on('signals')) signalLink.visible = false;
@@ -853,6 +860,55 @@ function buildJunctionAreas(data) {
       junctionLines.push(line);
     }
   }
+}
+
+// Each platform as a strip beside its track, and each switch as a post on
+// its main track.
+function buildRailways(data) {
+  for (const p of data.platforms ?? []) {
+    if (p.strip.length < 2) continue;
+    const positions = [], indices = [];
+    p.strip.forEach(([a, b], k) => {
+      positions.push(a[0], a[1], a[2] + 0.2, b[0], b[1], b[2] + 0.2);
+      if (k) indices.push(2 * k - 2, 2 * k - 1, 2 * k, 2 * k - 1, 2 * k + 1, 2 * k);
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    g.setIndex(indices);
+    g.computeVertexNormals();
+    const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: PLATFORM_COLOR, side: THREE.DoubleSide }));
+    mesh.userData.rail = { kind: 'platform', ...p };
+    scene.add(mesh);
+    railMeshes.push(mesh);
+  }
+  for (const sw of data.switches ?? []) {
+    if (!sw.main.point) continue;
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.5, 12),
+      new THREE.MeshStandardMaterial({ color: SWITCH_COLOR }));
+    mesh.rotation.x = Math.PI / 2;
+    mesh.position.set(sw.main.point[0], sw.main.point[1], sw.main.point[2] + 0.75);
+    mesh.userData.rail = { kind: 'switch', ...sw };
+    scene.add(mesh);
+    railMeshes.push(mesh);
+  }
+}
+
+// The readout for a platform or a switch.
+function showRailTip(ev, rect, hit) {
+  if (!selected) clearHighlight();
+  const r = hit.object.userData.rail;
+  const rows = r.kind === 'platform'
+    ? [
+      `<b>platform</b> ${escapeHtml(r.platform || r.platformId)} of station ${escapeHtml(r.station || r.stationId)}` +
+        (r.stationType ? ` (${escapeHtml(r.stationType)})` : ''),
+      `road ${escapeHtml(String(r.road))}   s ${r.sStart.toFixed(2)} to ${r.sEnd.toFixed(2)} m, on its ${r.side}`,
+    ]
+    : [
+      `<b>switch</b> ${escapeHtml(r.name || r.id)}   set ${r.position}` + (r.partner ? `   partner ${escapeHtml(r.partner)}` : ''),
+      `main track road ${escapeHtml(String(r.main.road))} at s ${r.main.s.toFixed(2)} m`,
+      `side track road ${escapeHtml(String(r.side.road))} at s ${r.side.s.toFixed(2)} m`,
+    ];
+  placeTip(ev.clientX - rect.left, ev.clientY - rect.top, rows);
 }
 
 // The readout for a junction's ground.
@@ -1368,7 +1424,7 @@ function onHover(ev) {
     ((ev.clientX - rect.left) / rect.width) * 2 - 1,
     -((ev.clientY - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
-  const pickable = [roadMesh, ...[...objectMeshes, ...signalMeshes, roadMarkMesh, ...junctionMeshes].filter(m => m?.visible)];
+  const pickable = [roadMesh, ...[...objectMeshes, ...signalMeshes, roadMarkMesh, ...junctionMeshes, ...railMeshes].filter(m => m?.visible)];
   const hits = raycaster.intersectObjects(pickable, false);
   // Paint lies in the road surface, so it ties with the road under it. It
   // wins anything within a few centimetres.
@@ -1386,6 +1442,7 @@ function onHover(ev) {
   if (!hit) { hideTip(); if (!selected) clearHighlight(); return; }
   if (hit.object === roadMarkMesh) return showRoadMarkTip(ev, rect, hit);
   if (junctionMeshes.includes(hit.object)) return showJunctionTip(ev, rect, hit);
+  if (railMeshes.includes(hit.object)) return showRailTip(ev, rect, hit);
   if (signalMeshes.includes(hit.object)) return showSignalTip(ev, rect, hit);
   if (hit.object !== roadMesh) return showObjectTip(ev, rect, hit);
 

@@ -219,6 +219,13 @@ hides both.
 The crate does not move the junction's roads onto the grid, so where a
 file's roads and grid disagree, the ground shows above or below the roads.
 
+## Railways
+
+Each station platform is drawn as a grey strip beside its track, and each
+railway switch as a red post where it leaves the main track. Hover one to
+read its station and stretch of track, or its tracks, setting and partner.
+They show and hide with the `objects` checkbox.
+
 ## Signals
 
 Each signal is a board of its `width` and `height`, standing on the middle

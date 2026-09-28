@@ -49,10 +49,11 @@ use libopendrive::opencrg::CrgGrid;
 use libopendrive::{
     load_file_with_provenance, Access, Along, Controller, ControllerProvenance, Corner, CrgMode,
     CrgPurpose, CrgSurface, CrossPathEnd, Direction, Extent, JunctionArea, JunctionGroupKind,
-    LaneId, LaneProvenance, LaneSpan, LinePattern, Marking, Mesh, Object, ObjectProvenance,
-    Orientation, Point, Provenance, Referenced, RoadMark, RoadMarkProvenance, RoadNetwork,
-    RoadSurface, RoadUser, Semantic, Shape, Side, Signal, SignalBoard, SignalProvenance,
-    SpeedLimit, Structure, StructureKind, StructureProvenance, SurfaceHint, Warning,
+    LaneId, LanePosition, LaneProvenance, LaneSpan, LinePattern, Marking, Mesh, Object,
+    ObjectProvenance, Orientation, PlatformSegment, Point, Provenance, Referenced, RoadMark,
+    RoadMarkProvenance, RoadNetwork, RoadPosition, RoadSurface, RoadUser, Semantic, Shape, Side,
+    Signal, SignalBoard, SignalProvenance, SpeedLimit, Structure, StructureKind,
+    StructureProvenance, SurfaceHint, SwitchPosition, TrackPoint, Warning,
 };
 use serde_json::{json, Map, Value};
 
@@ -272,6 +273,48 @@ fn build_scene(
         "priorities": priorities(net, provenance),
         "roadNeighbors": road_neighbors(net),
         "junctionAreas": net.junction_areas().iter().map(junction_area).collect::<Vec<_>>(),
+        "switches": net
+            .switches()
+            .iter()
+            .map(|sw| {
+                let at = |p: &TrackPoint| {
+                    net.road_point(RoadPosition { road: p.road, s: p.s, t: 0.0 })
+                        .map(|p| p.to_array())
+                };
+                let position = match sw.position {
+                    SwitchPosition::Dynamic => "dynamic",
+                    SwitchPosition::Straight => "straight",
+                    SwitchPosition::Turn => "turn",
+                };
+                let od = |p: &TrackPoint| net.road(p.road).map(|r| r.od_id());
+                json!({
+                    "id": sw.od_id,
+                    "name": sw.name,
+                    "position": position,
+                    "partner": sw.partner,
+                    "main": { "road": od(&sw.main), "s": sw.main.s, "point": at(&sw.main) },
+                    "side": { "road": od(&sw.side), "s": sw.side.s, "point": at(&sw.side) },
+                })
+            })
+            .collect::<Vec<_>>(),
+        "platforms": net
+            .stations()
+            .iter()
+            .flat_map(|st| st.platforms.iter().map(move |p| (st, p)))
+            .flat_map(|(st, p)| p.segments.iter().map(move |seg| (st, p, seg)))
+            .map(|(st, p, seg)| json!({
+                "station": st.name,
+                "stationId": st.od_id,
+                "stationType": st.kind,
+                "platform": p.name,
+                "platformId": p.od_id,
+                "road": net.road(seg.road).map(|r| r.od_id()),
+                "sStart": seg.s_start,
+                "sEnd": seg.s_end,
+                "side": match seg.side { Side::Left => "left", Side::Right => "right" },
+                "strip": platform_strip(net, seg),
+            }))
+            .collect::<Vec<_>>(),
         "junctionGroups": net
             .junction_groups()
             .iter()
@@ -427,6 +470,50 @@ fn board_entry(board: &SignalBoard) -> Value {
                 .collect::<Vec<_>>(),
         }),
     }
+}
+
+/// How wide the viewer draws a platform, in metres.
+const PLATFORM_WIDTH: f64 = 3.0;
+
+/// A platform segment as quads beside its track: pairs of points along the
+/// outer edge of the outermost lane on its side and [`PLATFORM_WIDTH`]
+/// beyond it, a metre or so apart.
+fn platform_strip(net: &RoadNetwork, seg: &PlatformSegment) -> Vec<[[f32; 3]; 2]> {
+    let sign = match seg.side {
+        Side::Left => 1.0,
+        Side::Right => -1.0,
+    };
+    let (from, to) = (seg.s_start.min(seg.s_end), seg.s_start.max(seg.s_end));
+    let steps = ((to - from).ceil() as usize).max(1);
+    (0..=steps)
+        .filter_map(|k| {
+            let s = from + (to - from) * k as f64 / steps as f64;
+            let edge = net
+                .lanes()
+                .iter()
+                .filter_map(|lane| {
+                    let at = net.road_lane(lane.id).filter(|at| at.road == seg.road)?;
+                    let on = LanePosition {
+                        lane: lane.id,
+                        s,
+                        offset: 0.0,
+                    };
+                    let along = net.centerline_s(on)?;
+                    (at.od_id.signum() as f64 == sign)
+                        .then(|| (at.od_id.abs(), on, f64::from(lane.width_at(along)) / 2.0))
+                })
+                .max_by_key(|(od, _, _)| *od)?;
+            let (_, on, half) = edge;
+            let point = |beyond: f64| {
+                net.lane_point(LanePosition {
+                    offset: sign * (half + beyond),
+                    ..on
+                })
+                .map(|p| p.to_array())
+            };
+            Some([point(0.0)?, point(PLATFORM_WIDTH)?])
+        })
+        .collect()
 }
 
 /// One warning's viewer record: its message, and the road it names.

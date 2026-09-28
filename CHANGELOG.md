@@ -11,6 +11,7 @@
   they run beside. The router does not follow switches.
 - `Warning::RailwayDropped` names a switch or a platform segment the crate
   can't place.
+- The viewer draws each platform and switch, and names them on hover.
 
 ### Signal semantics and boards
 
