@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+  <header revMajor="1" revMinor="8" name="speed_limits"/>
+  <road name="" length="100" id="0" junction="-1">
+    <type s="0" type="town"><speed max="50" unit="km/h"/></type><type s="30" type="motorway"><speed max="no limit"/></type><type s="60" type="rural"><speed max="60" unit="mph"/></type>
+    <planView><geometry s="0" x="0" y="0" hdg="0" length="100"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane><lane id="-2" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><speed sOffset="10" max="20"/><speed sOffset="40" max="30" unit="km/h"/></lane></right></laneSection></lanes>
+  </road>
+  <road name="" length="40" id="1" junction="-1">
+    <type s="5" type="town"><speed max="undefined"/></type>
+    <planView><geometry s="0" x="0" y="20" hdg="0" length="40"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><speed sOffset="0" max="10" unit="m/s"/></lane></right></laneSection><laneSection s="20"><left></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+  <road name="" length="20" id="2" junction="-1">
+    <type s="0" type="highway"><speed max="80" unit="kmh"/></type>
+    <planView><geometry s="0" x="0" y="40" hdg="0" length="20"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><speed sOffset="0" max="fast"/></lane></right></laneSection></lanes>
+  </road>
+</OpenDRIVE>

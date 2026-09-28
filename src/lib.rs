@@ -48,6 +48,8 @@
 //! | --- | --- |
 //! | `<road>` | `id`, `length`, `junction`, `rule` |
 //! | `<road><link>` | `elementType`, `elementId`, `contactPoint` |
+//! | `<road><type>` | `s`, `type` |
+//! | `<type><speed>` | `max`, `unit` |
 //! | `<planView><geometry>` | `s`, `x`, `y`, `hdg`, `length` |
 //! | `<line>` | none |
 //! | `<arc>` | `curvature` |
@@ -64,6 +66,7 @@
 //! | `<lane><width>` | `sOffset`, `a`, `b`, `c`, `d` |
 //! | `<lane><border>` | `sOffset`, `a`, `b`, `c`, `d` |
 //! | `<lane><height>` | `sOffset`, `inner`, `outer` |
+//! | `<lane><speed>` | `sOffset`, `max`, `unit` |
 //! | `<lane><roadMark>` | `sOffset`, `type`, `weight`, `color`, `width`, `height`, `laneChange` |
 //! | `<roadMark><type>` | `width` |
 //! | `<type><line>` | `length`, `space`, `tOffset`, `sOffset`, `rule`, `width`, `color` |
@@ -481,6 +484,40 @@
 //!   does not bake the lane, so its marks go with it, and raises
 //!   [`Warning::LaneDropped`].
 //!
+//! # Speed limits and road types
+//!
+//! [`RoadNetwork::speed_limits`] and [`RoadNetwork::road_types`] say what
+//! holds along each lane, as [`Along`] stretches in metres along its
+//! centerline. [`RoadNetwork::speed_limit_at`] and
+//! [`RoadNetwork::road_type_at`] read them at a point, such as the `s` of
+//! [`RoadNetwork::nearest_lane`]. A limit is in metres a second, or
+//! [`SpeedLimit::Unlimited`]. Where the map says nothing, there is no
+//! stretch.
+//!
+//! A road's `<type>` holds from its `s` to the next, or to the end of the
+//! road, across every lane. So does the limit its `<speed>` sets. A
+//! `max="undefined"` sets none. A lane's own `<speed>` holds from its
+//! `sOffset` to the next, or to the end of its lane section, and overrides
+//! its road's. A `<speed>` without a `unit` is in m/s, as the spec says.
+//!
+//! The limits come from `<speed>` records only. The spec says a speed limit
+//! sign takes precedence, but the crate does not read signs as limits. A
+//! caller that wants them can find the signs in [`RoadNetwork::signals`].
+//!
+//! The crate departs from the OpenDRIVE 1.9 spec here:
+//!
+//! - The spec requires a `max` of at least 0 in `m/s`, `km/h` or `mph`, or
+//!   on a road `no limit` or `undefined`. The crate drops any other
+//!   `<speed>` and raises [`Warning::SpeedLimitDropped`]. The lane's limit
+//!   there is then its road's, or the lane's `<speed>` before it.
+//! - The spec requires a `<type>`'s `s` and a lane `<speed>`'s `sOffset`.
+//!   A type without `s` is skipped. A missing or negative `sOffset` is 0, as
+//!   for a `<height>`.
+//! - The spec says types and a lane's speeds come in ascending order. Ones
+//!   out of order are sorted rather than dropped.
+//! - A `type` the spec does not name bakes as [`RoadType::Unknown`], as an
+//!   unrecognised lane type bakes as [`LaneType::Unknown`].
+//!
 //! # Road surfaces
 //!
 //! Each `<CRG>` under a road's or a junction's `<surface>` becomes a
@@ -528,11 +565,10 @@
 //! # What the importer ignores
 //!
 //! Everything else in the file, silently. That includes `<geoReference>`,
-//! `<junctionGroup>`, `<station>`, an object's
-//! `<surface>`, and road `<type>` with its `<speed>`. Of signals, it ignores
-//! a signal's `<userData>`, the boards `<staticBoard>` and `<vmsBoard>`, and
-//! `<semantics>`. Of road marks, it ignores `material` and a `<type>`'s
-//! `name`.
+//! `<junctionGroup>`, `<station>`, and an object's `<surface>`. Of signals,
+//! it ignores a signal's `<userData>`, the boards `<staticBoard>` and
+//! `<vmsBoard>`, and `<semantics>`. Of road marks, it ignores `material`,
+//! and the `name` of a mark's type. Of road types, it ignores `country`.
 //!
 //! One omission changes the road you get back, rather than only dropping
 //! detail around it: the center lane, lane 0, never becomes a [`Lane`].
@@ -589,6 +625,8 @@
 //!   `LHT`. See [Coordinate frame](#coordinate-frame).
 //! - [`Warning::ConnectionDropped`] for a junction connection without the
 //!   roads it joins.
+//! - [`Warning::SpeedLimitDropped`] for a `<speed>` it can't read. See
+//!   [Speed limits and road types](#speed-limits-and-road-types).
 //!
 //! Elements the crate does not read at all raise none. Real maps are full of
 //! them, and they would bury the rest. Other things it drops, such as a lane
@@ -612,6 +650,7 @@
 //! the inner rib so the surface strip stays fold-free; the outer edge keeps its
 //! full width and radius.
 
+mod along;
 mod coords;
 mod crg;
 mod geometry;
@@ -629,6 +668,7 @@ mod structure;
 #[cfg(test)]
 mod fixtures;
 
+pub use along::{Along, RoadType, SpeedLimit};
 pub use coords::{Point, Vector};
 pub use crg::{
     CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface, RoadSurface, SurfaceHint, SurfaceSample,

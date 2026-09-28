@@ -100,6 +100,22 @@ pub enum Warning {
         /// Its `<connection id>`, empty if it has none.
         connection_id: String,
     },
+    /// A `<speed>` whose `max` or `unit` the crate can't read. The crate
+    /// drops it, so the lane's limit there is its road's, or the lane's
+    /// `<speed>` before it.
+    SpeedLimitDropped {
+        /// The `<road id>` it is on.
+        road_id: String,
+        /// Where it starts, in metres along the reference line.
+        s: f64,
+        /// The `<lane id>` whose `<speed>` it is, or `None` for a road
+        /// `<type>`'s.
+        lane: Option<i32>,
+        /// Its `max`, as the file writes it.
+        max: String,
+        /// Its `unit`, as the file writes it. Empty if it has none.
+        unit: String,
+    },
 }
 
 /// Why a `<road>` baked nothing.
@@ -128,6 +144,7 @@ impl Warning {
             | Self::BorderCrossesInnerLane { road_id, .. }
             | Self::ShapeShortOfRoad { road_id, .. }
             | Self::UnknownTrafficRule { road_id, .. }
+            | Self::SpeedLimitDropped { road_id, .. }
             | Self::ConnectionDropped {
                 incoming_road_id: road_id,
                 ..
@@ -191,6 +208,19 @@ impl fmt::Display for Warning {
                 f,
                 "junction {junction_id:?}: connection {connection_id:?} from road {incoming_road_id:?} dropped, it lacks the road it comes from or leads into"
             ),
+            Self::SpeedLimitDropped {
+                road_id,
+                s,
+                lane,
+                max,
+                unit,
+            } => {
+                let whose = lane.map_or("its type's".to_string(), |l| format!("lane {l}'s"));
+                write!(
+                    f,
+                    "road {road_id:?}: {whose} <speed> at s {s:.2} m dropped, max {max:?} unit {unit:?} is not a speed"
+                )
+            }
         }
     }
 }

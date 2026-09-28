@@ -69,6 +69,14 @@ it leads into. Regenerate with
 
     python3 tests/data/direct_junctions.py
 
+`speed_limits.xodr` comes from `speed_limits.py`, which writes the XML
+itself. It has road types with speed limits in km/h, mph and none, lane
+speeds that override them, a road with two lane sections whose first type
+starts part way along, and a road with a type and speeds the crate can't
+read. Regenerate with
+
+    python3 tests/data/speed_limits.py
+
 `lane_heights.xodr` comes from `lane_heights.py` the same way. It has
 raised sidewalks, one flat and one with a kerb ramp, on a flat road, a
 banked and climbing road, a road with two lane sections, and an arc. The

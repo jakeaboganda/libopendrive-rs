@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Speed limits and road types
+
+- `RoadNetwork::speed_limits` and `RoadNetwork::road_types` say what holds
+  along each lane, as `Along` stretches in metres along its centerline.
+  `speed_limit_at` and `road_type_at` read them at a point. A limit is a
+  `SpeedLimit`, in m/s or `Unlimited`, and a type a `RoadType`.
+- A road's `<type>` and its `<speed>` hold to the next `<type>`. A lane's
+  `<speed>` overrides its road's to the end of its lane section. A
+  `<speed>` without a `unit` is in m/s, as the spec says. Limits come from
+  `<speed>`s, not signs.
+- `Warning::SpeedLimitDropped` names a `<speed>` the crate can't read.
+- The viewer's lane readout gives the speed limit and road type at the
+  hovered point.
+- Where the crate departs from the spec:
+  - A `<speed>` whose `max` is below 0 or not a number, or whose `unit` is
+    not `m/s`, `km/h` or `mph`, is dropped with the warning. A road's
+    `no limit` and `undefined` are read. A lane's are not, as the spec
+    allows them only on a road.
+  - A `<type>` without `s` is skipped. A lane `<speed>` without `sOffset`,
+    or with a negative one, starts at its lane section.
+  - Types and speeds out of order are sorted.
+  - A `type` the spec does not name is `RoadType::Unknown`.
+
 ### Direct junctions
 
 - Fix: a `type="direct"` junction's connections link its roads. The crate

@@ -21,6 +21,7 @@ use crate::{
 };
 
 mod links;
+mod properties;
 mod road_marks;
 mod signals;
 mod warning;
@@ -380,6 +381,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
                     warnings.extend(baked.lane_warnings(section));
                 }
                 warnings.extend(baked.shape_warnings());
+                warnings.extend(baked.speed_warnings());
                 roads.push((road, baked));
             }
             Err(reason) => warnings.push(Warning::RoadSkipped {
@@ -394,6 +396,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     surfaces.extend(junction_crgs(root, &topo));
     let signals = signals::place(root, &roads, &objects.provenance);
     let road_marks = road_marks::place(&roads);
+    let properties = properties::place(roads.iter().map(|(_, road)| road), &lanes);
     // Resolve connectivity once all lanes exist and are registered.
     let (junctions, dropped) = links::junctions(root, &topo.roads);
     topo.junctions = junctions;
@@ -427,7 +430,9 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             .with_signals(signals.baked)
             .with_controllers(signals.controllers)
             .with_road_marks(road_marks.baked)
-            .with_crg_surfaces(surfaces),
+            .with_crg_surfaces(surfaces)
+            .with_speed_limits(properties.speed_limits)
+            .with_road_types(properties.road_types),
         provenance,
     ))
 }
@@ -662,6 +667,7 @@ struct LaneDef {
     marks: Vec<MarkDef>,
     /// Its `<height>`s, in order along it.
     heights: Vec<HeightDef>,
+    speeds: Vec<properties::LaneSpeedDef>,
 }
 
 /// How far across the road a lane reaches: its `<width>`s, or where it has
@@ -836,6 +842,11 @@ struct SectionDef {
 }
 
 impl SectionDef {
+    /// Its lane with `<lane id>` `od_id`, if that has a width or a border.
+    fn lane(&self, od_id: i32) -> Option<&LaneDef> {
+        self.left.iter().chain(&self.right).find(|l| l.id == od_id)
+    }
+
     /// Whether any of its lanes has a `<height>`.
     fn raised(&self) -> bool {
         self.left
@@ -878,6 +889,7 @@ impl SectionDef {
                     succ_link,
                     marks: road_marks::parse(lane),
                     heights: parse_heights(lane),
+                    speeds: properties::lane_speeds(lane),
                 };
                 if id > 0 {
                     left.push(def);
@@ -1142,6 +1154,7 @@ fn parse_road(
         id: road_id,
         length,
         rule,
+        types: properties::road_types(road),
         geoms,
         elevations,
         superelevations,
@@ -1425,6 +1438,7 @@ struct BakedRoad {
     id: String,
     length: f64,
     rule: TrafficRule,
+    types: Vec<properties::TypeDef>,
     geoms: Vec<GeomRec>,
     elevations: Vec<Cubic>,
     superelevations: Vec<Cubic>,
@@ -5055,6 +5069,7 @@ mod tests {
             succ_link: None,
             marks: Vec::new(),
             heights: Vec::new(),
+            speeds: Vec::new(),
         };
         let road = |geom| {
             [GeomRec {

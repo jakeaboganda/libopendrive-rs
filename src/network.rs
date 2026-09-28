@@ -3,6 +3,7 @@
 
 use std::ops::Range;
 
+use crate::along::{self, Along, RoadType, SpeedLimit};
 use crate::coords::Point;
 use crate::crg::CrgSurface;
 use crate::geometry::{Polyline, Projection, RoadSample};
@@ -260,6 +261,8 @@ pub struct RoadNetwork {
     controllers: Vec<Controller>,
     road_marks: Vec<RoadMark>,
     crg: Vec<CrgSurface>,
+    speed_limits: Vec<Along<SpeedLimit>>,
+    road_types: Vec<Along<RoadType>>,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
     /// [`Self::nearest_lane`]. Derived from `lanes`, so it takes no part in
     /// equality.
@@ -267,7 +270,8 @@ pub struct RoadNetwork {
 }
 
 /// Two networks are equal when their lanes, objects, structures, signals,
-/// controllers, road marks and CRG surfaces are; the index is a function of the lanes.
+/// controllers, road marks, CRG surfaces, speed limits and road types are;
+/// the index is a function of the lanes.
 impl PartialEq for RoadNetwork {
     fn eq(&self, other: &Self) -> bool {
         self.lanes == other.lanes
@@ -277,6 +281,8 @@ impl PartialEq for RoadNetwork {
             && self.controllers == other.controllers
             && self.road_marks == other.road_marks
             && self.crg == other.crg
+            && self.speed_limits == other.speed_limits
+            && self.road_types == other.road_types
     }
 }
 
@@ -291,6 +297,8 @@ struct NetworkData {
     controllers: Vec<Controller>,
     road_marks: Vec<RoadMark>,
     crg: Vec<CrgSurface>,
+    speed_limits: Vec<Along<SpeedLimit>>,
+    road_types: Vec<Along<RoadType>>,
 }
 
 #[cfg(feature = "serde")]
@@ -303,6 +311,8 @@ impl From<NetworkData> for RoadNetwork {
             .with_controllers(data.controllers)
             .with_road_marks(data.road_marks)
             .with_crg_surfaces(data.crg)
+            .with_speed_limits(data.speed_limits)
+            .with_road_types(data.road_types)
     }
 }
 
@@ -317,6 +327,8 @@ impl From<RoadNetwork> for NetworkData {
             controllers: net.controllers,
             road_marks: net.road_marks,
             crg: net.crg,
+            speed_limits: net.speed_limits,
+            road_types: net.road_types,
         }
     }
 }
@@ -433,6 +445,8 @@ impl RoadNetwork {
             controllers: Vec::new(),
             road_marks: Vec::new(),
             crg: Vec::new(),
+            speed_limits: Vec::new(),
+            road_types: Vec::new(),
             index,
         }
     }
@@ -473,6 +487,42 @@ impl RoadNetwork {
     pub fn with_crg_surfaces(mut self, crg: Vec<CrgSurface>) -> Self {
         self.crg = crg;
         self
+    }
+
+    /// This network with `speed_limits` on its lanes, replacing any it had.
+    pub fn with_speed_limits(mut self, speed_limits: Vec<Along<SpeedLimit>>) -> Self {
+        self.speed_limits = along::sorted(speed_limits);
+        self
+    }
+
+    /// This network with `road_types` along its lanes, replacing any it had.
+    pub fn with_road_types(mut self, road_types: Vec<Along<RoadType>>) -> Self {
+        self.road_types = along::sorted(road_types);
+        self
+    }
+
+    /// Every speed limit, sorted by lane, then along it. A lane has at most
+    /// one limit at any point, and none where the map doesn't say. An
+    /// OpenDRIVE import reads them from `<speed>`s, not from signs.
+    pub fn speed_limits(&self) -> &[Along<SpeedLimit>] {
+        &self.speed_limits
+    }
+
+    /// The speed limit `s` metres along `lane`, or `None` where the map
+    /// doesn't say. Where two limits meet, the later one holds.
+    pub fn speed_limit_at(&self, lane: LaneId, s: f32) -> Option<SpeedLimit> {
+        along::at(&self.speed_limits, lane, s).copied()
+    }
+
+    /// The type of road along every lane, sorted by lane, then along it.
+    pub fn road_types(&self) -> &[Along<RoadType>] {
+        &self.road_types
+    }
+
+    /// The type of road `s` metres along `lane`, or `None` where the map
+    /// doesn't say. Where two types meet, the later one holds.
+    pub fn road_type_at(&self, lane: LaneId, s: f32) -> Option<RoadType> {
+        along::at(&self.road_types, lane, s).copied()
     }
 
     /// The OpenCRG files the map lays on its roads, in map order. Load them
