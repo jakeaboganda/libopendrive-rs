@@ -32,6 +32,7 @@ mod properties;
 mod railway;
 mod road_marks;
 mod signals;
+mod virtual_junctions;
 mod warning;
 use links::{LaneMeta, RoadInfo, Topology};
 use road_marks::MarkDef;
@@ -458,6 +459,8 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     let (priorities, priority_provenance, dropped_priorities) = priorities(root, &roads);
     warnings.extend(dropped_priorities);
     links::resolve(&mut lanes, &topo);
+    let (virtual_junctions, virtual_warnings) = virtual_junctions::place(root, &roads, &topo);
+    warnings.extend(virtual_warnings);
     warnings.extend(gaps::link_gaps(&lanes, &topo.metas));
     // The parser already recorded each lane's OpenDRIVE origin while baking;
     // surface it rather than reconstructing lane-id order downstream.
@@ -503,6 +506,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             .with_junction_areas(areas)
             .with_cross_paths(cross_paths)
             .with_junction_groups(groups)
+            .with_virtual_junctions(virtual_junctions)
             .with_railways(switches, stations),
         provenance,
     ))

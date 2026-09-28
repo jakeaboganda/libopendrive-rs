@@ -1,10 +1,81 @@
 //! The area of a junction: the boundary around it, and the elevation grid
-//! over it.
+//! over it. Also junction groups, cross paths and virtual junctions.
 
 use crate::coords::{Point, Vector};
 use crate::mesh::Mesh;
 use crate::network::LaneId;
 use crate::road::RoadId;
+use crate::{Orientation, RoadEnd};
+
+/// A virtual junction, from a `<junction type="virtual">`: roads that leave
+/// or join a main road part way along it, such as a driveway, without
+/// cutting it.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct VirtualJunction {
+    /// Its `id`.
+    pub od_id: String,
+    /// Its `name`, empty if it has none.
+    pub name: String,
+    /// The road the others branch off, from `mainRoad`.
+    pub main_road: RoadId,
+    /// Where along the main road it starts, from `sStart`.
+    pub s_start: f64,
+    /// Where it ends, from `sEnd`.
+    pub s_end: f64,
+    /// Which way along the main road it applies to, from `orientation`.
+    pub orientation: Orientation,
+    /// Each place in it where a road meets another part way along, in file
+    /// order.
+    pub links: Vec<VirtualLink>,
+}
+
+/// Where a road meets another part way along it, in a [`VirtualJunction`].
+/// It runs the way the file links them: from a road's `<predecessor>` into
+/// the road, or from the road into its `<successor>`.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct VirtualLink {
+    /// Where it comes from.
+    pub from: LinkPoint,
+    /// Where it leads.
+    pub to: LinkPoint,
+    /// The lanes it joins, each a `from` lane and its `to` lane. Which way
+    /// traffic crosses is the lanes' own direction.
+    pub lanes: Vec<(LaneId, LaneId)>,
+}
+
+/// One side of a [`VirtualLink`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum LinkPoint {
+    /// An end of a road.
+    End {
+        /// The road.
+        road: RoadId,
+        /// Which end.
+        end: RoadEnd,
+    },
+    /// Part way along a road, from a link's `elementS` and `elementDir`.
+    Along {
+        /// The road.
+        road: RoadId,
+        /// How far along its reference line.
+        s: f64,
+        /// Whether the link runs along the road's `+s` there, from
+        /// `elementDir="+"`.
+        forward: bool,
+    },
+}
+
+impl LinkPoint {
+    /// The road it is on.
+    pub fn road(&self) -> RoadId {
+        match *self {
+            Self::End { road, .. } | Self::Along { road, .. } => road,
+        }
+    }
+}
 
 /// Junctions that routing should see as one, such as the junctions round a
 /// roundabout, from an OpenDRIVE `<junctionGroup>`.

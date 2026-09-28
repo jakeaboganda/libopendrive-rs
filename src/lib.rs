@@ -60,7 +60,7 @@
 //! | `<header><geoReference>` | its text |
 //! | `<header><offset>` | `x`, `y`, `z`, `hdg` |
 //! | `<road>` | `id`, `length`, `junction`, `rule` |
-//! | `<road><link>` | `elementType`, `elementId`, `contactPoint` |
+//! | `<road><link>` | `elementType`, `elementId`, `contactPoint`, `elementS`, `elementDir` |
 //! | `<link><neighbor>` | `side`, `elementId`, `direction` |
 //! | `<road><type>` | `s`, `type` |
 //! | `<type><speed>` | `max`, `unit` |
@@ -99,8 +99,9 @@
 //! | `<explicit><line>` | `length`, `tOffset`, `sOffset`, `rule`, `width` |
 //! | `<roadMark><sway>` | `ds`, `a`, `b`, `c`, `d` |
 //! | `<lane><link>` | `id` |
-//! | `<junction>` | `id`, `type` |
-//! | `<connection>` | `id`, `incomingRoad`, `connectingRoad`, `linkedRoad`, `contactPoint` |
+//! | `<junction>` | `id`, `name`, `type`, `mainRoad`, `sStart`, `sEnd`, `orientation` |
+//! | `<connection>` | `id`, `type`, `incomingRoad`, `connectingRoad`, `linkedRoad`, `contactPoint` |
+//! | `<connection><predecessor>`, `<connection><successor>` | `elementId`, `elementS`, `elementDir`, `contactPoint` |
 //! | `<laneLink>` | `from`, `to` |
 //! | `<junction><priority>` | `high`, `low` |
 //! | `<road><railroad>` | none |
@@ -162,9 +163,10 @@
 //!
 //! - `<road rule>` is `LHT` for left-hand traffic, or right-hand traffic
 //!   for `RHT` or none. See [Coordinate frame](#coordinate-frame).
-//! - `<junction type>` is `direct`, or a common junction for any other
-//!   value. A direct junction's connections lead into their `linkedRoad`,
-//!   and a common junction's into their `connectingRoad`.
+//! - `<junction type>` is `direct`, `virtual`, or a common junction for any
+//!   other value. A direct junction's connections lead into their
+//!   `linkedRoad`, and a common junction's into their `connectingRoad`. See
+//!   [Virtual junctions](#virtual-junctions).
 //! - `<lane type>` chooses the [`LaneType`] a lane bakes as. A name this
 //!   crate does not recognise bakes as [`LaneType::Unknown`], so no lane is
 //!   ever dropped for its type.
@@ -218,6 +220,33 @@
 //! nothing else into them, such as the signs or the lanes' order. One
 //! naming a road the load did not bake is dropped, with a
 //! [`Warning::PriorityDropped`]. libOpenDRIVE stores them too.
+//!
+//! # Virtual junctions
+//!
+//! A `<junction type="virtual">` joins roads to a main road part way along
+//! it, such as a driveway, without cutting it. Each is a
+//! [`VirtualJunction`] in [`RoadNetwork::virtual_junctions`], with its main
+//! road, the stretch of it the junction spans, its [`Orientation`], and a
+//! [`VirtualLink`] for each place a road meets another part way along. A
+//! link comes from a road of the junction whose `<predecessor>` or
+//! `<successor>` gives an `elementS`, with the lane pairs its lanes'
+//! `<link>`s and the junction's `<laneLink>`s give, or from a deprecated
+//! `<connection type="virtual">`. Each side is a [`LinkPoint`]: an end of a
+//! road, or an `s` along one and which way the link runs there.
+//!
+//! The lane graph joins lanes end to end, so these links are kept beside
+//! it, and the router does not follow them. A connection whose incoming
+//! road is the main road adds no lane-graph link either. The junction's
+//! other connections, such as from a lot road into a connecting road that
+//! ends on the main road, are read as in a common junction. A road link
+//! with an `elementS` outside a virtual junction is read by its
+//! `contactPoint`, since files such as ASAM's `UC_ParamPoly3` give one
+//! there. A junction whose main road the load lacks, or whose `sStart` or
+//! `sEnd` is off it, is dropped with a [`Warning::VirtualJunctionDropped`],
+//! and a link naming a road the load lacks, an `s` off it, or an
+//! `elementDir` other than `+` or `-`, with a
+//! [`Warning::VirtualLinkDropped`]. esmini reads a virtual junction as a
+//! common one. No other reader to compare against reads `elementS`.
 //!
 //! A road's lanes drive into a common junction from the end whose road
 //! `<link>` names it. The spec requires every incoming road to name its
@@ -1094,6 +1123,9 @@
 //!   roads it joins.
 //! - [`Warning::JunctionLinkMissing`] for an incoming road whose `<link>`
 //!   leaves out its junction.
+//! - [`Warning::VirtualJunctionDropped`] and [`Warning::VirtualLinkDropped`]
+//!   for a virtual junction or link the crate can't place. See
+//!   [Virtual junctions](#virtual-junctions).
 //! - [`Warning::RailwayDropped`] for a railway switch or platform segment
 //!   the crate can't place. See [Railways](#railways).
 //! - [`Warning::JunctionReferenceDropped`] and
@@ -1182,7 +1214,8 @@ pub use geo::{GeoOffset, GeoReference};
 pub use geometry::TooFewPoints;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
 pub use junction::{
-    CrossPath, CrossPathEnd, ElevationGrid, GridRow, JunctionArea, JunctionGroup, JunctionGroupKind,
+    CrossPath, CrossPathEnd, ElevationGrid, GridRow, JunctionArea, JunctionGroup,
+    JunctionGroupKind, LinkPoint, VirtualJunction, VirtualLink,
 };
 pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};
 pub use network::{Direction, Lane, LaneId, LaneType, RoadNetwork};

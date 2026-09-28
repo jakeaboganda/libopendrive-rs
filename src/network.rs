@@ -10,7 +10,7 @@ use crate::crg::CrgSurface;
 use crate::geo::GeoReference;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
-use crate::junction::{CrossPath, JunctionArea, JunctionGroup};
+use crate::junction::{CrossPath, JunctionArea, JunctionGroup, VirtualJunction};
 use crate::object::{Material, Object, ObjectId};
 use crate::railway::{Station, Switch};
 use crate::road::{LanePosition, Priority, Road, RoadId, RoadLane, RoadNeighbor, RoadPosition};
@@ -285,6 +285,7 @@ pub struct RoadNetwork {
     junction_areas: Vec<JunctionArea>,
     cross_paths: Vec<CrossPath>,
     junction_groups: Vec<JunctionGroup>,
+    virtual_junctions: Vec<VirtualJunction>,
     switches: Vec<Switch>,
     stations: Vec<Station>,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
@@ -323,6 +324,7 @@ impl PartialEq for RoadNetwork {
             && self.junction_areas == other.junction_areas
             && self.cross_paths == other.cross_paths
             && self.junction_groups == other.junction_groups
+            && self.virtual_junctions == other.virtual_junctions
             && self.switches == other.switches
             && self.stations == other.stations
     }
@@ -364,6 +366,8 @@ struct NetworkData {
     #[serde(default)]
     junction_groups: Vec<JunctionGroup>,
     #[serde(default)]
+    virtual_junctions: Vec<VirtualJunction>,
+    #[serde(default)]
     switches: Vec<Switch>,
     #[serde(default)]
     stations: Vec<Station>,
@@ -392,6 +396,7 @@ impl From<NetworkData> for RoadNetwork {
             .with_junction_areas(data.junction_areas)
             .with_cross_paths(data.cross_paths)
             .with_junction_groups(data.junction_groups)
+            .with_virtual_junctions(data.virtual_junctions)
             .with_railways(data.switches, data.stations)
     }
 }
@@ -420,6 +425,7 @@ impl From<RoadNetwork> for NetworkData {
             junction_areas: net.junction_areas,
             cross_paths: net.cross_paths,
             junction_groups: net.junction_groups,
+            virtual_junctions: net.virtual_junctions,
             switches: net.switches,
             stations: net.stations,
         }
@@ -588,6 +594,7 @@ impl RoadNetwork {
             junction_areas: Vec::new(),
             cross_paths: Vec::new(),
             junction_groups: Vec::new(),
+            virtual_junctions: Vec::new(),
             switches: Vec::new(),
             stations: Vec::new(),
             index,
@@ -704,6 +711,19 @@ impl RoadNetwork {
         self.junction_groups
             .iter()
             .filter(move |g| junction.is_some_and(|j| g.junctions.iter().any(|m| m == j)))
+    }
+
+    /// This network with `virtual_junctions`, replacing any it had.
+    pub fn with_virtual_junctions(mut self, virtual_junctions: Vec<VirtualJunction>) -> Self {
+        self.virtual_junctions = virtual_junctions;
+        self
+    }
+
+    /// Every virtual junction, in file order. Its roads meet the main road
+    /// part way along it, which [`Lane::successors`] can't, so its links are
+    /// kept beside the lane graph, and the router does not follow them.
+    pub fn virtual_junctions(&self) -> &[VirtualJunction] {
+        &self.virtual_junctions
     }
 
     /// This network with `switches` and `stations` on its tracks, replacing

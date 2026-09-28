@@ -82,6 +82,9 @@ files declaring 1.4, 1.6 and 1.7.
   `RoadNetwork::stations`, each on the roads of its tracks.
 - `<junctionGroup>`s, as `RoadNetwork::junction_groups`: junctions routing
   should see as one, such as a roundabout's.
+- Virtual junctions, as `RoadNetwork::virtual_junctions`: roads meeting a
+  main road part way along it, such as a driveway. The router does not
+  follow those links.
 - Junction `<crossPath>`s, as `RoadNetwork::cross_paths`: paths for
   pedestrians across the junction's roads, joining lanes part way along.
 - Junction `<priority>`s, as `RoadNetwork::priorities`: which road of a
@@ -260,7 +263,8 @@ road raises `Warning::ShapeShortOfRoad`. A road `rule` other than `RHT` or
 the roads it joins raises `Warning::ConnectionDropped`, and an incoming road
 whose `<link>` leaves out its junction raises `Warning::JunctionLinkMissing`.
 A junction `<priority>` naming a road the load didn't bake raises
-`Warning::PriorityDropped`, and a road `<neighbor>` the crate can't read
+`Warning::PriorityDropped`. A virtual junction or link the crate can't place
+raises `Warning::VirtualJunctionDropped` or `Warning::VirtualLinkDropped`, and a road `<neighbor>` the crate can't read
 raises `Warning::NeighborDropped`. A road whose `length` isn't where its `<planView>` ends raises
 `Warning::RoadLengthMismatch`, and a lane link between lanes more than
 10 cm apart raises `Warning::LinkGap`. A `<speed>` the

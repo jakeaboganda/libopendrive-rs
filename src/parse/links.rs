@@ -82,7 +82,7 @@ pub(crate) struct Topology {
 }
 
 impl Topology {
-    fn last_section(&self, road: &str) -> usize {
+    pub(crate) fn last_section(&self, road: &str) -> usize {
         self.roads
             .get(road)
             .map(|r| r.sections.saturating_sub(1))

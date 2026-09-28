@@ -10,6 +10,13 @@
   link there, the main road is no longer linked into the junction with a
   `JunctionLinkMissing`, and deprecated `type="virtual"` connections are
   not reported as dropped.
+- `RoadNetwork::virtual_junctions` gives each `<junction type="virtual">`
+  as a `VirtualJunction`: its main road, the stretch of it it spans, its
+  orientation, and each `VirtualLink` where a road meets another part way
+  along, with the lanes it joins. Each side is a `LinkPoint`. The router
+  does not follow them.
+- `Warning::VirtualJunctionDropped` and `Warning::VirtualLinkDropped` name a
+  virtual junction or link the crate can't place.
 
 ### Railways
 

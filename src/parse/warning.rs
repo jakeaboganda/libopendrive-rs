@@ -195,6 +195,25 @@ pub enum Warning {
         /// The road it is on, or names.
         road_id: String,
     },
+    /// A `<junction type="virtual">` whose `mainRoad` names a road the load
+    /// lacks, or whose `sStart` or `sEnd` is missing or off that road. The
+    /// crate drops it.
+    VirtualJunctionDropped {
+        /// The `<junction id>`.
+        junction_id: String,
+    },
+    /// A virtual junction's link the crate can't place: one naming a road
+    /// the load lacks, an `elementS` off that road, or an `elementDir` other
+    /// than `+` or `-`. The crate drops it.
+    VirtualLinkDropped {
+        /// The `<junction id>`.
+        junction_id: String,
+        /// The road whose `<link>` it is, empty for a `type="virtual"`
+        /// connection.
+        road_id: String,
+        /// The connection's `id`, empty for a road's `<link>`.
+        connection_id: String,
+    },
     /// A `<junctionReference>` naming a junction the file does not have. The
     /// crate leaves it out of the group.
     JunctionReferenceDropped {
@@ -392,6 +411,7 @@ impl Warning {
             | Self::CrossPathDropped { road_id, .. }
             | Self::CrossSectionWithShape { road_id }
             | Self::RailwayDropped { road_id, .. }
+            | Self::VirtualLinkDropped { road_id, .. }
             | Self::UnknownStripMode { road_id, .. }
             | Self::StripDropped { road_id, .. }
             | Self::ConnectionDropped {
@@ -399,6 +419,7 @@ impl Warning {
                 ..
             } => road_id,
             Self::JunctionReferenceDropped { .. }
+            | Self::VirtualJunctionDropped { .. }
             | Self::UnknownJunctionGroupType { .. }
             | Self::ElevationGridNotApplied { .. }
             | Self::ElevationGridDropped { .. }
@@ -510,6 +531,26 @@ impl fmt::Display for Warning {
                 id,
                 road_id,
             } => write!(f, "road {road_id:?}: {element} {id:?} dropped"),
+            Self::VirtualJunctionDropped { junction_id } => write!(
+                f,
+                "junction {junction_id:?}: virtual junction dropped, it lacks its main road or where along it it runs"
+            ),
+            Self::VirtualLinkDropped {
+                junction_id,
+                road_id,
+                connection_id,
+            } if road_id.is_empty() => write!(
+                f,
+                "junction {junction_id:?}: virtual connection {connection_id:?} dropped"
+            ),
+            Self::VirtualLinkDropped {
+                junction_id,
+                road_id,
+                ..
+            } => write!(
+                f,
+                "junction {junction_id:?}: road {road_id:?}'s link part way along a road dropped"
+            ),
             Self::JunctionReferenceDropped {
                 group_id,
                 junction_id,
