@@ -67,6 +67,10 @@
 //! | `<lane><border>` | `sOffset`, `a`, `b`, `c`, `d` |
 //! | `<lane><height>` | `sOffset`, `inner`, `outer` |
 //! | `<lane><speed>` | `sOffset`, `max`, `unit` |
+//! | `<lane><rule>` | `sOffset`, `value` |
+//! | `<lane><access>` | `sOffset`, `rule`, `restriction` |
+//! | `<access><restriction>` | `type` |
+//! | `<lane><material>` | `sOffset`, `surface`, `friction`, `roughness` |
 //! | `<lane><roadMark>` | `sOffset`, `type`, `weight`, `color`, `width`, `height`, `laneChange` |
 //! | `<roadMark><type>` | `width` |
 //! | `<type><line>` | `length`, `space`, `tOffset`, `sOffset`, `rule`, `width`, `color` |
@@ -518,6 +522,36 @@
 //! - A `type` the spec does not name bakes as [`RoadType::Unknown`], as an
 //!   unrecognised lane type bakes as [`LaneType::Unknown`].
 //!
+//! # Lane rules, access and materials
+//!
+//! [`RoadNetwork::lane_rules`], [`RoadNetwork::lane_access`] and
+//! [`RoadNetwork::lane_materials`] hold a lane's own `<rule>`s, `<access>`es
+//! and `<material>`s, as [`Along`] stretches like the speed limits. The
+//! `*_at` methods read them at a point. Each holds from its `sOffset` to the
+//! next of its kind, or to the end of its lane section.
+//!
+//! - A rule is the file's free text, such as `no stopping at any time`. A
+//!   `<rule>` without a `value` is skipped.
+//! - [`Access::Allow`] lists the only road users that may use the lane, and
+//!   [`Access::Deny`] those that may not. Each is a restriction `type` as
+//!   the file names it, such as `bus`. Where a lane has no access stretch,
+//!   everyone may use it, as the spec says. A `rule="deny"` naming `none`
+//!   lifts the restrictions before it.
+//! - Files before 1.8 name one road user per `<access>`, in its
+//!   `restriction` attribute. Those at the same `sOffset` with the same
+//!   `rule` merge into one stretch.
+//! - A material is a [`Material`], as on an object. The crate does not use
+//!   its friction, which a CRG gives through [`RoadSurface`].
+//!
+//! The crate departs from the OpenDRIVE 1.9 spec here:
+//!
+//! - The spec allows an `<access>` without a `rule`, but it then says
+//!   nothing about who may use the lane. The crate drops it, and any `rule`
+//!   other than `allow` or `deny`, and raises [`Warning::AccessDropped`].
+//!   The lane is then open to everyone up to the next `<access>`.
+//! - A missing or negative `sOffset` is 0, and entries out of order are
+//!   sorted, as for a `<speed>`.
+//!
 //! # Road surfaces
 //!
 //! Each `<CRG>` under a road's or a junction's `<surface>` becomes a
@@ -625,6 +659,8 @@
 //!   `LHT`. See [Coordinate frame](#coordinate-frame).
 //! - [`Warning::ConnectionDropped`] for a junction connection without the
 //!   roads it joins.
+//! - [`Warning::AccessDropped`] for an `<access>` it can't read. See
+//!   [Lane rules, access and materials](#lane-rules-access-and-materials).
 //! - [`Warning::SpeedLimitDropped`] for a `<speed>` it can't read. See
 //!   [Speed limits and road types](#speed-limits-and-road-types).
 //!
@@ -668,7 +704,7 @@ mod structure;
 #[cfg(test)]
 mod fixtures;
 
-pub use along::{Along, RoadType, SpeedLimit};
+pub use along::{Access, Along, RoadType, SpeedLimit};
 pub use coords::{Point, Vector};
 pub use crg::{
     CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface, RoadSurface, SurfaceHint, SurfaceSample,

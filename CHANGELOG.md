@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Lane rules, access and materials
+
+- `RoadNetwork::lane_rules`, `lane_access` and `lane_materials` hold each
+  lane's `<rule>`s, `<access>`es and `<material>`s as `Along` stretches.
+  `lane_rule_at`, `lane_access_at` and `lane_material_at` read them at a
+  point. Each holds from its `sOffset` to the next of its kind, or to the
+  end of its lane section.
+- A rule is the file's free text. Access is `Access::Allow` or
+  `Access::Deny`, with the road users the file names. A material is the
+  `Material` objects already use.
+- Access in the form before 1.8, one `restriction` attribute per
+  `<access>`, merges where several share an `sOffset` and a `rule`. A
+  deny of `none` lifts the restrictions before it.
+- `Warning::AccessDropped` names an `<access>` whose `rule` is neither
+  `allow` nor `deny`. The spec makes `rule` optional, but without it an
+  `<access>` doesn't say who may use the lane.
+- The viewer's lane readout gives the rule, access and material at the
+  hovered point.
+
 ### Speed limits and road types
 
 - `RoadNetwork::speed_limits` and `RoadNetwork::road_types` say what holds

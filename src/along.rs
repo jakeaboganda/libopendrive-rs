@@ -1,5 +1,5 @@
-//! What holds along part of a lane, such as its speed limit or the type of
-//! road it is on. Like lanes, these don't depend on the file format.
+//! What holds along part of a lane, such as its speed limit, the type of
+//! road it is on, or who may use it. Like lanes, these don't depend on the file format.
 
 use crate::LaneId;
 
@@ -46,6 +46,17 @@ pub enum SpeedLimit {
     Max(f32),
     /// No limit, such as on a German autobahn.
     Unlimited,
+}
+
+/// Who may use a lane, from its OpenDRIVE `<access>`. Each road user is a
+/// restriction type as the file names it, such as `bus` or `bicycle`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Access {
+    /// Only these road users may use it.
+    Allow(Vec<String>),
+    /// Every road user but these may use it.
+    Deny(Vec<String>),
 }
 
 /// What a road is for, which sets the traffic rules on it.

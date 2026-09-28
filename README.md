@@ -32,6 +32,7 @@ mesh.validate()?;
 - Links and junctions, direct junctions included, as a lane graph, in
   right- or left-hand traffic.
 - Road types and speed limits along each lane.
+- Lane rules, access and materials along each lane.
 - Objects, with repeats, outlines, markings and borders.
 - Signals and the controllers that group them.
 - Road marks.

@@ -382,6 +382,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
                 }
                 warnings.extend(baked.shape_warnings());
                 warnings.extend(baked.speed_warnings());
+                warnings.extend(baked.access_warnings());
                 roads.push((road, baked));
             }
             Err(reason) => warnings.push(Warning::RoadSkipped {
@@ -432,7 +433,10 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             .with_road_marks(road_marks.baked)
             .with_crg_surfaces(surfaces)
             .with_speed_limits(properties.speed_limits)
-            .with_road_types(properties.road_types),
+            .with_road_types(properties.road_types)
+            .with_lane_rules(properties.lane_rules)
+            .with_lane_access(properties.lane_access)
+            .with_lane_materials(properties.lane_materials),
         provenance,
     ))
 }
@@ -668,6 +672,9 @@ struct LaneDef {
     /// Its `<height>`s, in order along it.
     heights: Vec<HeightDef>,
     speeds: Vec<properties::LaneSpeedDef>,
+    rules: Vec<(f64, String)>,
+    access: Vec<(f64, properties::AccessDef)>,
+    materials: Vec<(f64, Material)>,
 }
 
 /// How far across the road a lane reaches: its `<width>`s, or where it has
@@ -890,6 +897,9 @@ impl SectionDef {
                     marks: road_marks::parse(lane),
                     heights: parse_heights(lane),
                     speeds: properties::lane_speeds(lane),
+                    rules: properties::lane_rules(lane),
+                    access: properties::lane_access(lane),
+                    materials: properties::lane_materials(lane),
                 };
                 if id > 0 {
                     left.push(def);
@@ -1017,6 +1027,15 @@ fn traffic_rule<'a>(road: roxmltree::Node<'a, '_>) -> Result<TrafficRule, &'a st
         None | Some("RHT") => Ok(TrafficRule::RightHand),
         Some("LHT") => Ok(TrafficRule::LeftHand),
         Some(other) => Err(other),
+    }
+}
+
+/// An object's or a lane's `<material>`.
+fn material(node: roxmltree::Node) -> Material {
+    Material {
+        surface: node.attribute("surface").unwrap_or_default().to_string(),
+        friction: attr_f64(node, "friction").map(|v| v as f32),
+        roughness: attr_f64(node, "roughness").map(|v| v as f32),
     }
 }
 
@@ -2676,11 +2695,7 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
     let materials: Vec<Material> = node
         .children()
         .filter(|n| n.has_tag_name("material"))
-        .map(|m| Material {
-            surface: m.attribute("surface").unwrap_or_default().to_string(),
-            friction: attr_f64(m, "friction").map(|v| v as f32),
-            roughness: attr_f64(m, "roughness").map(|v| v as f32),
-        })
+        .map(material)
         .collect();
     let user_data: Vec<UserData> = node
         .children()
@@ -5070,6 +5085,9 @@ mod tests {
             marks: Vec::new(),
             heights: Vec::new(),
             speeds: Vec::new(),
+            rules: Vec::new(),
+            access: Vec::new(),
+            materials: Vec::new(),
         };
         let road = |geom| {
             [GeomRec {

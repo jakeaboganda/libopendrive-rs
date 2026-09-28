@@ -3,12 +3,12 @@
 
 use std::ops::Range;
 
-use crate::along::{self, Along, RoadType, SpeedLimit};
+use crate::along::{self, Access, Along, RoadType, SpeedLimit};
 use crate::coords::Point;
 use crate::crg::CrgSurface;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
-use crate::object::{Object, ObjectId};
+use crate::object::{Material, Object, ObjectId};
 use crate::road_mark::{RoadMark, RoadMarkId};
 use crate::signal::{Controller, ControllerId, Signal, SignalId};
 use crate::structure::{Coverage, Structure, StructureId};
@@ -263,6 +263,9 @@ pub struct RoadNetwork {
     crg: Vec<CrgSurface>,
     speed_limits: Vec<Along<SpeedLimit>>,
     road_types: Vec<Along<RoadType>>,
+    lane_rules: Vec<Along<String>>,
+    lane_access: Vec<Along<Access>>,
+    lane_materials: Vec<Along<Material>>,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
     /// [`Self::nearest_lane`]. Derived from `lanes`, so it takes no part in
     /// equality.
@@ -283,6 +286,9 @@ impl PartialEq for RoadNetwork {
             && self.crg == other.crg
             && self.speed_limits == other.speed_limits
             && self.road_types == other.road_types
+            && self.lane_rules == other.lane_rules
+            && self.lane_access == other.lane_access
+            && self.lane_materials == other.lane_materials
     }
 }
 
@@ -299,6 +305,12 @@ struct NetworkData {
     crg: Vec<CrgSurface>,
     speed_limits: Vec<Along<SpeedLimit>>,
     road_types: Vec<Along<RoadType>>,
+    #[serde(default)]
+    lane_rules: Vec<Along<String>>,
+    #[serde(default)]
+    lane_access: Vec<Along<Access>>,
+    #[serde(default)]
+    lane_materials: Vec<Along<Material>>,
 }
 
 #[cfg(feature = "serde")]
@@ -313,6 +325,9 @@ impl From<NetworkData> for RoadNetwork {
             .with_crg_surfaces(data.crg)
             .with_speed_limits(data.speed_limits)
             .with_road_types(data.road_types)
+            .with_lane_rules(data.lane_rules)
+            .with_lane_access(data.lane_access)
+            .with_lane_materials(data.lane_materials)
     }
 }
 
@@ -329,6 +344,9 @@ impl From<RoadNetwork> for NetworkData {
             crg: net.crg,
             speed_limits: net.speed_limits,
             road_types: net.road_types,
+            lane_rules: net.lane_rules,
+            lane_access: net.lane_access,
+            lane_materials: net.lane_materials,
         }
     }
 }
@@ -447,6 +465,9 @@ impl RoadNetwork {
             crg: Vec::new(),
             speed_limits: Vec::new(),
             road_types: Vec::new(),
+            lane_rules: Vec::new(),
+            lane_access: Vec::new(),
+            lane_materials: Vec::new(),
             index,
         }
     }
@@ -501,6 +522,26 @@ impl RoadNetwork {
         self
     }
 
+    /// This network with `lane_rules` along its lanes, replacing any it had.
+    pub fn with_lane_rules(mut self, lane_rules: Vec<Along<String>>) -> Self {
+        self.lane_rules = along::sorted(lane_rules);
+        self
+    }
+
+    /// This network with `lane_access` along its lanes, replacing any it
+    /// had.
+    pub fn with_lane_access(mut self, lane_access: Vec<Along<Access>>) -> Self {
+        self.lane_access = along::sorted(lane_access);
+        self
+    }
+
+    /// This network with `lane_materials` along its lanes, replacing any it
+    /// had.
+    pub fn with_lane_materials(mut self, lane_materials: Vec<Along<Material>>) -> Self {
+        self.lane_materials = along::sorted(lane_materials);
+        self
+    }
+
     /// Every speed limit, sorted by lane, then along it. A lane has at most
     /// one limit at any point, and none where the map doesn't say. An
     /// OpenDRIVE import reads them from `<speed>`s, not from signs.
@@ -523,6 +564,41 @@ impl RoadNetwork {
     /// doesn't say. Where two types meet, the later one holds.
     pub fn road_type_at(&self, lane: LaneId, s: f32) -> Option<RoadType> {
         along::at(&self.road_types, lane, s).copied()
+    }
+
+    /// Every lane rule, sorted by lane, then along it: free text such as
+    /// `no stopping at any time`, from an OpenDRIVE `<rule>`.
+    pub fn lane_rules(&self) -> &[Along<String>] {
+        &self.lane_rules
+    }
+
+    /// The rule `s` metres along `lane`, or `None` where the map gives none.
+    /// Where two rules meet, the later one holds.
+    pub fn lane_rule_at(&self, lane: LaneId, s: f32) -> Option<&str> {
+        along::at(&self.lane_rules, lane, s).map(String::as_str)
+    }
+
+    /// Who may use each lane, sorted by lane, then along it. A lane is open
+    /// to everyone where it has none.
+    pub fn lane_access(&self) -> &[Along<Access>] {
+        &self.lane_access
+    }
+
+    /// Who may use `lane` `s` metres along it, or `None` where everyone
+    /// may. Where two meet, the later one holds.
+    pub fn lane_access_at(&self, lane: LaneId, s: f32) -> Option<&Access> {
+        along::at(&self.lane_access, lane, s)
+    }
+
+    /// What each lane's surface is made of, sorted by lane, then along it.
+    pub fn lane_materials(&self) -> &[Along<Material>] {
+        &self.lane_materials
+    }
+
+    /// What `lane`'s surface is made of `s` metres along it, or `None` where
+    /// the map doesn't say. Where two meet, the later one holds.
+    pub fn lane_material_at(&self, lane: LaneId, s: f32) -> Option<&Material> {
+        along::at(&self.lane_materials, lane, s)
     }
 
     /// The OpenCRG files the map lays on its roads, in map order. Load them

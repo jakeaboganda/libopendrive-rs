@@ -69,6 +69,13 @@ it leads into. Regenerate with
 
     python3 tests/data/direct_junctions.py
 
+`lane_rules.xodr` comes from `lane_rules.py`, which writes the XML
+itself. It has lane rules, one without a value, access in the 1.8 form
+and the older one, one without a rule, and materials, some out of order,
+across two lane sections. Regenerate with
+
+    python3 tests/data/lane_rules.py
+
 `speed_limits.xodr` comes from `speed_limits.py`, which writes the XML
 itself. It has road types with speed limits in km/h, mph and none, lane
 speeds that override them, a road with two lane sections whose first type

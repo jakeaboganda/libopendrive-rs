@@ -116,6 +116,19 @@ pub enum Warning {
         /// Its `unit`, as the file writes it. Empty if it has none.
         unit: String,
     },
+    /// A lane `<access>` whose `rule` is neither `allow` nor `deny`, so it
+    /// says nothing about who may use the lane. The lane is open to
+    /// everyone from its `sOffset` to the next `<access>`.
+    AccessDropped {
+        /// The `<road id>` it is on.
+        road_id: String,
+        /// Where it starts, in metres along the reference line.
+        s: f64,
+        /// The `<lane id>` whose `<access>` it is.
+        lane: i32,
+        /// Its `rule`, as the file writes it. Empty if it has none.
+        rule: String,
+    },
 }
 
 /// Why a `<road>` baked nothing.
@@ -145,6 +158,7 @@ impl Warning {
             | Self::ShapeShortOfRoad { road_id, .. }
             | Self::UnknownTrafficRule { road_id, .. }
             | Self::SpeedLimitDropped { road_id, .. }
+            | Self::AccessDropped { road_id, .. }
             | Self::ConnectionDropped {
                 incoming_road_id: road_id,
                 ..
@@ -221,6 +235,15 @@ impl fmt::Display for Warning {
                     "road {road_id:?}: {whose} <speed> at s {s:.2} m dropped, max {max:?} unit {unit:?} is not a speed"
                 )
             }
+            Self::AccessDropped {
+                road_id,
+                s,
+                lane,
+                rule,
+            } => write!(
+                f,
+                "road {road_id:?}: lane {lane}'s <access> at s {s:.2} m dropped, rule {rule:?} is neither allow nor deny"
+            ),
         }
     }
 }

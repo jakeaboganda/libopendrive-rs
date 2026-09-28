@@ -254,7 +254,7 @@ pub struct ParkingSpace {
     pub restrictions: String,
 }
 
-/// What an object's surface is made of.
+/// What an object's or a lane's surface is made of.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Material {

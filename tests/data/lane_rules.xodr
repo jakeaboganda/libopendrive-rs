@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+  <header revMajor="1" revMinor="8" name="lane_rules"/>
+  <road name="" length="100" id="0" junction="-1">
+    <planView><geometry s="0" x="0" y="0" hdg="0" length="100"><line/></geometry></planView>
+    <lanes>
+      <laneSection s="0"><left><lane id="1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><rule sOffset="0" value="disabled parking"/><rule sOffset="20" value="no stopping at any time"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><material sOffset="0" surface="asphalt" friction="0.9" roughness="0.002"/><material sOffset="20" surface="gravel" friction="0.6"/><access sOffset="0" rule="allow"><restriction type="bus"/><restriction type="taxi"/></access><access sOffset="40" rule="deny"><restriction type="none"/></access><rule sOffset="0" value="no stopping at any time"/><rule sOffset="30" value="car pool"/><rule sOffset="40"/></lane><lane id="-2" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/><material sOffset="25" surface="concrete" friction="0.8"/><material sOffset="5" surface="asphalt" friction="0.9"/><access sOffset="10" rule="deny" restriction="truck"/><access sOffset="10" rule="deny" restriction="bicycle"/><access sOffset="30" restriction="bus"/></lane></right></laneSection>
+      <laneSection s="60"><left><lane id="1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane><lane id="-2" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>

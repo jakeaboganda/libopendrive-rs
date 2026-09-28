@@ -1,9 +1,10 @@
-//! What holds along each baked lane: its road's `<type>`s, and its speed
-//! limits from its own `<speed>`s or its road's.
+//! What holds along each baked lane: its road's `<type>`s, its speed
+//! limits from its own `<speed>`s or its road's, and its own `<rule>`s,
+//! `<access>`es and `<material>`s.
 
-use super::{along, attr_f64, BakedRoad, BakedSection, Warning};
+use super::{along, attr_f64, material, BakedRoad, BakedSection, Warning};
 use crate::coords::Point;
-use crate::{Along, Lane, LaneId, RoadType, SpeedLimit};
+use crate::{Access, Along, Lane, LaneId, Material, RoadType, SpeedLimit};
 
 /// A `<speed>` as the file gives it.
 #[derive(Clone, PartialEq)]
@@ -105,6 +106,98 @@ pub(super) fn lane_speeds(lane: roxmltree::Node) -> Vec<LaneSpeedDef> {
     speeds
 }
 
+/// A lane's `<access>` as the file gives it.
+#[derive(Clone, PartialEq)]
+pub(super) enum AccessDef {
+    Restricted(Access),
+    Unrestricted,
+    Unreadable { rule: String },
+}
+
+impl AccessDef {
+    /// An `<access>`. Its road users are its `<restriction>`s' `type`s,
+    /// after the `restriction` attribute of files before 1.8.
+    fn parse(node: roxmltree::Node) -> Self {
+        let users: Vec<String> = node
+            .attribute("restriction")
+            .into_iter()
+            .chain(
+                node.children()
+                    .filter(|n| n.has_tag_name("restriction"))
+                    .filter_map(|n| n.attribute("type")),
+            )
+            .filter(|u| !u.is_empty())
+            .map(String::from)
+            .collect();
+        match node.attribute("rule") {
+            Some("deny") if users.iter().any(|u| u == "none") => Self::Unrestricted,
+            Some("allow") => Self::Restricted(Access::Allow(users)),
+            Some("deny") => Self::Restricted(Access::Deny(users)),
+            rule => Self::Unreadable {
+                rule: rule.unwrap_or_default().to_string(),
+            },
+        }
+    }
+
+    fn access(&self) -> Option<Access> {
+        match self {
+            Self::Restricted(access) => Some(access.clone()),
+            Self::Unrestricted | Self::Unreadable { .. } => None,
+        }
+    }
+}
+
+/// `lane`'s children named `tag` that `read` reads, each at its `sOffset`,
+/// in ascending `sOffset`. A missing or negative `sOffset` is 0, as for a
+/// `<height>`, and entries out of order are sorted.
+fn by_offset<T>(
+    lane: roxmltree::Node,
+    tag: &str,
+    read: impl Fn(roxmltree::Node) -> Option<T>,
+) -> Vec<(f64, T)> {
+    let mut out: Vec<(f64, T)> = lane
+        .children()
+        .filter(|n| n.has_tag_name(tag))
+        .filter_map(|n| Some((attr_f64(n, "sOffset").unwrap_or(0.0).max(0.0), read(n)?)))
+        .collect();
+    out.sort_by(|a, b| a.0.total_cmp(&b.0));
+    out
+}
+
+/// A lane's `<rule>` values. A `<rule>` without a `value` is skipped.
+pub(super) fn lane_rules(lane: roxmltree::Node) -> Vec<(f64, String)> {
+    by_offset(lane, "rule", |n| n.attribute("value").map(String::from))
+}
+
+/// A lane's `<material>`s.
+pub(super) fn lane_materials(lane: roxmltree::Node) -> Vec<(f64, Material)> {
+    by_offset(lane, "material", |n| Some(material(n)))
+}
+
+/// A lane's `<access>`es. Files before 1.8 give one road user per
+/// `<access>`, so those at the same `sOffset` with the same rule merge.
+pub(super) fn lane_access(lane: roxmltree::Node) -> Vec<(f64, AccessDef)> {
+    let mut out: Vec<(f64, AccessDef)> = Vec::new();
+    for (s, def) in by_offset(lane, "access", |n| Some(AccessDef::parse(n))) {
+        if let (Some((at, AccessDef::Restricted(last))), AccessDef::Restricted(next)) =
+            (out.last_mut(), &def)
+        {
+            match (last, next) {
+                (Access::Allow(users), Access::Allow(more))
+                | (Access::Deny(users), Access::Deny(more))
+                    if *at == s =>
+                {
+                    users.extend(more.iter().cloned());
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        out.push((s, def));
+    }
+    out
+}
+
 /// The [`RoadType`] an OpenDRIVE `<type>` names. An absent or unrecognised
 /// type is [`RoadType::Unknown`].
 fn road_type(od_type: Option<&str>) -> RoadType {
@@ -130,15 +223,20 @@ fn road_type(od_type: Option<&str>) -> RoadType {
 pub(super) struct Placed {
     pub speed_limits: Vec<Along<SpeedLimit>>,
     pub road_types: Vec<Along<RoadType>>,
+    pub lane_rules: Vec<Along<String>>,
+    pub lane_access: Vec<Along<Access>>,
+    pub lane_materials: Vec<Along<Material>>,
 }
 
-/// Place the speed limits and road types along `lanes`, the baked lanes of
-/// `roads`.
+/// Place the speed limits, road types, rules, access and materials along
+/// `lanes`, the baked lanes of `roads`.
 ///
 /// A road's type holds from its `s` to the next, or to the end of the road.
 /// A lane's `<speed>` holds from its `sOffset` to the next, or to the end of
 /// its lane section, and overrides the road's. Where the lane has none, the
-/// speed of its road's type holds.
+/// speed of its road's type holds. A lane's `<rule>`, `<access>` or
+/// `<material>` holds from its `sOffset` to the next of its kind, or to the
+/// end of its lane section.
 pub(super) fn place<'a>(roads: impl Iterator<Item = &'a BakedRoad>, lanes: &[Lane]) -> Placed {
     let mut out = Placed::default();
     for road in roads {
@@ -168,6 +266,15 @@ pub(super) fn place<'a>(roads: impl Iterator<Item = &'a BakedRoad>, lanes: &[Lan
                     .extend(on_lane(lane.id, points, &sec.stations, kinds));
                 out.speed_limits
                     .extend(on_lane(lane.id, points, &sec.stations, limits));
+                let rules = own_stretches(sec, &def.rules, |r| Some(r.clone()));
+                let access = own_stretches(sec, &def.access, AccessDef::access);
+                let materials = own_stretches(sec, &def.materials, |m| Some(m.clone()));
+                out.lane_rules
+                    .extend(on_lane(lane.id, points, &sec.stations, rules));
+                out.lane_access
+                    .extend(on_lane(lane.id, points, &sec.stations, access));
+                out.lane_materials
+                    .extend(on_lane(lane.id, points, &sec.stations, materials));
             }
         }
     }
@@ -192,6 +299,28 @@ fn on_lane<'a, T: 'a>(
             value,
         })
         .filter(|a| a.to > a.from)
+}
+
+/// The stretches of `sec` over which each of a lane's `entries`, at their
+/// `sOffset`s in ascending order, holds `value`, up to the next entry or
+/// the section's end. An entry whose `value` is `None` holds nothing.
+fn own_stretches<E, T: PartialEq>(
+    sec: &BakedSection,
+    entries: &[(f64, E)],
+    value: impl Fn(&E) -> Option<T>,
+) -> Vec<(f64, f64, T)> {
+    let at = |s: f64| {
+        entries
+            .iter()
+            .rev()
+            .find(|(offset, _)| sec.start + offset <= s + 1e-9)
+            .and_then(|(_, e)| value(e))
+    };
+    stretches(
+        sec,
+        entries.iter().map(|(offset, _)| sec.start + offset),
+        at,
+    )
 }
 
 /// The stretches of `sec` over which `value_at` holds one value, given the
@@ -222,6 +351,31 @@ fn stretches<T: PartialEq>(
 }
 
 impl BakedRoad {
+    /// Each lane `<access>` whose `rule` the crate can't read, section by
+    /// section.
+    pub(super) fn access_warnings(&self) -> Vec<Warning> {
+        self.sections
+            .iter()
+            .flat_map(|sec| {
+                sec.def
+                    .left
+                    .iter()
+                    .chain(&sec.def.right)
+                    .flat_map(move |l| {
+                        l.access.iter().filter_map(move |(offset, def)| match def {
+                            AccessDef::Unreadable { rule } => Some(Warning::AccessDropped {
+                                road_id: self.id.clone(),
+                                s: sec.start + offset,
+                                lane: l.id,
+                                rule: rule.clone(),
+                            }),
+                            AccessDef::Restricted(_) | AccessDef::Unrestricted => None,
+                        })
+                    })
+            })
+            .collect()
+    }
+
     /// Each `<speed>` whose `max` or `unit` the crate can't read: the
     /// road's, then each lane's, section by section.
     pub(super) fn speed_warnings(&self) -> Vec<Warning> {

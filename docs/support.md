@@ -63,6 +63,12 @@ files declaring 1.4, 1.6 and 1.7.
   lane's `<speed>` overrides its road's to the end of its lane section. A
   `<speed>` with no unit is in m/s. One the crate can't read raises a
   warning. Speed limit signs don't set a limit.
+- Lane `<rule>`s, `<access>`es and `<material>`s, as stretches along each
+  lane: `RoadNetwork::lane_rules`, `lane_access` and `lane_materials`.
+  Each holds to the next of its kind or the end of its lane section.
+  Access is `Access::Allow` or `Access::Deny` with the road users the file
+  names, in `<restriction>`s or the older `restriction` attribute. A deny
+  of `none` lifts the restrictions before it.
 
 ## Objects
 
@@ -187,8 +193,9 @@ raises `Warning::RoadSkipped`. A lane with no `<width>` or `<border>` raises
 road raises `Warning::ShapeShortOfRoad`. A road `rule` other than `RHT` or
 `LHT` raises `Warning::UnknownTrafficRule`. A junction connection without
 the roads it joins raises `Warning::ConnectionDropped`. A `<speed>` the
-crate can't read raises `Warning::SpeedLimitDropped`. The elements below
-raise nothing.
+crate can't read raises `Warning::SpeedLimitDropped`, and an `<access>`
+whose `rule` is neither `allow` nor `deny` raises `Warning::AccessDropped`.
+The elements below raise nothing.
 
 ## What it ignores
 
