@@ -690,7 +690,9 @@
 //! solves for the `(s, t)` whose surface lies straight under or over it.
 //! It takes the road whose surface is nearest in 3D, so a point on a bridge
 //! finds the bridge. Where roads overlap in a junction, their surfaces tie,
-//! and the road first in [`RoadNetwork::roads`] wins. A point off every road
+//! and the road first in [`RoadNetwork::roads`] wins.
+//! [`RoadNetwork::road_position_on`] keeps a caller that knows its road on
+//! it. A point off every road
 //! gets the nearest road's `(s, t)`, with `s` held within the road. A road
 //! without lanes has no surface to find. On every map in the test corpus,
 //! a point on a lane comes back to within 0.2 mm, or within the `f32` step

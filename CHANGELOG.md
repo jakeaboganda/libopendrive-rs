@@ -18,7 +18,8 @@
   lane round-trips to within 0.2 mm on every map in the test corpus, or the
   `f32` step of its coordinates where that is larger. A station on a lane
   section seam is on the section that starts there. It takes about 5 us on
-  Town07.
+  Town07. `RoadNetwork::road_position_on` does the same on one road, for a
+  caller that knows its road where roads overlap.
 - Roads serialize with the network, as the records the file gives. They
   add 22 % to Town07's JSON and 1 to 3 % to esmini's maps. A network
   serialized before deserializes with none, and the road queries answer

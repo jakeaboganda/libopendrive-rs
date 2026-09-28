@@ -611,8 +611,30 @@ impl RoadNetwork {
     /// wins. A point off every road gets the nearest road's `s` and `t`, with
     /// `s` held within the road. A road with no lanes is never found.
     pub fn road_position(&self, point: Point) -> Option<RoadPosition> {
+        self.nearest_road_position(point, None)
+    }
+
+    /// The position on `road` nearest `point`, as [`Self::road_position`]
+    /// finds it, but on that road alone. `None` if there is no such road, or
+    /// it has no lanes. Where roads overlap, as in a junction, this keeps a
+    /// caller that knows its road on it.
+    pub fn road_position_on(&self, road: RoadId, point: Point) -> Option<RoadPosition> {
+        self.nearest_road_position(point, Some(road))
+    }
+
+    /// The road position nearest `point`, on `only` if it is given. A first
+    /// pass picks the span whose lane comes nearest in plan, and solves on it,
+    /// so the second pass can drop every span whose lane cannot beat it.
+    fn nearest_road_position(&self, point: Point, only: Option<RoadId>) -> Option<RoadPosition> {
         let index = &self.footprints;
+        let on_road = |item: u32| {
+            let lane = self.lanes[index.spans[item as usize].0].id;
+            only.is_none_or(|road| self.road_lanes.get(&lane).is_some_and(|at| at.road == road))
+        };
         let seed = index.grid.nearest(point.x, point.y, |item, best| {
+            if !on_road(item) {
+                return None;
+            }
             let (lane, segments) = &index.spans[item as usize];
             let off = self.lane_reach(&self.lanes[*lane], segments, point).1;
             Some((off.max(0.0).powi(2), item)).filter(|&(d2, _)| d2 <= best)
@@ -624,7 +646,7 @@ impl RoadNetwork {
                 return seeded;
             }
             let best = best.min(ceiling);
-            if index.bounds[item as usize].dist2(point.x, point.y) > best {
+            if index.bounds[item as usize].dist2(point.x, point.y) > best || !on_road(item) {
                 return None;
             }
             let (lane, segments) = &index.spans[item as usize];

@@ -261,3 +261,25 @@ fn a_network_serialized_before_roads_were_kept_deserializes_with_none() {
     assert_eq!(back.lanes(), net.lanes());
     assert!(back.road_position(Point::new(50.0, 20.0, 6.0)).is_none());
 }
+
+#[test]
+fn a_point_where_roads_overlap_is_found_on_the_road_asked_for() {
+    let net = map("town07");
+    let mut overlaps = 0;
+    for lane in net.lanes() {
+        let home = net.road_lane(lane.id).unwrap().road;
+        let points = lane.center.points();
+        for &p in &points[1..points.len() - 1] {
+            if net.road_position(p).unwrap().road == home {
+                continue;
+            }
+            overlaps += 1;
+            let at = net.road_position_on(home, p).expect("on its own road");
+            assert_eq!(at.road, home);
+            let back = net.road_point(at).unwrap();
+            assert!((back - p).length() < MM, "{p:?} came back as {back:?}");
+        }
+    }
+    assert!(overlaps > 100, "only {overlaps} points where roads overlap");
+    assert!(net.road_position_on(RoadId(9999), Point::ORIGIN).is_none());
+}
