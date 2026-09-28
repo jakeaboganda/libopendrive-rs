@@ -42,7 +42,8 @@ files declaring 1.4, 1.6 and 1.7.
   line rather than a width. A border lane stacks on the lane inside it, and
   width lanes stack on it. Where a lane has both, its widths win. A border
   ignores `laneOffset`, and one that crosses inside the lane within it
-  gives its lane 0 width. The spec forbids both, and each raises a warning.
+  gives its lane 0 width. The spec forbids all three, and each raises a
+  warning.
 - Lane heights, so a sidewalk stands above the road beside it. A lane's
   `<height>`s raise its centerline and tilt its surface, so the mesh and
   `Lane::sample_at` see the kerb. Poles, signs and road marks on a sidewalk
