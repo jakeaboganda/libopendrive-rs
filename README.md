@@ -79,6 +79,9 @@ cobbles from `belgian_block.crg`, which `examples/crg_data.sh` downloads:
   lookups take about 0.4 us on CARLA's Town07.
 - [docs/support.md](docs/support.md): what the importer does with each
   OpenDRIVE element.
+- [docs/comparison.md](docs/comparison.md): each OpenDRIVE 1.9 element and
+  attribute, and what this crate, esmini, libOpenDRIVE and CARLA do with
+  it.
 - [CHANGELOG.md](CHANGELOG.md)
 
 The published crate leaves out the map fixtures, tests and benchmarks, so run

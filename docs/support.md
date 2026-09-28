@@ -5,6 +5,8 @@ element and attribute list, see [the crate docs](https://docs.rs/libopendrive).
 
 Geometry is cross-checked against the reference C++
 [libOpenDRIVE](https://github.com/pageldev/libOpenDRIVE).
+[comparison.md](comparison.md) sets each element and attribute beside what
+esmini, libOpenDRIVE and CARLA do with it.
 
 ## Which OpenDRIVE version
 

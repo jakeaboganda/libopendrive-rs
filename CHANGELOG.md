@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Comparison
+
+- `docs/comparison.md` sets each of the 671 elements and attributes in the
+  OpenDRIVE 1.9 schema beside what this crate, esmini 3.8.2, libOpenDRIVE
+  0.5.0 and CARLA 0.10.0 do with it, with the source line for each. 34
+  rows have another library doing more, mostly names the others keep and
+  signal logic. It also compares the queries each answers.
+
 ### Lane visibility
 
 - `RoadNetwork::lane_visibility` and `lane_visibility_at` read each lane's
