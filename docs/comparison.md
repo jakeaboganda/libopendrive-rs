@@ -15,7 +15,10 @@ The rows are every element and attribute reachable from `<OpenDRIVE>` in the
 1.9.0 XSD schema files, 671 of them. The right and left lanes share a row,
 as do a link's predecessor and successor. `<dataQuality>`, `<include>` and
 `<userData>`, which the schema allows under almost every element, have a row
-each at the end.
+each at the end. An element whose schema type repeats elsewhere is listed
+once, under the first element that has it: a signal's `<semantics>` kinds
+are under the header's `<defaultRegulations>`, and a board sign's attributes
+under `<staticBoard>`.
 
 Each cell says what the library does with the row:
 
@@ -44,7 +47,7 @@ Rows each library reads, of the 671 in the table. An element and each of its att
 
 | | builds | stores | ignores |
 | --- | --- | --- | --- |
-| this crate | 341 | 79 | 251 |
+| this crate | 341 | 106 | 224 |
 | esmini | 176 | 54 | 441 |
 | libOpenDRIVE | 146 | 57 | 468 |
 | CARLA | 124 | 76 | 471 |
@@ -575,105 +578,105 @@ row above:
 | &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; `@id` | stores `mod.rs:2115` | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; `@type` | stores `mod.rs:2075` | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; &lt;validity&gt; | builds `mod.rs:2210` | - | - | - |
-| &lt;road&gt; &lt;signals&gt; | builds `signals.rs:50` | builds `RoadManager.cpp:4839` | builds `OpenDriveMap.cpp:637` | builds `SignalParser.cpp:44` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; | builds `signals.rs:58` | builds `RoadManager.cpp:4845` | builds `OpenDriveMap.cpp:637` | builds `SignalParser.cpp:46` |
+| &lt;road&gt; &lt;signals&gt; | builds `signals.rs:51` | builds `RoadManager.cpp:4839` | builds `OpenDriveMap.cpp:637` | builds `SignalParser.cpp:44` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; | builds `signals.rs:59` | builds `RoadManager.cpp:4845` | builds `OpenDriveMap.cpp:637` | builds `SignalParser.cpp:46` |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@id` | builds `signals.rs:235` | builds `RoadManager.cpp:4851` | stores `OpenDriveMap.cpp:639` | builds `SignalParser.cpp:49` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@name` | stores `signals.rs:112` | stores `RoadManager.cpp:4852` | stores `OpenDriveMap.cpp:648` | builds `SignalParser.cpp:50` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@dynamic` | stores `signals.rs:209` | builds `RoadManager.cpp:4856` | stores `OpenDriveMap.cpp:651` | stores `SignalParser.cpp:51` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@name` | stores `signals.rs:113` | stores `RoadManager.cpp:4852` | stores `OpenDriveMap.cpp:648` | builds `SignalParser.cpp:50` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@dynamic` | stores `signals.rs:210` | builds `RoadManager.cpp:4856` | stores `OpenDriveMap.cpp:651` | stores `SignalParser.cpp:51` |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@orientation` | builds `signals.rs:190` | builds `RoadManager.cpp:4875` | stores `OpenDriveMap.cpp:659` | builds `SignalParser.cpp:52` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@country` | stores `signals.rs:210` | builds `RoadManager.cpp:4897` | stores `OpenDriveMap.cpp:660` | stores `SignalParser.cpp:54` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@countryRevision` | stores `signals.rs:211` | builds `RoadManager.cpp:4901` | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@country` | stores `signals.rs:211` | builds `RoadManager.cpp:4897` | stores `OpenDriveMap.cpp:660` | stores `SignalParser.cpp:54` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@countryRevision` | stores `signals.rs:212` | builds `RoadManager.cpp:4901` | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@type` | stores `signals.rs:212` | builds `RoadManager.cpp:4917` | stores `OpenDriveMap.cpp:661` | builds `SignalParser.cpp:55` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@subtype` | stores `signals.rs:213` | builds `RoadManager.cpp:4918` | stores `OpenDriveMap.cpp:662` | stores `SignalParser.cpp:56` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@value` | stores `signals.rs:214` | builds `RoadManager.cpp:4919` | stores `OpenDriveMap.cpp:653` | stores `SignalParser.cpp:57` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@text` | stores `signals.rs:216` | stores `RoadManager.cpp:4960` | stores `OpenDriveMap.cpp:664` | stores `SignalParser.cpp:61` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@unit` | stores `signals.rs:215` | stores `RoadManager.cpp:4956` | stores `OpenDriveMap.cpp:663` | stores `SignalParser.cpp:58` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@height` | builds `signals.rs:230` | builds `RoadManager.cpp:4957` | builds `OpenDriveMap.cpp:654` | builds `SignalParser.cpp:59` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@length` | builds `signals.rs:228` | builds `RoadManager.cpp:4959` | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@hOffset` | builds `signals.rs:304` | builds `RoadManager.cpp:4961` | builds `OpenDriveMap.cpp:656` | builds `SignalParser.cpp:62` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@width` | builds `signals.rs:229` | builds `RoadManager.cpp:4958` | builds `OpenDriveMap.cpp:655` | builds `SignalParser.cpp:60` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@roll` | builds `signals.rs:306` | builds `RoadManager.cpp:4963` | builds `OpenDriveMap.cpp:658` | builds `SignalParser.cpp:64` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@pitch` | builds `signals.rs:305` | builds `RoadManager.cpp:4962` | builds `OpenDriveMap.cpp:657` | builds `SignalParser.cpp:63` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@invalidated` | stores `signals.rs:217` | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@temporary` | stores `signals.rs:218` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@subtype` | stores `signals.rs:214` | builds `RoadManager.cpp:4918` | stores `OpenDriveMap.cpp:662` | stores `SignalParser.cpp:56` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@value` | stores `signals.rs:215` | builds `RoadManager.cpp:4919` | stores `OpenDriveMap.cpp:653` | stores `SignalParser.cpp:57` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@text` | stores `signals.rs:217` | stores `RoadManager.cpp:4960` | stores `OpenDriveMap.cpp:664` | stores `SignalParser.cpp:61` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@unit` | stores `signals.rs:216` | stores `RoadManager.cpp:4956` | stores `OpenDriveMap.cpp:663` | stores `SignalParser.cpp:58` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@height` | builds `signals.rs:231` | builds `RoadManager.cpp:4957` | builds `OpenDriveMap.cpp:654` | builds `SignalParser.cpp:59` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@length` | builds `signals.rs:229` | builds `RoadManager.cpp:4959` | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@hOffset` | builds `signals.rs:307` | builds `RoadManager.cpp:4961` | builds `OpenDriveMap.cpp:656` | builds `SignalParser.cpp:62` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@width` | builds `signals.rs:230` | builds `RoadManager.cpp:4958` | builds `OpenDriveMap.cpp:655` | builds `SignalParser.cpp:60` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@roll` | builds `signals.rs:309` | builds `RoadManager.cpp:4963` | builds `OpenDriveMap.cpp:658` | builds `SignalParser.cpp:64` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@pitch` | builds `signals.rs:308` | builds `RoadManager.cpp:4962` | builds `OpenDriveMap.cpp:657` | builds `SignalParser.cpp:63` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@invalidated` | stores `signals.rs:218` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@temporary` | stores `signals.rs:219` | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@s` | builds `signals.rs:187` | builds `RoadManager.cpp:4849` | builds `OpenDriveMap.cpp:649` | builds `SignalParser.cpp:47` |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@t` | builds `signals.rs:187` | builds `RoadManager.cpp:4850` | builds `OpenDriveMap.cpp:650` | builds `SignalParser.cpp:48` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@zOffset` | builds `signals.rs:303` | builds `RoadManager.cpp:4896` | builds `OpenDriveMap.cpp:652` | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@zOffset` | builds `signals.rs:306` | builds `RoadManager.cpp:4896` | builds `OpenDriveMap.cpp:652` | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;validity&gt; | builds `signals.rs:222` | stores `RoadManager.cpp:5028` | stores `OpenDriveMap.cpp:38` | builds `SignalParser.cpp:25` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;dependency&gt; | builds `signals.rs:255` | - | - | stores `SignalParser.cpp:109` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;dependency&gt; `@id` | builds `signals.rs:256` | - | - | stores `SignalParser.cpp:110` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;dependency&gt; `@type` | stores `signals.rs:259` | - | - | stores `SignalParser.cpp:111` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;reference&gt; | builds `signals.rs:263` | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;reference&gt; `@elementType` | stores `signals.rs:265` | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;reference&gt; `@elementId` | builds `signals.rs:264` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;dependency&gt; | builds `signals.rs:258` | - | - | stores `SignalParser.cpp:109` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;dependency&gt; `@id` | builds `signals.rs:259` | - | - | stores `SignalParser.cpp:110` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;dependency&gt; `@type` | stores `signals.rs:262` | - | - | stores `SignalParser.cpp:111` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;reference&gt; | builds `signals.rs:266` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;reference&gt; `@elementType` | stores `signals.rs:268` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;reference&gt; `@elementId` | builds `signals.rs:267` | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;reference&gt; `@type` | stores `signals.rs:275` | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionInertial&gt; | builds `signals.rs:198` | - | - | stores `SignalParser.cpp:115` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionInertial&gt; `@x` | builds `signals.rs:315` | - | - | stores `SignalParser.cpp:116` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionInertial&gt; `@y` | builds `signals.rs:316` | - | - | stores `SignalParser.cpp:117` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionInertial&gt; `@z` | builds `signals.rs:317` | - | - | stores `SignalParser.cpp:118` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionInertial&gt; `@hdg` | builds `signals.rs:321` | - | - | stores `SignalParser.cpp:119` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionInertial&gt; `@pitch` | builds `signals.rs:305` | - | - | stores `SignalParser.cpp:120` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionInertial&gt; `@roll` | builds `signals.rs:306` | - | - | stores `SignalParser.cpp:121` |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionRoad&gt; | builds `signals.rs:195` | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionRoad&gt; `@roadId` | builds `signals.rs:196` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionInertial&gt; | builds `signals.rs:199` | - | - | stores `SignalParser.cpp:115` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionInertial&gt; `@x` | builds `signals.rs:450` | - | - | stores `SignalParser.cpp:116` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionInertial&gt; `@y` | builds `signals.rs:451` | - | - | stores `SignalParser.cpp:117` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionInertial&gt; `@z` | builds `signals.rs:388` | - | - | stores `SignalParser.cpp:118` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionInertial&gt; `@hdg` | builds `signals.rs:456` | - | - | stores `SignalParser.cpp:119` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionInertial&gt; `@pitch` | builds `signals.rs:308` | - | - | stores `SignalParser.cpp:120` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionInertial&gt; `@roll` | builds `signals.rs:309` | - | - | stores `SignalParser.cpp:121` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionRoad&gt; | builds `signals.rs:196` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionRoad&gt; `@roadId` | builds `signals.rs:197` | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionRoad&gt; `@s` | builds `signals.rs:292` | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionRoad&gt; `@t` | builds `signals.rs:292` | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionRoad&gt; `@zOffset` | builds `signals.rs:303` | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionRoad&gt; `@hOffset` | builds `signals.rs:304` | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionRoad&gt; `@pitch` | builds `signals.rs:305` | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionRoad&gt; `@roll` | builds `signals.rs:306` | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;semantics&gt; | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; | - | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionRoad&gt; `@zOffset` | builds `signals.rs:306` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionRoad&gt; `@hOffset` | builds `signals.rs:307` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionRoad&gt; `@pitch` | builds `signals.rs:308` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;positionRoad&gt; `@roll` | builds `signals.rs:309` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;semantics&gt; | stores `signals.rs:337` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; | stores `signals.rs:402` | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;validity&gt; | - | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;dependency&gt; | - | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;reference&gt; | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; | - | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; | stores `signals.rs:405` | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@id` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@name` | - | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@name` | stores `signals.rs:407` | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@dynamic` | - | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@orientation` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@country` | - | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@country` | stores `signals.rs:408` | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@countryRevision` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@type` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@subtype` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@value` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@text` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@unit` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@height` | - | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@type` | stores `signals.rs:409` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@subtype` | stores `signals.rs:410` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@value` | stores `signals.rs:411` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@text` | stores `signals.rs:413` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@unit` | stores `signals.rs:412` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@height` | stores `signals.rs:417` | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@length` | - | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@hOffset` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@width` | - | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@width` | stores `signals.rs:416` | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@roll` | - | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@pitch` | - | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@invalidated` | - | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@temporary` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@v` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@z` | - | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@v` | stores `signals.rs:387` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; `@z` | stores `signals.rs:388` | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; &lt;validity&gt; | - | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; &lt;dependency&gt; | - | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; &lt;reference&gt; | - | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; &lt;positionInertial&gt; | - | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; &lt;positionRoad&gt; | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; &lt;semantics&gt; | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; `@displayType` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; `@displayHeight` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; `@displayWidth` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; `@v` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; `@z` | - | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;staticBoard&gt; &lt;sign&gt; &lt;semantics&gt; | stores `signals.rs:337` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; | stores `signals.rs:421` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; `@displayType` | stores `signals.rs:423` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; `@displayHeight` | stores `signals.rs:426` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; `@displayWidth` | stores `signals.rs:425` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; `@v` | stores `signals.rs:387` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; `@z` | stores `signals.rs:452` | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; &lt;validity&gt; | - | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; &lt;dependency&gt; | - | - | - | - |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; &lt;reference&gt; | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; &lt;displayArea&gt; | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; &lt;displayArea&gt; `@index` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; &lt;displayArea&gt; `@width` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; &lt;displayArea&gt; `@height` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; &lt;displayArea&gt; `@v` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; &lt;displayArea&gt; `@z` | - | - | - | - |
-| &lt;road&gt; &lt;signals&gt; &lt;signalReference&gt; | builds `signals.rs:77` | - | - | builds `SignalParser.cpp:128` |
-| &lt;road&gt; &lt;signals&gt; &lt;signalReference&gt; `@s` | builds `signals.rs:149` | - | - | builds `SignalParser.cpp:129` |
-| &lt;road&gt; &lt;signals&gt; &lt;signalReference&gt; `@t` | builds `signals.rs:149` | - | - | builds `SignalParser.cpp:130` |
-| &lt;road&gt; &lt;signals&gt; &lt;signalReference&gt; `@id` | builds `signals.rs:78` | - | - | builds `SignalParser.cpp:131` |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; &lt;displayArea&gt; | stores `signals.rs:429` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; &lt;displayArea&gt; `@index` | stores `signals.rs:431` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; &lt;displayArea&gt; `@width` | stores `signals.rs:433` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; &lt;displayArea&gt; `@height` | stores `signals.rs:434` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; &lt;displayArea&gt; `@v` | stores `signals.rs:387` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signal&gt; &lt;vmsBoard&gt; &lt;displayArea&gt; `@z` | stores `signals.rs:452` | - | - | - |
+| &lt;road&gt; &lt;signals&gt; &lt;signalReference&gt; | builds `signals.rs:78` | - | - | builds `SignalParser.cpp:128` |
+| &lt;road&gt; &lt;signals&gt; &lt;signalReference&gt; `@s` | builds `signals.rs:150` | - | - | builds `SignalParser.cpp:129` |
+| &lt;road&gt; &lt;signals&gt; &lt;signalReference&gt; `@t` | builds `signals.rs:150` | - | - | builds `SignalParser.cpp:130` |
+| &lt;road&gt; &lt;signals&gt; &lt;signalReference&gt; `@id` | builds `signals.rs:79` | - | - | builds `SignalParser.cpp:131` |
 | &lt;road&gt; &lt;signals&gt; &lt;signalReference&gt; `@orientation` | builds `signals.rs:155` | - | - | builds `SignalParser.cpp:133` |
 | &lt;road&gt; &lt;signals&gt; &lt;signalReference&gt; &lt;validity&gt; | builds `signals.rs:156` | - | - | builds `SignalParser.cpp:147` |
 | &lt;road&gt; &lt;surface&gt; | builds `mod.rs:912` | - | - | - |
@@ -712,13 +715,13 @@ row above:
 
 | Element | This crate | esmini | libOpenDRIVE | CARLA |
 | --- | --- | --- | --- | --- |
-| &lt;controller&gt; | builds `signals.rs:94` | stores `RoadManager.cpp:5472` | - | builds `ControllerParser.cpp:23` |
-| &lt;controller&gt; `@id` | builds `signals.rs:116` | stores `RoadManager.cpp:5474` | - | builds `ControllerParser.cpp:27` |
-| &lt;controller&gt; `@name` | stores `signals.rs:112` | stores `RoadManager.cpp:5475` | - | stores `ControllerParser.cpp:28` |
-| &lt;controller&gt; `@sequence` | stores `signals.rs:91` | stores `RoadManager.cpp:5476` | - | stores `ControllerParser.cpp:29` |
-| &lt;controller&gt; &lt;control&gt; | builds `signals.rs:97` | stores `RoadManager.cpp:5479` | - | builds `ControllerParser.cpp:38` |
-| &lt;controller&gt; &lt;control&gt; `@signalId` | builds `signals.rs:98` | stores `RoadManager.cpp:5483` | - | builds `ControllerParser.cpp:39` |
-| &lt;controller&gt; &lt;control&gt; `@type` | stores `signals.rs:103` | stores `RoadManager.cpp:5484` | - | - |
+| &lt;controller&gt; | builds `signals.rs:95` | stores `RoadManager.cpp:5472` | - | builds `ControllerParser.cpp:23` |
+| &lt;controller&gt; `@id` | builds `signals.rs:117` | stores `RoadManager.cpp:5474` | - | builds `ControllerParser.cpp:27` |
+| &lt;controller&gt; `@name` | stores `signals.rs:113` | stores `RoadManager.cpp:5475` | - | stores `ControllerParser.cpp:28` |
+| &lt;controller&gt; `@sequence` | stores `signals.rs:92` | stores `RoadManager.cpp:5476` | - | stores `ControllerParser.cpp:29` |
+| &lt;controller&gt; &lt;control&gt; | builds `signals.rs:98` | stores `RoadManager.cpp:5479` | - | builds `ControllerParser.cpp:38` |
+| &lt;controller&gt; &lt;control&gt; `@signalId` | builds `signals.rs:99` | stores `RoadManager.cpp:5483` | - | builds `ControllerParser.cpp:39` |
+| &lt;controller&gt; &lt;control&gt; `@type` | stores `signals.rs:104` | stores `RoadManager.cpp:5484` | - | - |
 
 ### &lt;junction&gt;
 
@@ -763,10 +766,10 @@ row above:
 | &lt;junction&gt; &lt;priority&gt; | stores `mod.rs:519` | - | stores `OpenDriveMap.cpp:131` | - |
 | &lt;junction&gt; &lt;priority&gt; `@high` | stores `mod.rs:520` | - | stores `OpenDriveMap.cpp:133` | - |
 | &lt;junction&gt; &lt;priority&gt; `@low` | stores `mod.rs:520` | - | stores `OpenDriveMap.cpp:133` | - |
-| &lt;junction&gt; &lt;controller&gt; | builds `signals.rs:125` | stores `RoadManager.cpp:5575` | stores `OpenDriveMap.cpp:137` | builds `JunctionParser.cpp:71` |
-| &lt;junction&gt; &lt;controller&gt; `@id` | builds `signals.rs:126` | stores `RoadManager.cpp:5579` | stores `OpenDriveMap.cpp:139` | builds `JunctionParser.cpp:72` |
-| &lt;junction&gt; &lt;controller&gt; `@type` | stores `signals.rs:133` | stores `RoadManager.cpp:5580` | stores `OpenDriveMap.cpp:142` | - |
-| &lt;junction&gt; &lt;controller&gt; `@sequence` | stores `signals.rs:91` | stores `RoadManager.cpp:5581` | stores `OpenDriveMap.cpp:143` | - |
+| &lt;junction&gt; &lt;controller&gt; | builds `signals.rs:126` | stores `RoadManager.cpp:5575` | stores `OpenDriveMap.cpp:137` | builds `JunctionParser.cpp:71` |
+| &lt;junction&gt; &lt;controller&gt; `@id` | builds `signals.rs:127` | stores `RoadManager.cpp:5579` | stores `OpenDriveMap.cpp:139` | builds `JunctionParser.cpp:72` |
+| &lt;junction&gt; &lt;controller&gt; `@type` | stores `signals.rs:134` | stores `RoadManager.cpp:5580` | stores `OpenDriveMap.cpp:142` | - |
+| &lt;junction&gt; &lt;controller&gt; `@sequence` | stores `signals.rs:92` | stores `RoadManager.cpp:5581` | stores `OpenDriveMap.cpp:143` | - |
 | &lt;junction&gt; &lt;surface&gt; | builds `mod.rs:602` | - | - | - |
 | &lt;junction&gt; &lt;planView&gt; | builds `junction_areas.rs:180` | - | - | - |
 | &lt;junction&gt; &lt;objects&gt; | - | - | - | - |

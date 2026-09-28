@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Signal semantics and boards
+
+- `feat!`: `Signal::semantics` says what a signal means, from its
+  `<semantics>`: each a `Semantic`, such as a maximum speed, a stop line or
+  the `RoadUser`s it bars. `Signal::boards` holds its `<staticBoard>`s, with
+  each `BoardSign`, and its `<vmsBoard>`s, with each `DisplayArea`, placed
+  on the signal's board by their `v` and `z`. `Signal` gains both fields, so
+  a `Signal` literal no longer compiles.
+- The crate applies no semantic: a speed semantic sets no speed limit.
+- In ASAM's `UC_5Road_Junction`, 39 of the 64 signals give their priority
+  or a parking rule this way.
+
 ### Junction groups
 
 - `RoadNetwork::junction_groups` gives each `<junctionGroup>` as a

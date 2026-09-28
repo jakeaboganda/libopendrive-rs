@@ -16,12 +16,35 @@ const CRATE_DOCS: &str = include_str!("../src/lib.rs");
 
 /// Tags read in one place and ignored in another, which a scan of tag names
 /// alone cannot tell apart. A road's `<surface>` is read, an object's is not.
-/// An object's `<userData>` is read, a signal's is not.
-const READ_IN_ANOTHER_PLACE: [&str; 2] = ["surface", "userData"];
+/// An object's `<userData>` is read, a signal's is not. A road's `<objects>`
+/// are read, a junction's are not.
+const READ_IN_ANOTHER_PLACE: [&str; 3] = ["surface", "userData", "objects"];
 
 /// `<left>` and `<right>` reach `child()` through a loop variable rather than
-/// a literal, so no scan of the source can see them.
-const LOOKED_UP_BY_VARIABLE: [&str; 2] = ["left", "right"];
+/// a literal, and a signal's `<semantics>` children are matched by name in
+/// one `match`, so no scan of the source can see them.
+const LOOKED_UP_BY_VARIABLE: [&str; 20] = [
+    "left",
+    "right",
+    "speed",
+    "lane",
+    "priority",
+    "prohibited",
+    "warning",
+    "routing",
+    "streetname",
+    "parking",
+    "tourist",
+    "supplementaryTime",
+    "supplementaryAllows",
+    "supplementaryProhibits",
+    "supplementaryDistance",
+    "supplementaryEnvironment",
+    "supplementaryExplanatory",
+    "animal",
+    "person",
+    "vehicle",
+];
 
 /// Every XML tag name the parser asks for by literal.
 fn tags_the_parser_reads() -> Vec<String> {

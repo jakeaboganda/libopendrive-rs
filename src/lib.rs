@@ -123,6 +123,17 @@
 //! | `<signal><dependency>` | `id`, `type` |
 //! | `<signal><reference>` | `elementType`, `elementId`, `type` |
 //! | `<signals><signalReference>` | `id`, `s`, `t`, `orientation` |
+//! | `<signal><semantics>`, `<sign><semantics>` | none |
+//! | `<semantics><speed>`, `<semantics><supplementaryDistance>` | `type`, `value`, `unit` |
+//! | `<semantics><supplementaryTime>` | `type`, `value` |
+//! | `<semantics><lane>`, `<semantics><priority>`, `<semantics><supplementaryEnvironment>` | `type` |
+//! | `<semantics><prohibited>`, `<semantics><supplementaryAllows>`, `<semantics><supplementaryProhibits>` | none |
+//! | `<animal>`, `<person>`, `<vehicle>` | none, and a `<type>`'s text |
+//! | `<semantics><warning>`, `<semantics><routing>`, `<semantics><streetname>`, `<semantics><parking>`, `<semantics><tourist>`, `<semantics><supplementaryExplanatory>` | none |
+//! | `<signal><staticBoard>` | none |
+//! | `<staticBoard><sign>` | `name`, `country`, `type`, `subtype`, `value`, `unit`, `text`, `width`, `height`, `v`, `z` |
+//! | `<signal><vmsBoard>` | `displayType`, `displayWidth`, `displayHeight`, `v`, `z` |
+//! | `<vmsBoard><displayArea>` | `index`, `width`, `height`, `v`, `z` |
 //! | `<controller>`, at the top level | `id`, `name`, `sequence` |
 //! | `<controller><control>` | `signalId`, `type` |
 //! | `<junction><controller>` | `id`, `type`, `sequence` |
@@ -337,6 +348,22 @@
 //! [`Signal::references`]: a signal, or each [`Object`] the named `<object>`
 //! baked to, with the `type`. One to an id nothing has, or to an
 //! `elementType` other than `signal` or `object`, is skipped.
+//!
+//! A signal's `<semantics>` say what it means, whatever its catalogue codes,
+//! as [`Signal::semantics`]: each is a [`Semantic`], such as a maximum speed
+//! of 50 km/h, a stop line, or the [`RoadUser`]s it bars. The crate keeps
+//! each kind's `type` as the file spells it, and applies none of them: a
+//! speed semantic sets no [`RoadNetwork::speed_limits`]. A child the spec
+//! does not name is skipped.
+//!
+//! A `<staticBoard>` or a `<vmsBoard>` makes the signal a board, as on a
+//! gantry, in [`Signal::boards`]. A static board keeps each of its `<sign>`s
+//! as a [`BoardSign`], with its codes and semantics, and a variable message
+//! board its display and its [`DisplayArea`]s. Each stands where its `v` and
+//! `z` put it: across the signal's board, to the left of its heading, and
+//! up it, turned with it. A sign's own validities, links and position off
+//! the board are not read. No other reader to compare against reads any of
+//! these.
 //!
 //! Each top-level `<controller>` bakes to a [`Controller`] in
 //! [`RoadNetwork::controllers`], with the signals its `<control>`s name, and
@@ -817,9 +844,13 @@
 //!
 //! # What the importer ignores
 //!
-//! Everything else in the file, silently. That includes `<station>`, and an object's `<surface>`. Of signals, it ignores a
-//! signal's `<userData>`, the boards `<staticBoard>` and `<vmsBoard>`, and
-//! `<semantics>`. Of road marks, it ignores `material`, and the `name` of a
+//! Everything else in the file, silently. That includes `<station>`,
+//! `<railroad>`, `<vmsGroup>`, a header's `<license>` and
+//! `<defaultRegulations>`, `<dataQuality>` and `<include>` anywhere, a
+//! junction's `<objects>` and `<roadSection>`s, and an object's `<surface>`,
+//! `<skeleton>` and `<curveLocal>` corners. Of signals, it ignores a signal's
+//! `<userData>`, and a board's or board sign's own validities, links and
+//! position off the board. Of road marks, it ignores `material`, and the `name` of a
 //! mark's type. Of road types, it ignores `country`.
 //!
 //! One omission changes the road you get back, rather than only dropping
@@ -1148,6 +1179,7 @@ pub use road_mark::{
     RoadMarkWeight,
 };
 pub use signal::{
-    Control, Controller, ControllerId, Dependency, Reference, Referenced, Signal, SignalId, Unit,
+    BoardSign, Control, Controller, ControllerId, Dependency, DisplayArea, MessageBoard, Reference,
+    Referenced, RoadUser, Semantic, Signal, SignalBoard, SignalId, Unit,
 };
 pub use structure::{Coverage, Structure, StructureId, StructureKind};

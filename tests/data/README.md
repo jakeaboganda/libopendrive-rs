@@ -143,6 +143,13 @@ allow. Regenerate with
 
     python3 tests/data/road_neighbors.py
 
+`signal_semantics.xodr` comes from `signal_semantics.py`, which writes the
+XML itself. It has a speed sign's semantics with an exception for buses, a
+gantry's static board of two signs, a variable message board with two
+display areas, and a stop line's priority. Regenerate with
+
+    python3 tests/data/signal_semantics.py
+
 `speed_limits.xodr` comes from `speed_limits.py`, which writes the XML
 itself. It has road types with speed limits in km/h, mph and none, lane
 speeds that override them, a road with two lane sections whose first type

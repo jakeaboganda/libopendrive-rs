@@ -173,6 +173,9 @@ pose and size of its board.
   controllers.
 - A signal keeps its `<dependency>` and `<reference>` links as the ids of the
   signals and objects they name.
+- `Signal::semantics` says what a signal means, from its `<semantics>`, and
+  `Signal::boards` holds its `<staticBoard>`s and `<vmsBoard>`s, each sign
+  and display area placed on the board. The crate applies no semantic.
 
 `load_*_with_provenance` gives its road, OpenDRIVE id, `(s, t)` and
 orientation.
@@ -268,5 +271,9 @@ The elements below raise nothing.
 
 ## What it ignores
 
-The importer silently skips everything else in the file. One omission changes the road you get back, not only the detail
+The importer silently skips everything else in the file: `<station>`,
+`<railroad>`, `<vmsGroup>`, a header's `<license>` and
+`<defaultRegulations>`, `<dataQuality>` and `<include>`, a junction's
+`<objects>` and `<roadSection>`s, and an object's `<surface>`, `<skeleton>`
+and `<curveLocal>` corners. One omission changes the road you get back, not only the detail
 around it: `<center>`, so lane 0 never becomes a `Lane`.

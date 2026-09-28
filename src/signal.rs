@@ -146,6 +146,160 @@ pub struct Signal {
     pub width: Option<f32>,
     /// Metres up from the origin, if the map gives it.
     pub height: Option<f32>,
+    /// What the signal means, from its `<semantics>`, in file order. Empty
+    /// where the map says only its catalogue codes.
+    pub semantics: Vec<Semantic>,
+    /// The boards the signal is, from its `<staticBoard>`s and
+    /// `<vmsBoard>`s: a gantry of signs, or a variable message display.
+    pub boards: Vec<SignalBoard>,
+}
+
+/// One thing a signal means, from an OpenDRIVE `<semantics>` child. Each
+/// `kind` is the file's `type`, such as `maximum` for a speed, empty if it
+/// gives none.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Semantic {
+    /// A speed rule, such as a limit.
+    Speed {
+        /// Its `type`, such as `maximum` or `zoneBegin`.
+        kind: String,
+        /// The speed.
+        value: Option<f64>,
+        /// Its unit.
+        unit: Option<Unit>,
+    },
+    /// A lane rule, such as no overtaking.
+    Lane {
+        /// Its `type`.
+        kind: String,
+    },
+    /// A priority rule, such as a stop line or right of way.
+    Priority {
+        /// Its `type`.
+        kind: String,
+    },
+    /// The road users who may not enter.
+    Prohibited(Vec<RoadUser>),
+    /// A warning.
+    Warning,
+    /// Routing information.
+    Routing,
+    /// A street's name.
+    StreetName,
+    /// A parking rule.
+    Parking,
+    /// Tourist information.
+    Tourist,
+    /// When another sign applies. Means nothing on its own.
+    SupplementaryTime {
+        /// Its `type`.
+        kind: String,
+        /// Its `value`.
+        value: Option<f64>,
+    },
+    /// Who another sign does not apply to. Means nothing on its own.
+    SupplementaryAllows(Vec<RoadUser>),
+    /// Who another sign applies to only. Means nothing on its own.
+    SupplementaryProhibits(Vec<RoadUser>),
+    /// How far off or along another sign applies. Means nothing on its own.
+    SupplementaryDistance {
+        /// Its `type`.
+        kind: String,
+        /// The distance.
+        value: Option<f64>,
+        /// Its unit.
+        unit: Option<Unit>,
+    },
+    /// In what weather another sign applies. Means nothing on its own.
+    SupplementaryEnvironment {
+        /// Its `type`.
+        kind: String,
+    },
+    /// An explanation of another sign. Means nothing on its own.
+    SupplementaryExplanatory,
+}
+
+/// A road user a [`Semantic`] names.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum RoadUser {
+    /// An animal.
+    Animal,
+    /// A person, of the category the file names, such as `pedestrian`.
+    Person(String),
+    /// A vehicle, of the category the file names, such as `car`.
+    Vehicle(String),
+}
+
+/// A board a signal is, from a `<staticBoard>` or a `<vmsBoard>`.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum SignalBoard {
+    /// A board of fixed signs, such as a gantry, with each of its signs.
+    Static(Vec<BoardSign>),
+    /// A variable message board, which shows what a scenario tells it to.
+    Message(MessageBoard),
+}
+
+/// One `<sign>` on a static board: its catalogue codes and meaning, as on a
+/// [`Signal`], and where it is.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct BoardSign {
+    /// The name the map gives it. Empty if it has none.
+    pub name: String,
+    /// As [`Signal::country`].
+    pub country: String,
+    /// As [`Signal::kind`].
+    pub kind: String,
+    /// As [`Signal::subtype`].
+    pub subtype: String,
+    /// As [`Signal::value`].
+    pub value: Option<f64>,
+    /// As [`Signal::unit`].
+    pub unit: Option<Unit>,
+    /// As [`Signal::text`].
+    pub text: String,
+    /// What it means.
+    pub semantics: Vec<Semantic>,
+    /// Where on the board it is, `v` across the board and `z` up it, turned
+    /// with the board: the middle of its bottom edge.
+    pub position: Point,
+    /// Metres across, if the map gives it.
+    pub width: Option<f32>,
+    /// Metres up, if the map gives it.
+    pub height: Option<f32>,
+}
+
+/// A `<vmsBoard>`: a display that shows what a scenario tells it to.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct MessageBoard {
+    /// Its `displayType`, such as `LED`. Empty if it has none.
+    pub display: String,
+    /// Where on the signal it is, as a [`BoardSign`]'s position.
+    pub position: Point,
+    /// Metres across, if the map gives it.
+    pub width: Option<f32>,
+    /// Metres up, if the map gives it.
+    pub height: Option<f32>,
+    /// The places on it a signal can be shown, in file order.
+    pub areas: Vec<DisplayArea>,
+}
+
+/// A `<displayArea>` of a [`MessageBoard`].
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct DisplayArea {
+    /// Its `index`, if the map gives one.
+    pub index: Option<i32>,
+    /// Where on the board it is, as a [`BoardSign`]'s position.
+    pub position: Point,
+    /// Metres across, if the map gives it.
+    pub width: Option<f32>,
+    /// Metres up, if the map gives it.
+    pub height: Option<f32>,
 }
 
 /// A group of signals that always show the same state, such as the lights of

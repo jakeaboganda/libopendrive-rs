@@ -9,10 +9,11 @@ use super::{
     SignalReferenceProvenance,
 };
 use crate::coords::{Point, Vector};
+use crate::object::orient;
 use crate::road::Road;
 use crate::{
-    Control, Controller, ControllerId, Dependency, Direction, ObjectId, Reference, Referenced,
-    Signal, SignalId, Unit,
+    BoardSign, Control, Controller, ControllerId, Dependency, Direction, DisplayArea, MessageBoard,
+    ObjectId, Reference, Referenced, RoadUser, Semantic, Signal, SignalBoard, SignalId, Unit,
 };
 
 /// The signals and controllers baked so far, and the provenance of each, in
@@ -228,6 +229,8 @@ fn place_signal(
         length: size("length"),
         width: size("width"),
         height: size("height"),
+        semantics: semantics(node),
+        boards: boards(node, &board),
     });
     out.provenance.push(SignalProvenance {
         signal: id,
@@ -305,6 +308,138 @@ fn standing(node: roxmltree::Node, road: &Road, orientation: Orientation) -> Opt
         pitch: number("pitch"),
         roll: number("roll"),
     })
+}
+
+/// What `node`'s `<semantics>` say, in file order. A child the spec does not
+/// name is skipped.
+fn semantics(node: roxmltree::Node) -> Vec<Semantic> {
+    let text = |n: roxmltree::Node, name| n.attribute(name).unwrap_or_default().to_string();
+    let users = |n: roxmltree::Node| -> Vec<RoadUser> {
+        n.children()
+            .filter_map(|u| {
+                let category = || {
+                    u.children()
+                        .find(|c| c.has_tag_name("type"))
+                        .and_then(|c| c.text())
+                        .unwrap_or_default()
+                        .trim()
+                        .to_string()
+                };
+                match u.tag_name().name() {
+                    "animal" => Some(RoadUser::Animal),
+                    "person" => Some(RoadUser::Person(category())),
+                    "vehicle" => Some(RoadUser::Vehicle(category())),
+                    _ => None,
+                }
+            })
+            .collect()
+    };
+    child(node, "semantics")
+        .into_iter()
+        .flat_map(|s| s.children())
+        .filter_map(|n| {
+            Some(match n.tag_name().name() {
+                "speed" => Semantic::Speed {
+                    kind: text(n, "type"),
+                    value: attr_f64(n, "value"),
+                    unit: n.attribute("unit").and_then(unit),
+                },
+                "lane" => Semantic::Lane {
+                    kind: text(n, "type"),
+                },
+                "priority" => Semantic::Priority {
+                    kind: text(n, "type"),
+                },
+                "prohibited" => Semantic::Prohibited(users(n)),
+                "warning" => Semantic::Warning,
+                "routing" => Semantic::Routing,
+                "streetname" => Semantic::StreetName,
+                "parking" => Semantic::Parking,
+                "tourist" => Semantic::Tourist,
+                "supplementaryTime" => Semantic::SupplementaryTime {
+                    kind: text(n, "type"),
+                    value: attr_f64(n, "value"),
+                },
+                "supplementaryAllows" => Semantic::SupplementaryAllows(users(n)),
+                "supplementaryProhibits" => Semantic::SupplementaryProhibits(users(n)),
+                "supplementaryDistance" => Semantic::SupplementaryDistance {
+                    kind: text(n, "type"),
+                    value: attr_f64(n, "value"),
+                    unit: n.attribute("unit").and_then(unit),
+                },
+                "supplementaryEnvironment" => Semantic::SupplementaryEnvironment {
+                    kind: text(n, "type"),
+                },
+                "supplementaryExplanatory" => Semantic::SupplementaryExplanatory,
+                _ => return None,
+            })
+        })
+        .collect()
+}
+
+/// `node`'s `<staticBoard>`s and `<vmsBoard>`s, in file order, placed on
+/// `board`: `v` across it, to the left of its heading, and `z` up it,
+/// turned by its heading, pitch and roll.
+fn boards(node: roxmltree::Node, board: &Board) -> Vec<SignalBoard> {
+    let at = |n: roxmltree::Node| {
+        let local = [
+            0.0,
+            attr_f64(n, "v").unwrap_or(0.0),
+            attr_f64(n, "z").unwrap_or(0.0),
+        ];
+        let [x, y, z] = orient(board.heading, board.pitch, board.roll, local);
+        board.position + Vector::new(x as f32, y as f32, z as f32)
+    };
+    let size = |n: roxmltree::Node, name| {
+        n.attribute(name)
+            .and_then(|v| v.trim().parse::<f64>().ok())
+            .filter(|v| v.is_finite())
+            .map(|v| v as f32)
+    };
+    let text = |n: roxmltree::Node, name| n.attribute(name).unwrap_or_default().to_string();
+    node.children()
+        .filter_map(|b| {
+            if b.has_tag_name("staticBoard") {
+                let signs = b
+                    .children()
+                    .filter(|n| n.has_tag_name("sign"))
+                    .map(|sign| BoardSign {
+                        name: text(sign, "name"),
+                        country: text(sign, "country"),
+                        kind: text(sign, "type"),
+                        subtype: text(sign, "subtype"),
+                        value: attr_f64(sign, "value"),
+                        unit: sign.attribute("unit").and_then(unit),
+                        text: text(sign, "text"),
+                        semantics: semantics(sign),
+                        position: at(sign),
+                        width: size(sign, "width"),
+                        height: size(sign, "height"),
+                    })
+                    .collect();
+                Some(SignalBoard::Static(signs))
+            } else if b.has_tag_name("vmsBoard") {
+                Some(SignalBoard::Message(MessageBoard {
+                    display: text(b, "displayType"),
+                    position: at(b),
+                    width: size(b, "displayWidth"),
+                    height: size(b, "displayHeight"),
+                    areas: b
+                        .children()
+                        .filter(|n| n.has_tag_name("displayArea"))
+                        .map(|area| DisplayArea {
+                            index: area.attribute("index").and_then(|v| v.parse().ok()),
+                            position: at(area),
+                            width: size(area, "width"),
+                            height: size(area, "height"),
+                        })
+                        .collect(),
+                }))
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 /// A board at a `<positionInertial>`, facing its `hdg`, or `None` if it is
