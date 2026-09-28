@@ -1,10 +1,11 @@
 //! Road marks, placed along the lane borders of each baked road.
 
 use super::{
-    active, attr_f64, child, cubics_in, side_borders, BakedRoad, BakedSection, Cubic, LaneDef,
-    RoadMarkProvenance, MAX_REPEAT_INSTANCES,
+    active, attr_f64, child, cubics_in, side_borders, BakedRoad, Cubic, RoadMarkProvenance,
+    SectionDef, MAX_REPEAT_INSTANCES,
 };
 use crate::coords::Point;
+use crate::road::{LaneGeom, Road, RoadSection};
 use crate::{
     LaneChange, LaneId, LinePattern, LineRule, RoadMark, RoadMarkId, RoadMarkLine, RoadMarkType,
     RoadMarkWeight,
@@ -162,8 +163,8 @@ pub(super) fn parse<'a>(lane: roxmltree::Node<'a, 'a>) -> Vec<MarkDef> {
 pub(super) fn place(roads: &[(roxmltree::Node, BakedRoad)]) -> RoadMarks {
     let mut out = RoadMarks::default();
     for (_, road) in roads {
-        for section in &road.sections {
-            place_section(road, section, &mut out);
+        for (section, def) in road.sections() {
+            place_section(&road.road, section, def, &mut out);
         }
     }
     out
@@ -176,7 +177,7 @@ struct Border<'a> {
     marks: &'a [MarkDef],
     /// The lanes between the center and the border, and which way they
     /// stack: 1.0 toward +t, -1.0 toward -t.
-    inner: &'a [LaneDef],
+    inner: &'a [LaneGeom],
     sign: f64,
     /// Which way the inside of the road is, for ordering double lines: -t on
     /// the left side, and +t on the right side and the center lane, whose
@@ -188,8 +189,8 @@ struct Border<'a> {
 
 impl Border<'_> {
     /// The border's `t` at road station `s`.
-    fn t(&self, road: &BakedRoad, section: &BakedSection, s: f64) -> f64 {
-        let base = super::active(&road.lane_offsets, s).map_or(0.0, |o| o.eval(s));
+    fn t(&self, road: &Road, section: &RoadSection, s: f64) -> f64 {
+        let base = road.base(s);
         side_borders(self.inner, self.sign, base, s - section.start)
             .last()
             .map_or(base, |b| b.outer)
@@ -198,29 +199,29 @@ impl Border<'_> {
 
 /// Bake every mark along the borders of one section: the center lane's, then
 /// each left lane's outer border, then each right lane's.
-fn place_section(road: &BakedRoad, section: &BakedSection, out: &mut RoadMarks) {
-    let (left, right) = (&section.def.left, &section.def.right);
-    let baked = |lane: Option<&LaneDef>| {
+fn place_section(road: &Road, section: &RoadSection, def: &SectionDef, out: &mut RoadMarks) {
+    let (left, right) = (&section.left, &section.right);
+    let baked = |lane: Option<&LaneGeom>| {
         let lane = lane?;
         section
             .lanes
             .iter()
-            .find(|l| l.od_id == lane.id)
-            .map(|l| l.id)
+            .find(|&&(od_id, _)| od_id == lane.id)
+            .map(|&(_, id)| id)
     };
     let mut borders = vec![Border {
         od_lane_id: 0,
-        marks: &section.def.center,
+        marks: &def.center,
         inner: &[],
         sign: 0.0,
         inside: 1.0,
         left: baked(left.first()),
         right: baked(right.first()),
     }];
-    for (i, lane) in left.iter().enumerate() {
+    for (i, (lane, lane_def)) in left.iter().zip(&def.left).enumerate() {
         borders.push(Border {
             od_lane_id: lane.id,
-            marks: &lane.marks,
+            marks: &lane_def.marks,
             inner: &left[..=i],
             sign: 1.0,
             inside: -1.0,
@@ -228,10 +229,10 @@ fn place_section(road: &BakedRoad, section: &BakedSection, out: &mut RoadMarks) 
             right: baked(Some(lane)),
         });
     }
-    for (i, lane) in right.iter().enumerate() {
+    for (i, (lane, lane_def)) in right.iter().zip(&def.right).enumerate() {
         borders.push(Border {
             od_lane_id: lane.id,
-            marks: &lane.marks,
+            marks: &lane_def.marks,
             inner: &right[..=i],
             sign: -1.0,
             inside: 1.0,
@@ -255,7 +256,7 @@ fn place_section(road: &BakedRoad, section: &BakedSection, out: &mut RoadMarks) 
                 .push(bake(road, section, border, mark, id, (start, end)));
             out.provenance.push(RoadMarkProvenance {
                 road_mark: id,
-                road_id: road.id.clone(),
+                road_id: road.od_id.clone(),
                 section: section.index,
                 od_lane_id: border.od_lane_id,
                 s: start,
@@ -267,8 +268,8 @@ fn place_section(road: &BakedRoad, section: &BakedSection, out: &mut RoadMarks) 
 
 /// One mark along `border` over the stretch `[start, end]` of road.
 fn bake(
-    road: &BakedRoad,
-    section: &BakedSection,
+    road: &Road,
+    section: &RoadSection,
     border: &Border,
     mark: &MarkDef,
     id: RoadMarkId,
@@ -383,8 +384,8 @@ fn painted(pattern: LinePattern, from: f64, (start, end): (f64, f64)) -> Vec<(f6
 /// them, so the paint lies on the facets of the lane mesh. So a mark on a
 /// kerb, the outer border of the lane below it, stays on the road.
 fn paint(
-    road: &BakedRoad,
-    section: &BakedSection,
+    road: &Road,
+    section: &RoadSection,
     od_lane_id: i32,
     t: impl Fn(f64) -> f64,
     half_width: f64,

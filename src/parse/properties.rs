@@ -2,8 +2,9 @@
 //! limits from its own `<speed>`s or its road's, and its own `<rule>`s,
 //! `<access>`es and `<material>`s.
 
-use super::{along, attr_f64, material, BakedRoad, BakedSection, Warning};
+use super::{along, attr_f64, material, BakedRoad, Warning};
 use crate::coords::Point;
+use crate::road::RoadSection;
 use crate::{Access, Along, Lane, LaneId, Material, RoadType, SpeedLimit};
 
 /// A `<speed>` as the file gives it.
@@ -241,9 +242,9 @@ pub(super) fn place<'a>(roads: impl Iterator<Item = &'a BakedRoad>, lanes: &[Lan
     let mut out = Placed::default();
     for road in roads {
         let type_at = |s: f64| road.types.iter().rev().find(|t| t.s <= s + 1e-9);
-        for sec in &road.sections {
-            for lane in &sec.lanes {
-                let Some(def) = sec.def.lane(lane.od_id) else {
+        for (sec, sec_def) in road.sections() {
+            for &(od_id, id) in &sec.lanes {
+                let Some(def) = sec_def.lane(od_id) else {
                     continue;
                 };
                 let speeds: Vec<(f64, SpeedLimit)> = def
@@ -253,7 +254,7 @@ pub(super) fn place<'a>(roads: impl Iterator<Item = &'a BakedRoad>, lanes: &[Lan
                     .collect();
                 let own = |s: f64| speeds.iter().rev().find(|(at, _)| *at <= s + 1e-9);
                 let type_starts = road.types.iter().map(|t| t.s);
-                let points = lanes[lane.index].center.points();
+                let points = lanes[id.0].center.points();
                 let kinds = stretches(sec, type_starts.clone(), |s| type_at(s).map(|t| t.kind));
                 let limits = stretches(sec, type_starts.chain(speeds.iter().map(|l| l.0)), |s| {
                     own(s).map(|l| l.1).or_else(|| {
@@ -263,18 +264,18 @@ pub(super) fn place<'a>(roads: impl Iterator<Item = &'a BakedRoad>, lanes: &[Lan
                     })
                 });
                 out.road_types
-                    .extend(on_lane(lane.id, points, &sec.stations, kinds));
+                    .extend(on_lane(id, points, &sec.stations, kinds));
                 out.speed_limits
-                    .extend(on_lane(lane.id, points, &sec.stations, limits));
+                    .extend(on_lane(id, points, &sec.stations, limits));
                 let rules = own_stretches(sec, &def.rules, |r| Some(r.clone()));
                 let access = own_stretches(sec, &def.access, AccessDef::access);
                 let materials = own_stretches(sec, &def.materials, |m| Some(m.clone()));
                 out.lane_rules
-                    .extend(on_lane(lane.id, points, &sec.stations, rules));
+                    .extend(on_lane(id, points, &sec.stations, rules));
                 out.lane_access
-                    .extend(on_lane(lane.id, points, &sec.stations, access));
+                    .extend(on_lane(id, points, &sec.stations, access));
                 out.lane_materials
-                    .extend(on_lane(lane.id, points, &sec.stations, materials));
+                    .extend(on_lane(id, points, &sec.stations, materials));
             }
         }
     }
@@ -305,7 +306,7 @@ fn on_lane<'a, T: 'a>(
 /// `sOffset`s in ascending order, holds `value`, up to the next entry or
 /// the section's end. An entry whose `value` is `None` holds nothing.
 fn own_stretches<E, T: PartialEq>(
-    sec: &BakedSection,
+    sec: &RoadSection,
     entries: &[(f64, E)],
     value: impl Fn(&E) -> Option<T>,
 ) -> Vec<(f64, f64, T)> {
@@ -327,7 +328,7 @@ fn own_stretches<E, T: PartialEq>(
 /// stations `cuts` where it may change. Neighbours with the same value
 /// merge, and a stretch with no value is left out.
 fn stretches<T: PartialEq>(
-    sec: &BakedSection,
+    sec: &RoadSection,
     cuts: impl Iterator<Item = f64>,
     value_at: impl Fn(f64) -> Option<T>,
 ) -> Vec<(f64, f64, T)> {
@@ -354,24 +355,19 @@ impl BakedRoad {
     /// Each lane `<access>` whose `rule` the crate can't read, section by
     /// section.
     pub(super) fn access_warnings(&self) -> Vec<Warning> {
-        self.sections
-            .iter()
-            .flat_map(|sec| {
-                sec.def
-                    .left
-                    .iter()
-                    .chain(&sec.def.right)
-                    .flat_map(move |l| {
-                        l.access.iter().filter_map(move |(offset, def)| match def {
-                            AccessDef::Unreadable { rule } => Some(Warning::AccessDropped {
-                                road_id: self.id.clone(),
-                                s: sec.start + offset,
-                                lane: l.id,
-                                rule: rule.clone(),
-                            }),
-                            AccessDef::Restricted(_) | AccessDef::Unrestricted => None,
-                        })
+        self.sections()
+            .flat_map(|(sec, def)| {
+                def.left.iter().chain(&def.right).flat_map(move |l| {
+                    l.access.iter().filter_map(move |(offset, def)| match def {
+                        AccessDef::Unreadable { rule } => Some(Warning::AccessDropped {
+                            road_id: self.road.od_id.clone(),
+                            s: sec.start + offset,
+                            lane: l.id,
+                            rule: rule.clone(),
+                        }),
+                        AccessDef::Restricted(_) | AccessDef::Unrestricted => None,
                     })
+                })
             })
             .collect()
     }
@@ -381,7 +377,7 @@ impl BakedRoad {
     pub(super) fn speed_warnings(&self) -> Vec<Warning> {
         let dropped = |s, lane, speed: &SpeedDef| match speed {
             SpeedDef::Unreadable { max, unit } => Some(Warning::SpeedLimitDropped {
-                road_id: self.id.clone(),
+                road_id: self.road.od_id.clone(),
                 s,
                 lane,
                 max: max.clone(),
@@ -393,16 +389,12 @@ impl BakedRoad {
             .types
             .iter()
             .filter_map(|t| dropped(t.s, None, t.speed.as_ref()?));
-        let lanes = self.sections.iter().flat_map(|sec| {
-            sec.def
-                .left
-                .iter()
-                .chain(&sec.def.right)
-                .flat_map(move |l| {
-                    l.speeds
-                        .iter()
-                        .map(move |sp| (sec.start + sp.s_offset, l.id, &sp.speed))
-                })
+        let lanes = self.sections().flat_map(|(sec, def)| {
+            def.left.iter().chain(&def.right).flat_map(move |l| {
+                l.speeds
+                    .iter()
+                    .map(move |sp| (sec.start + sp.s_offset, l.id, &sp.speed))
+            })
         });
         road.chain(lanes.filter_map(|(s, id, speed)| dropped(s, Some(id), speed)))
             .collect()

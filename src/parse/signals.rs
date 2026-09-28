@@ -9,6 +9,7 @@ use super::{
     SignalReferenceProvenance,
 };
 use crate::coords::{Point, Vector};
+use crate::road::Road;
 use crate::{
     Control, Controller, ControllerId, Dependency, Direction, ObjectId, Reference, Referenced,
     Signal, SignalId, Unit,
@@ -40,14 +41,16 @@ pub(super) fn place(
 ) -> Signals {
     let mut road_by_id = HashMap::new();
     for (_, road) in roads {
-        road_by_id.entry(road.id.as_str()).or_insert(road);
+        road_by_id
+            .entry(road.road.od_id.as_str())
+            .or_insert(&road.road);
     }
     let entries = || {
         roads.iter().flat_map(|(node, road)| {
             child(*node, "signals")
                 .into_iter()
                 .flat_map(|n| n.children())
-                .map(move |n| (n, road))
+                .map(move |n| (n, &road.road))
         })
     };
     let mut out = Signals::default();
@@ -139,7 +142,7 @@ fn place_controllers(root: roxmltree::Node, placed: &HashMap<String, SignalId>, 
 /// the ends of the road, is skipped.
 fn apply_reference(
     node: roxmltree::Node,
-    road: &BakedRoad,
+    road: &Road,
     signal: &mut Signal,
     provenance: &mut SignalProvenance,
 ) {
@@ -157,7 +160,7 @@ fn apply_reference(
     }
     signal.applies_at.push(road.surface(s, t).0);
     provenance.references.push(SignalReferenceProvenance {
-        road_id: road.id.clone(),
+        road_id: road.od_id.clone(),
         s,
         t,
         orientation,
@@ -177,8 +180,8 @@ struct Board {
 /// or off the ends of the road, is skipped.
 fn place_signal(
     node: roxmltree::Node,
-    road: &BakedRoad,
-    roads: &HashMap<&str, &BakedRoad>,
+    road: &Road,
+    roads: &HashMap<&str, &Road>,
     out: &mut Signals,
 ) -> bool {
     let (Some(s), Some(t)) = (attr_f64(node, "s"), attr_f64(node, "t")) else {
@@ -228,7 +231,7 @@ fn place_signal(
     });
     out.provenance.push(SignalProvenance {
         signal: id,
-        road_id: road.id.clone(),
+        road_id: road.od_id.clone(),
         od_id: text("id"),
         s,
         t,
@@ -285,7 +288,7 @@ fn link(
 /// and along it otherwise, turned `hOffset` counter-clockwise. `pitch` and
 /// `roll` are against the horizontal, not the road, so a board on a banked
 /// road stays upright.
-fn standing(node: roxmltree::Node, road: &BakedRoad, orientation: Orientation) -> Option<Board> {
+fn standing(node: roxmltree::Node, road: &Road, orientation: Orientation) -> Option<Board> {
     let (s, t) = (attr_f64(node, "s")?, attr_f64(node, "t")?);
     if !road.on_road(s) {
         return None;
@@ -324,7 +327,7 @@ fn inertial(node: roxmltree::Node) -> Option<Board> {
 /// The `<lane id>` ranges a signal applies to: its `<validity>` ranges if it
 /// has any, else the side of the road whose traffic its `orientation` names.
 fn lane_ranges(
-    road: &BakedRoad,
+    road: &Road,
     orientation: Orientation,
     validity: Vec<(i32, i32)>,
 ) -> Vec<(i32, i32)> {

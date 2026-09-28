@@ -11,13 +11,17 @@
 use std::collections::HashMap;
 
 use crate::coords::{Point, Vector};
-use crate::crg::{RefPoint, Stretch};
+use crate::crg::Stretch;
 use crate::object::orient;
+use crate::road::{
+    active, height_at, is_valid, side_borders, side_heights, Cubic, GeomRec, GeomShape, HeightDef,
+    LaneBorders, LaneExtent, LaneGeom, Road, RoadSection, ShapeProfile, TrafficRule,
+};
 use crate::{
     Border, ControllerId, Corner, Coverage, CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface,
-    Direction, Extent, GeoOffset, GeoReference, Lane, LaneId, LaneType, Marking, Material, Object,
-    ObjectId, ObjectType, ParkingSpace, Polyline, RoadMarkId, RoadNetwork, Section, Shape,
-    SignalId, Structure, StructureId, StructureKind, UserData,
+    Extent, GeoOffset, GeoReference, Lane, LaneId, LaneType, Marking, Material, Object, ObjectId,
+    ObjectType, ParkingSpace, Polyline, RoadMarkId, RoadNetwork, Section, Shape, SignalId,
+    Structure, StructureId, StructureKind, UserData,
 };
 
 mod links;
@@ -373,12 +377,12 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             Ok(baked) => {
                 if let Err(rule) = traffic_rule(road) {
                     warnings.push(Warning::UnknownTrafficRule {
-                        road_id: baked.id.clone(),
+                        road_id: baked.road.od_id.clone(),
                         rule: rule.to_string(),
                     });
                 }
-                for section in &baked.sections {
-                    warnings.extend(baked.lane_warnings(section));
+                for (section, def) in baked.sections() {
+                    warnings.extend(baked.lane_warnings(section, def));
                 }
                 warnings.extend(baked.shape_warnings());
                 warnings.extend(baked.speed_warnings());
@@ -486,218 +490,20 @@ fn sanitize(xml: &str) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Borrowed(xml)
 }
 
-// --- Reference-line geometry --------------------------------------------------
-
-enum Geom {
-    Line,
-    Arc {
-        curvature: f64,
-    },
-    /// A curve with no elementary arc-length form (spiral/clothoid or
-    /// paramPoly3), baked to `(ds, x, y, hdg)` samples at load. See
-    /// `bake_spiral` and `bake_param_poly3`. `pose` interpolates them by arc
-    /// length `ds`.
-    Baked {
-        samples: Vec<(f64, f64, f64, f64)>,
-    },
-}
-
-/// Bake a clothoid to fine `(ds, x, y, hdg)` samples. Curvature varies linearly
-/// `curv_start -> curv_end` over `length`, so heading is the closed form
-/// `hdg0 + curv_start*u + (c_dot/2)*u^2`; position is its running integral,
-/// which has no elementary form, so integrate cos/sin(heading) by the midpoint
-/// rule at a fine step (mm-accurate over hundreds of meters).
-fn bake_spiral(
-    x0: f64,
-    y0: f64,
-    hdg0: f64,
-    curv_start: f64,
-    curv_end: f64,
-    length: f64,
-) -> Vec<(f64, f64, f64, f64)> {
-    const STEP: f64 = 0.25;
-    let c_dot = if length > 1e-9 {
-        (curv_end - curv_start) / length
-    } else {
-        0.0
-    };
-    let heading = |u: f64| hdg0 + curv_start * u + 0.5 * c_dot * u * u;
-    let (mut x, mut y, mut u) = (x0, y0, 0.0);
-    let mut out = vec![(0.0, x0, y0, hdg0)];
-    while u < length - 1e-9 {
-        let step = STEP.min(length - u);
-        let theta_mid = heading(u + step / 2.0);
-        x += theta_mid.cos() * step;
-        y += theta_mid.sin() * step;
-        u += step;
-        out.push((u, x, y, heading(u)));
-    }
-    out
-}
-
-/// Evaluate `a + b*p + c*p^2 + d*p^3`.
-fn eval_poly3([a, b, c, d]: [f64; 4], p: f64) -> f64 {
-    a + b * p + c * p * p + d * p * p * p
-}
-
-/// Bake a paramPoly3 to `(ds, x, y, hdg)` samples. The curve is given in a local
-/// `(u, v)` frame (u forward, v left of `hdg0`) by two cubics in a parameter
-/// `p`; `p_max` is `1` for `pRange="normalized"`, else the geometry length.
-/// Because `p` is not arc length, we step `p` finely, transform each point into
-/// world space, and accumulate the true arc length `ds` so `pose` can sample by
-/// distance like every other geometry.
-fn bake_param_poly3(
-    x0: f64,
-    y0: f64,
-    hdg0: f64,
-    u: [f64; 4],
-    v: [f64; 4],
-    p_max: f64,
-    length: f64,
-) -> Vec<(f64, f64, f64, f64)> {
-    let (sin, cos) = hdg0.sin_cos();
-    let world = |p: f64| {
-        let (uu, vv) = (eval_poly3(u, p), eval_poly3(v, p));
-        (x0 + uu * cos - vv * sin, y0 + uu * sin + vv * cos)
-    };
-    let heading = |p: f64| {
-        let du = u[1] + 2.0 * u[2] * p + 3.0 * u[3] * p * p;
-        let dv = v[1] + 2.0 * v[2] * p + 3.0 * v[3] * p * p;
-        hdg0 + dv.atan2(du)
-    };
-    // ~0.25 m resolution, from the geometry length.
-    let n = ((length / 0.25).ceil() as usize).max(8);
-    let (mut px, mut py) = world(0.0);
-    let mut ds = 0.0;
-    let mut out = vec![(0.0, px, py, heading(0.0))];
-    for k in 1..=n {
-        let p = p_max * (k as f64) / (n as f64);
-        let (x, y) = world(p);
-        ds += ((x - px).powi(2) + (y - py).powi(2)).sqrt();
-        out.push((ds, x, y, heading(p)));
-        (px, py) = (x, y);
-    }
-    out
-}
-
-/// One `<geometry>` record: its start pose on the reference line plus its shape.
-struct GeomRec {
-    s: f64,
-    x: f64,
-    y: f64,
-    hdg: f64,
-    geom: Geom,
-}
-
-impl GeomRec {
-    /// Position `(x, y)` and heading at road arc-length `s` within this record.
-    fn pose(&self, s: f64) -> (f64, f64, f64) {
-        let ds = s - self.s;
-        match &self.geom {
-            Geom::Arc { curvature } if curvature.abs() > 1e-9 => {
-                let h = self.hdg + curvature * ds;
-                let x = self.x + (h.sin() - self.hdg.sin()) / curvature;
-                let y = self.y - (h.cos() - self.hdg.cos()) / curvature;
-                (x, y, h)
-            }
-            Geom::Baked { samples } => {
-                let max = samples.last().map(|p| p.0).unwrap_or(0.0);
-                let ds = ds.clamp(0.0, max);
-                let i = samples
-                    .partition_point(|p| p.0 <= ds)
-                    .saturating_sub(1)
-                    .min(samples.len().saturating_sub(2));
-                let (a_s, ax, ay, ah) = samples[i];
-                let (b_s, bx, by, bh) = samples[i + 1];
-                let t = if b_s > a_s {
-                    (ds - a_s) / (b_s - a_s)
-                } else {
-                    0.0
-                };
-                (ax + (bx - ax) * t, ay + (by - ay) * t, ah + (bh - ah) * t)
-            }
-            // A line, or a degenerate (straight) arc.
-            _ => (
-                self.x + ds * self.hdg.cos(),
-                self.y + ds * self.hdg.sin(),
-                self.hdg,
-            ),
-        }
-    }
-}
-
-/// One cubic record (elevation, or a lane width), evaluated relative to its
-/// own start offset: `a + b*ds + c*ds^2 + d*ds^3`.
-struct Cubic {
-    start: f64,
-    a: f64,
-    b: f64,
-    c: f64,
-    d: f64,
-}
-
-impl Cubic {
-    fn eval(&self, s: f64) -> f64 {
-        let ds = s - self.start;
-        self.a + self.b * ds + self.c * ds * ds + self.d * ds * ds * ds
-    }
-
-    /// The rate of change at `s`.
-    fn slope(&self, s: f64) -> f64 {
-        let ds = s - self.start;
-        self.b + 2.0 * self.c * ds + 3.0 * self.d * ds * ds
-    }
-}
-
-/// The record whose start is the greatest not exceeding `s` (records sorted by
-/// start). `None` if `s` precedes them all / the list is empty.
-///
-/// A scan, not a binary search, even though this runs once per profile per
-/// sampled station. Real files keep these lists short. Across Town07's 234
-/// roads the longest elevation, width and laneOffset lists are 13, 17 and a
-/// handful of records, and at that size `partition_point` measured slower
-/// than walking back from the end.
-fn active(records: &[Cubic], s: f64) -> Option<&Cubic> {
-    records.iter().rev().find(|r| r.start <= s + 1e-9)
-}
-
 /// One lane parsed from a `<laneSection>`, before it is sampled into a [`Lane`].
+/// Where it lies across the road is its [`LaneGeom`], which goes to the
+/// [`Road`].
 struct LaneDef {
     id: i32,
     kind: LaneType,
-    extent: LaneExtent,
     pred_link: Option<i32>,
     succ_link: Option<i32>,
     /// The road marks on its outer border.
     marks: Vec<MarkDef>,
-    /// Its `<height>`s, in order along it.
-    heights: Vec<HeightDef>,
     speeds: Vec<properties::LaneSpeedDef>,
     rules: Vec<(f64, String)>,
     access: Vec<(f64, properties::AccessDef)>,
     materials: Vec<(f64, Material)>,
-    level: bool,
-}
-
-/// How far across the road a lane reaches: its `<width>`s, or where it has
-/// none, its `<border>`s. Each list is sorted by `sOffset`.
-///
-/// A border is the `t` of the lane's outer border, measured from the
-/// reference line, so `<laneOffset>` does not move it. The spec forbids the
-/// two together. The lane's width is its border less its inner neighbour's
-/// outer border, signed by side and 0 where the border crosses inside it,
-/// which the spec also forbids.
-enum LaneExtent {
-    Width(Vec<Cubic>),
-    Border(Vec<Cubic>),
-}
-
-/// A `<lateralProfile>`'s `<shape>`s at one `s`: the height off the
-/// reference plane across the road, a cubic in `dt` from each shape's `t`,
-/// held until the next. Each [`Cubic`] here starts at its `t`.
-struct ShapeProfile {
-    s: f64,
-    shapes: Vec<Cubic>,
 }
 
 /// A `<lateralProfile>`'s `<shape>`s, grouped into profiles by `s`, in
@@ -739,82 +545,6 @@ fn shape_profiles(lateral: roxmltree::Node) -> Vec<ShapeProfile> {
     profiles
 }
 
-/// The road's lateral shape at `(s, t)`: its height off the reference
-/// plane there. 0 on a road with no `<shape>`.
-///
-/// Between two profiles the height at a `t` goes linearly along `s`, as the
-/// spec has it. Before the first profile the first holds, and after the
-/// last the last. The spec gives 0 before the first. Across a profile, the
-/// last shape runs on to the road's edge, and before the first shape's `t`
-/// its value there holds, flat.
-fn shape_at(profiles: &[ShapeProfile], s: f64, t: f64) -> f64 {
-    let across = |p: &ShapeProfile| active(&p.shapes, t).map_or(p.shapes[0].a, |c| c.eval(t));
-    let next = profiles.partition_point(|p| p.s <= s + 1e-9);
-    match (
-        next.checked_sub(1).map(|i| &profiles[i]),
-        profiles.get(next),
-    ) {
-        (None, None) => 0.0,
-        (Some(p), None) | (None, Some(p)) => across(p),
-        (Some(a), Some(b)) => {
-            let f = (s - a.s) / (b.s - a.s);
-            across(a) + (across(b) - across(a)) * f
-        }
-    }
-}
-
-/// Each lane of `side`'s height off the road at its inner and outer border
-/// at station `s`, `s_lane` into its section, from the center outward.
-/// `borders` is where each lies, from [`side_borders`], `sign` which way it
-/// stacks, `base` the `t` of the center lane, and `phi` the superelevation.
-///
-/// A lane's heights are its `<height>`s plus the road's lateral shape under
-/// each border. A lane with `level="true"`, and every lane outside it, is
-/// kept out of the shape and the superelevation instead. It starts at its
-/// inner neighbour's outer height, `<height>` and all, and runs level from
-/// there, with its own `<height>`s on top. Measured along the road's tilted
-/// normal, level is `w tan phi` lower at its outer border, which gives it a
-/// bank of 0.
-fn side_heights<'a>(
-    side: &'a [LaneDef],
-    sign: f64,
-    shapes: &'a [ShapeProfile],
-    (s, s_lane): (f64, f64),
-    base: f64,
-    phi: f64,
-    borders: impl Iterator<Item = LaneBorders> + 'a,
-) -> impl Iterator<Item = (f64, f64)> + 'a {
-    let start = (shape_at(shapes, s, base), false);
-    side.iter()
-        .zip(borders)
-        .scan(start, move |(outer, level), (lane, b)| {
-            let (own_inner, own_outer) = height_at(lane, s_lane);
-            *level |= lane.level;
-            let heights = if *level {
-                (
-                    *outer + own_inner,
-                    *outer - sign * b.width * phi.tan() + own_outer,
-                )
-            } else {
-                (
-                    own_inner + shape_at(shapes, s, b.inner),
-                    own_outer + shape_at(shapes, s, b.outer),
-                )
-            };
-            *outer = heights.1;
-            Some(heights)
-        })
-}
-
-/// A lane's `<height>`: how far its surface stands off the road, along the
-/// road's normal, at its inner and outer border, from `s_offset` metres into
-/// its lane section.
-struct HeightDef {
-    s_offset: f64,
-    inner: f64,
-    outer: f64,
-}
-
 /// A lane's `<height>`s, in order along it.
 ///
 /// The spec requires `sOffset`, `inner` and `outer`, says `sOffset` is at
@@ -835,30 +565,6 @@ fn parse_heights(lane: roxmltree::Node) -> Vec<HeightDef> {
     heights
 }
 
-/// A lane's height off the road at its inner and outer border, `s_lane`
-/// metres into its section. 0 for a lane with no `<height>`.
-///
-/// The spec's rule for lane geometry holds a height until the next one. The
-/// crate goes straight from one to the next instead, as libOpenDRIVE and
-/// esmini read them, and holds the last after it. Before the first, the
-/// first holds. The spec gives no height there, and libOpenDRIVE carries the
-/// first ramp on backwards.
-fn height_at(lane: &LaneDef, s_lane: f64) -> (f64, f64) {
-    let heights = &lane.heights;
-    let next = heights.partition_point(|h| h.s_offset <= s_lane + 1e-9);
-    match (next.checked_sub(1).map(|i| &heights[i]), heights.get(next)) {
-        (None, None) => (0.0, 0.0),
-        (Some(h), None) | (None, Some(h)) => (h.inner, h.outer),
-        (Some(a), Some(b)) => {
-            let f = (s_lane - a.s_offset) / (b.s_offset - a.s_offset);
-            (
-                a.inner + (b.inner - a.inner) * f,
-                a.outer + (b.outer - a.outer) * f,
-            )
-        }
-    }
-}
-
 /// A `<laneSection>`'s lanes as the file gives them. Only lanes with a
 /// width or a border are here, since a lane with neither has nothing to
 /// sample. The ids of those are in `dropped`.
@@ -867,6 +573,9 @@ struct SectionDef {
     left: Vec<LaneDef>,
     /// The right lanes, ordered from the center outward: -1, -2, -3, ...
     right: Vec<LaneDef>,
+    /// Where the left and right lanes lie across the road, in step with
+    /// `left` and `right`, until the [`RoadSection`] takes them.
+    geoms: [Vec<LaneGeom>; 2],
     /// The road marks of the center lane, on the line between the sides.
     center: Vec<MarkDef>,
     /// The `<lane id>`s it skipped for having neither a width nor a border,
@@ -880,14 +589,6 @@ impl SectionDef {
     /// Its lane with `<lane id>` `od_id`, if that has a width or a border.
     fn lane(&self, od_id: i32) -> Option<&LaneDef> {
         self.left.iter().chain(&self.right).find(|l| l.id == od_id)
-    }
-
-    /// Whether any of its lanes has a `<height>`.
-    fn raised(&self) -> bool {
-        self.left
-            .iter()
-            .chain(&self.right)
-            .any(|l| !l.heights.is_empty())
     }
 
     fn parse(section: roxmltree::Node) -> Self {
@@ -919,17 +620,21 @@ impl SectionDef {
                 let def = LaneDef {
                     id,
                     kind: lane_type(lane.attribute("type")),
-                    extent,
                     pred_link,
                     succ_link,
                     marks: road_marks::parse(lane),
-                    heights: parse_heights(lane),
                     speeds: properties::lane_speeds(lane),
                     rules: properties::lane_rules(lane),
                     access: properties::lane_access(lane),
                     materials: properties::lane_materials(lane),
+                };
+                let geom = LaneGeom {
+                    id,
+                    extent,
+                    heights: parse_heights(lane),
                     level: matches!(lane.attribute("level"), Some("true" | "1")),
                 };
+                let def = (def, geom);
                 if id > 0 {
                     left.push(def);
                 } else if id < 0 {
@@ -942,8 +647,10 @@ impl SectionDef {
         } else {
             Vec::new()
         };
-        left.sort_by_key(|l| l.id);
-        right.sort_by_key(|l| -l.id);
+        left.sort_by_key(|(l, _)| l.id);
+        right.sort_by_key(|(l, _)| -l.id);
+        let (left, left_geoms) = left.into_iter().unzip();
+        let (right, right_geoms) = right.into_iter().unzip();
         let center = child(section, "center")
             .into_iter()
             .flat_map(|c| c.children())
@@ -953,6 +660,7 @@ impl SectionDef {
         Self {
             left,
             right,
+            geoms: [left_geoms, right_geoms],
             center,
             dropped,
             mixed,
@@ -1020,33 +728,6 @@ fn attr_f64(node: roxmltree::Node, name: &str) -> Option<f64> {
     node.attribute(name)
         .and_then(|s| s.parse::<f64>().ok())
         .filter(|v| v.is_finite())
-}
-
-/// Which side of a road drives along `+s`, from its `<road rule>`.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum TrafficRule {
-    RightHand,
-    LeftHand,
-}
-
-impl TrafficRule {
-    /// How the lanes on the left side of the road travel, or on the right.
-    fn direction(self, left: bool) -> Direction {
-        if left == (self == Self::LeftHand) {
-            Direction::Forward
-        } else {
-            Direction::Backward
-        }
-    }
-
-    /// The `<lane id>`s of the side whose traffic travels `direction`.
-    fn side(self, direction: Direction) -> (i32, i32) {
-        if self.direction(true) == direction {
-            (1, i32::MAX)
-        } else {
-            (i32::MIN, -1)
-        }
-    }
 }
 
 /// `road`'s traffic rule, or the value of its `rule` if that is neither
@@ -1130,19 +811,20 @@ fn parse_road(
         ) else {
             continue;
         };
-        let geom = if let Some(arc) = child(g, "arc") {
+        let shape = if let Some(arc) = child(g, "arc") {
             let Some(curvature) = attr_f64(arc, "curvature") else {
                 continue;
             };
-            Geom::Arc { curvature }
+            GeomShape::Arc { curvature }
         } else if let Some(sp) = child(g, "spiral") {
             let (Some(curv_start), Some(curv_end)) =
                 (attr_f64(sp, "curvStart"), attr_f64(sp, "curvEnd"))
             else {
                 continue;
             };
-            Geom::Baked {
-                samples: bake_spiral(x, y, hdg, curv_start, curv_end, length),
+            GeomShape::Spiral {
+                curv_start,
+                curv_end,
             }
         } else if let Some(pp) = child(g, "paramPoly3") {
             let coeff = |n: &str| attr_f64(pp, n).unwrap_or(0.0);
@@ -1153,39 +835,27 @@ fn parse_road(
                 Some(ref r) if r == "arclength" => length,
                 _ => 1.0,
             };
-            Geom::Baked {
-                samples: bake_param_poly3(
-                    x,
-                    y,
-                    hdg,
-                    [coeff("aU"), coeff("bU"), coeff("cU"), coeff("dU")],
-                    [coeff("aV"), coeff("bV"), coeff("cV"), coeff("dV")],
-                    p_max,
-                    length,
-                ),
+            GeomShape::ParamPoly3 {
+                u: [coeff("aU"), coeff("bU"), coeff("cU"), coeff("dU")],
+                v: [coeff("aV"), coeff("bV"), coeff("cV"), coeff("dV")],
+                p_max,
             }
         } else if let Some(p3) = child(g, "poly3") {
             // poly3 is the special case of paramPoly3 with u(p)=p and v(p) the
             // cubic in u; reuse the same baker over p in [0, length].
             let coeff = |n: &str| attr_f64(p3, n).unwrap_or(0.0);
-            Geom::Baked {
-                samples: bake_param_poly3(
-                    x,
-                    y,
-                    hdg,
-                    [0.0, 1.0, 0.0, 0.0],
-                    [coeff("a"), coeff("b"), coeff("c"), coeff("d")],
-                    length,
-                    length,
-                ),
+            GeomShape::ParamPoly3 {
+                u: [0.0, 1.0, 0.0, 0.0],
+                v: [coeff("a"), coeff("b"), coeff("c"), coeff("d")],
+                p_max: length,
             }
         } else if child(g, "line").is_some() {
-            Geom::Line
+            GeomShape::Line
         } else {
             // An unknown geometry shape: skip it rather than fail the load.
             continue;
         };
-        geoms.push(GeomRec { s, x, y, hdg, geom });
+        geoms.push(GeomRec::new(s, x, y, hdg, length, shape));
     }
     if geoms.is_empty() {
         return Err(RoadSkipReason::NoGeometry);
@@ -1210,41 +880,32 @@ fn parse_road(
     let lane_offsets = child(road, "lanes")
         .map(|n| cubics_in(n, "laneOffset", "s"))
         .unwrap_or_default();
-    let sections = bake_lanes(
-        road,
-        &road_id,
-        length,
-        &geoms,
-        &elevations,
-        &superelevations,
-        &shapes,
-        &lane_offsets,
-        rule,
-        out,
-        topo,
-    );
-    let baked = BakedRoad {
-        id: road_id,
-        length,
-        rule,
+    let mut baked = BakedRoad {
+        road: Road {
+            od_id: road_id,
+            length,
+            rule,
+            geoms,
+            elevations,
+            superelevations,
+            shapes,
+            lane_offsets,
+            sections: Vec::new(),
+        },
         types: properties::road_types(road),
-        geoms,
-        elevations,
-        superelevations,
-        shapes,
-        lane_offsets,
-        sections,
+        defs: Vec::new(),
     };
+    bake_lanes(road, &mut baked, out, topo);
     if let Some(objects_node) = child(road, "objects") {
-        place_objects(objects_node, index, &baked, objects);
-        place_structures(objects_node, &baked, out, structures);
+        place_objects(objects_node, index, &baked.road, objects);
+        place_structures(objects_node, &baked.road, out, structures);
     }
     for node in child(road, "surface")
         .into_iter()
         .flat_map(|n| n.children())
         .filter(|n| n.has_tag_name("CRG"))
     {
-        surfaces.extend(road_crg(node, &baked));
+        surfaces.extend(road_crg(node, &baked.road));
     }
     Ok(baked)
 }
@@ -1264,9 +925,9 @@ impl BakedRoad {
     /// each border lane under a `<laneOffset>`, each border that crosses
     /// inside its inner neighbour at one of the section's stations, and each
     /// lane outside a level lane that is not level itself.
-    fn lane_warnings(&self, section: &BakedSection) -> Vec<Warning> {
-        let def = &section.def;
-        let (road_id, index) = (&self.id, section.index);
+    fn lane_warnings(&self, section: &RoadSection, def: &SectionDef) -> Vec<Warning> {
+        let road = &self.road;
+        let (road_id, index) = (&road.od_id, section.index);
         let mut out: Vec<Warning> = def
             .dropped
             .iter()
@@ -1282,12 +943,13 @@ impl BakedRoad {
             }))
             .collect();
         let border_lanes = || {
-            def.left
+            section
+                .left
                 .iter()
-                .chain(&def.right)
+                .chain(&section.right)
                 .filter(|l| matches!(l.extent, LaneExtent::Border(_)))
         };
-        if offset_within(&self.lane_offsets, section.start, section.end) {
+        if offset_within(&road.lane_offsets, section.start, section.end) {
             out.extend(border_lanes().map(|l| Warning::BorderWithLaneOffset {
                 road_id: road_id.clone(),
                 section: index,
@@ -1297,9 +959,9 @@ impl BakedRoad {
         let mut crossed: Vec<(i32, f64)> = Vec::new();
         if border_lanes().next().is_some() {
             for &s in &section.stations {
-                let base = active(&self.lane_offsets, s).map_or(0.0, |o| o.eval(s));
+                let base = road.base(s);
                 let s_lane = s - section.start;
-                for (side, sign) in [(&def.left, 1.0), (&def.right, -1.0)] {
+                for (side, sign) in [(&section.left, 1.0), (&section.right, -1.0)] {
                     for (lane, b) in side.iter().zip(side_borders(side, sign, base, s_lane)) {
                         let LaneExtent::Border(borders) = &lane.extent else {
                             continue;
@@ -1323,7 +985,7 @@ impl BakedRoad {
                     s,
                 }),
         );
-        for side in [&def.left, &def.right] {
+        for side in [&section.left, &section.right] {
             let first_level = side.iter().position(|l| l.level).unwrap_or(side.len());
             out.extend(side[first_level..].iter().filter(|l| !l.level).map(|l| {
                 Warning::LaneNotLevel {
@@ -1341,40 +1003,23 @@ impl BakedRoad {
     /// The last shape runs on past the left edge, so only the right can fall
     /// short.
     fn shape_warnings(&self) -> Vec<Warning> {
-        self.shapes
+        let road = &self.road;
+        road.shapes
             .iter()
             .filter(|p| {
-                let Some(section) = self.section_at(p.s) else {
+                let Some(section) = road.section_at(p.s) else {
                     return false;
                 };
-                let base = active(&self.lane_offsets, p.s).map_or(0.0, |o| o.eval(p.s));
-                let edge = self
+                let edge = road
                     .across(section, p.s)
-                    .fold(base, |edge, a| edge.min(a.inner_t).min(a.outer_t));
+                    .fold(road.base(p.s), |edge, a| edge.min(a.inner_t).min(a.outer_t));
                 p.shapes[0].start > edge + SHAPE_SHORT
             })
             .map(|p| Warning::ShapeShortOfRoad {
-                road_id: self.id.clone(),
+                road_id: road.od_id.clone(),
                 s: p.s,
             })
             .collect()
-    }
-
-    /// The reference line at `s`.
-    fn station(&self, s: f64) -> RefPoint {
-        let (x, y, heading) = geom_at(&self.geoms, s).pose(s);
-        let elevation = active(&self.elevations, s);
-        let bank = active(&self.superelevations, s);
-        RefPoint {
-            s,
-            x,
-            y,
-            heading,
-            z: elevation.map_or(0.0, |e| e.eval(s)),
-            grade: elevation.map_or(0.0, |e| e.slope(s)),
-            bank: bank.map_or(0.0, |e| e.eval(s)),
-            bank_rate: bank.map_or(0.0, |e| e.slope(s)),
-        }
     }
 }
 
@@ -1393,7 +1038,7 @@ const CRG_STEP: f64 = 0.25;
 
 /// A road `<CRG>`, or `None` if it lacks a file, a known mode, or a stretch
 /// of road to lie on.
-fn road_crg(node: roxmltree::Node, road: &BakedRoad) -> Option<CrgSurface> {
+fn road_crg(node: roxmltree::Node, road: &Road) -> Option<CrgSurface> {
     let from = attr_f64(node, "sStart")?.max(0.0);
     let to = attr_f64(node, "sEnd")?.min(road.length);
     if to <= from {
@@ -1485,222 +1130,32 @@ fn crg_surface(
     }
 }
 
-/// One lane section of a road as baked: the stretch of road it covers, and
-/// the lanes in it.
-struct BakedSection {
-    /// Its position among the road's `<laneSection>`s, ordered by `s`.
-    index: usize,
-    start: f64,
-    end: f64,
-    /// The stations its lanes are sampled at, from [`sample_positions`].
-    stations: Vec<f64>,
-    lanes: Vec<BakedLane>,
-    /// Its lanes as the file gives them, for what lies along their borders.
-    def: SectionDef,
-}
-
-/// One baked lane of a [`BakedSection`].
-struct BakedLane {
-    od_id: i32,
-    id: LaneId,
-    /// Its position in the lane list.
-    index: usize,
-}
-
-/// Whether the lane `od_id` is in one of the `validity` ranges, or there are
-/// none.
-fn is_valid(od_id: i32, validity: &[(i32, i32)]) -> bool {
-    validity.is_empty()
-        || validity
-            .iter()
-            .any(|&(a, b)| (a.min(b)..=a.max(b)).contains(&od_id))
-}
-
-/// A baked road: its reference line with the profiles along it, and its lane
-/// sections. What placing an object, a signal or a road mark on it needs.
+/// A baked road: the [`Road`] the network keeps, and what the file puts
+/// along it that the network holds elsewhere. `defs` is in step with the
+/// road's sections.
 struct BakedRoad {
-    id: String,
-    length: f64,
-    rule: TrafficRule,
+    road: Road,
     types: Vec<properties::TypeDef>,
-    geoms: Vec<GeomRec>,
-    elevations: Vec<Cubic>,
-    superelevations: Vec<Cubic>,
-    shapes: Vec<ShapeProfile>,
-    lane_offsets: Vec<Cubic>,
-    sections: Vec<BakedSection>,
-}
-
-/// One lane across the road at a station: the `t` of its inner and outer
-/// border, and its height at each, lateral shape included.
-struct Across {
-    od_id: i32,
-    inner_t: f64,
-    outer_t: f64,
-    inner_height: f64,
-    outer_height: f64,
-}
-
-impl Across {
-    /// The lane's height at `t`, straight from its inner border to its outer
-    /// one, and on past them.
-    fn height(&self, t: f64) -> f64 {
-        let width = self.outer_t - self.inner_t;
-        let f = if width == 0.0 {
-            0.0
-        } else {
-            (t - self.inner_t) / width
-        };
-        self.inner_height + (self.outer_height - self.inner_height) * f
-    }
+    defs: Vec<SectionDef>,
 }
 
 impl BakedRoad {
-    /// The surface at a station `(s, t)`, on the lane there, and the
-    /// reference line's heading. A point on the border between two lanes is
-    /// on the inner one, as libOpenDRIVE finds it and as a road mark there
-    /// belongs to it. A point past the outermost lane takes that lane's outer
-    /// height. libOpenDRIVE carries the lane's slope on instead. A point on
-    /// no lane takes the lateral shape under it.
-    fn surface(&self, s: f64, t: f64) -> (Point, f64) {
-        let height = self
-            .section_at(s)
-            .filter(|section| section.def.raised() || !self.shapes.is_empty())
-            .and_then(|section| {
-                self.across(section, s)
-                    .filter(|a| f64::from(a.od_id.signum()) * (t - a.inner_t) > 0.0)
-                    .last()
-            })
-            .map_or_else(
-                || shape_at(&self.shapes, s, t),
-                |a| a.height(t.clamp(a.inner_t.min(a.outer_t), a.inner_t.max(a.outer_t))),
-            );
-        self.raised(s, t, height)
-    }
-
-    /// The surface of the lane `od_id` of `section` at `(s, t)`, straight
-    /// across the lane and on past its borders, so paint on its border lies
-    /// in it. For the center lane, the lateral shape on the center line, held
-    /// flat across, so its paint lies on a crown's ridge rather than under it.
-    fn lane_surface(&self, section: &BakedSection, od_id: i32, s: f64, t: f64) -> (Point, f64) {
-        if !section.def.raised() && self.shapes.is_empty() {
-            return self.raised(s, t, 0.0);
-        }
-        let height = self
-            .across(section, s)
-            .find(|a| a.od_id == od_id)
-            .map_or_else(
-                || {
-                    let base = active(&self.lane_offsets, s).map_or(0.0, |o| o.eval(s));
-                    shape_at(&self.shapes, s, base)
-                },
-                |a| a.height(t),
-            );
-        self.raised(s, t, height)
-    }
-
-    fn raised(&self, s: f64, t: f64, height: f64) -> (Point, f64) {
-        raised(
-            &self.geoms,
-            &self.elevations,
-            &self.superelevations,
-            (s, t),
-            height,
-        )
-    }
-
-    /// The lane section at `s`. On a boundary, the one starting there.
-    fn section_at(&self, s: f64) -> Option<&BakedSection> {
-        self.sections
-            .iter()
-            .rev()
-            .find(|section| section.start <= s + 1e-9)
-            .or(self.sections.first())
-    }
-
-    /// Each lane of `section` across the road at `s`, from the center
-    /// outward, the left side first.
-    fn across<'a>(
-        &'a self,
-        section: &'a BakedSection,
-        s: f64,
-    ) -> impl Iterator<Item = Across> + 'a {
-        let base = active(&self.lane_offsets, s).map_or(0.0, |o| o.eval(s));
-        let s_lane = s - section.start;
-        let phi = active(&self.superelevations, s).map_or(0.0, |e| e.eval(s));
-        [(&section.def.left, 1.0), (&section.def.right, -1.0)]
-            .into_iter()
-            .flat_map(move |(side, sign)| {
-                let borders: Vec<LaneBorders> = side_borders(side, sign, base, s_lane).collect();
-                let heights: Vec<(f64, f64)> = side_heights(
-                    side,
-                    sign,
-                    &self.shapes,
-                    (s, s_lane),
-                    base,
-                    phi,
-                    borders.iter().copied(),
-                )
-                .collect();
-                side.iter().zip(borders).zip(heights).map(
-                    |((lane, borders), (inner_height, outer_height))| Across {
-                        od_id: lane.id,
-                        inner_t: borders.inner,
-                        outer_t: borders.outer,
-                        inner_height,
-                        outer_height,
-                    },
-                )
-            })
-    }
-
-    /// The road's own axes at station `s`, from [`road_axes`].
-    fn axes(&self, s: f64) -> [[f64; 3]; 3] {
-        road_axes(&self.geoms, &self.elevations, &self.superelevations, s)
-    }
-
-    fn on_road(&self, s: f64) -> bool {
-        (0.0..=self.length).contains(&s)
-    }
-
-    /// The lanes alongside the stretch `[from, to]` whose `<lane id>` is in
-    /// one of the `validity` ranges, or all of them if there are no ranges.
-    /// A section starting exactly at `to` counts only if the stretch is a
-    /// single station, so a station on a section boundary is in the section
-    /// that starts there.
-    fn lanes(&self, (from, to): (f64, f64), validity: &[(i32, i32)]) -> Vec<LaneId> {
-        let last = self.sections.len().saturating_sub(1);
-        self.sections
-            .iter()
-            .enumerate()
-            .filter(|(i, sec)| {
-                sec.start <= to && (from < sec.end || (*i == last && from <= sec.end))
-            })
-            .flat_map(|(_, sec)| &sec.lanes)
-            .filter(|l| is_valid(l.od_id, validity))
-            .map(|l| l.id)
-            .collect()
+    /// Each lane section, with what the file says about its lanes.
+    fn sections(&self) -> impl Iterator<Item = (&RoadSection, &SectionDef)> {
+        self.road.sections.iter().zip(&self.defs)
     }
 }
 
-/// Bakes one `<road>`'s lanes into `out`, and returns its lane sections. None
-/// for a road with no `<lanes>`.
-#[allow(clippy::too_many_arguments)]
+/// Bakes one `<road>`'s lanes into `out`, and adds its lane sections to
+/// `baked`. None for a road with no `<lanes>`.
 fn bake_lanes(
     road: roxmltree::Node,
-    road_id: &str,
-    length: f64,
-    geoms: &[GeomRec],
-    elevations: &[Cubic],
-    superelevations: &[Cubic],
-    shapes: &[ShapeProfile],
-    lane_offsets: &[Cubic],
-    rule: TrafficRule,
+    baked: &mut BakedRoad,
     out: &mut Vec<Lane>,
     topo: &mut Topology,
-) -> Vec<BakedSection> {
+) {
     let Some(lanes_node) = child(road, "lanes") else {
-        return Vec::new();
+        return;
     };
 
     // Every lane section becomes its own set of lanes, each spanning that
@@ -1710,7 +1165,7 @@ fn bake_lanes(
         .filter(|n| n.has_tag_name("laneSection"))
         .collect();
     if sections.is_empty() {
-        return Vec::new();
+        return;
     }
     sections.sort_by(|a, b| {
         attr_f64(*a, "s")
@@ -1721,7 +1176,7 @@ fn bake_lanes(
     // Record the road's link targets + section count for connectivity.
     let (predecessor, successor) = links::road_link(road);
     topo.roads.insert(
-        road_id.to_string(),
+        baked.road.od_id.clone(),
         RoadInfo {
             sections: sections.len(),
             predecessor,
@@ -1729,7 +1184,7 @@ fn bake_lanes(
         },
     );
 
-    let mut baked = Vec::new();
+    let length = baked.road.length;
     for (i, section) in sections.iter().enumerate() {
         let s_start = attr_f64(*section, "s").unwrap_or(0.0);
         let s_end = sections
@@ -1740,43 +1195,28 @@ fn bake_lanes(
         if s_end - s_start < 1e-3 {
             continue; // zero-length section
         }
-        let (first, first_lane) = (topo.metas.len(), out.len());
-        let def = SectionDef::parse(*section);
-        let stations = emit_section(
-            &def,
-            s_start,
-            s_end,
-            geoms,
-            elevations,
-            superelevations,
-            shapes,
-            lane_offsets,
-            out,
-            topo,
-            road_id,
-            i,
-            rule,
-        );
-        // emit_section records a lane's meta as it pushes the lane, so the
-        // new metas and the new lanes are in step.
-        baked.push(BakedSection {
+        let first = topo.metas.len();
+        let mut def = SectionDef::parse(*section);
+        let [left, right] = std::mem::take(&mut def.geoms);
+        let mut geom = RoadSection {
             index: i,
             start: s_start,
             end: s_end,
-            stations,
-            lanes: topo.metas[first..]
-                .iter()
-                .enumerate()
-                .map(|(k, m)| BakedLane {
-                    od_id: m.od_id,
-                    id: m.id,
-                    index: first_lane + k,
-                })
-                .collect(),
-            def,
-        });
+            stations: Vec::new(),
+            left,
+            right,
+            lanes: Vec::new(),
+        };
+        geom.stations = emit_section(&baked.road, &geom, &def, out, topo);
+        // emit_section records a lane's meta as it pushes the lane, so the
+        // new metas and the new lanes are in step.
+        geom.lanes = topo.metas[first..]
+            .iter()
+            .map(|m| (m.od_id, m.id))
+            .collect();
+        baked.road.sections.push(geom);
+        baked.defs.push(def);
     }
-    baked
 }
 
 /// Append each lane of one section as a `Lane` spanning `[s_start, s_end]`,
@@ -1784,68 +1224,53 @@ fn bake_lanes(
 /// Malformed individual lanes are skipped, not fatal (real files).
 ///
 /// Every lane with a width or a border becomes a `Lane`, whatever its type.
-#[allow(clippy::too_many_arguments)]
+/// `section` is where its lanes lie on `road`, and `def` the rest of what
+/// the file says about them.
 fn emit_section(
+    road: &Road,
+    section: &RoadSection,
     def: &SectionDef,
-    s_start: f64,
-    s_end: f64,
-    geoms: &[GeomRec],
-    elevations: &[Cubic],
-    superelevations: &[Cubic],
-    shapes: &[ShapeProfile],
-    lane_offsets: &[Cubic],
     out: &mut Vec<Lane>,
     topo: &mut Topology,
-    road_id: &str,
-    section_idx: usize,
-    rule: TrafficRule,
 ) -> Vec<f64> {
-    let (left, right) = (&def.left, &def.right);
-    let bends = section_bends(geoms, lane_offsets, [left, right], s_start, s_end);
-    let knots: Vec<f64> = left
+    let (s_start, s_end) = (section.start, section.end);
+    let (road_id, section_idx) = (&road.od_id, section.index);
+    let bends = section_bends(
+        &road.geoms,
+        &road.lane_offsets,
+        [&section.left, &section.right],
+        s_start,
+        s_end,
+    );
+    let knots: Vec<f64> = section
+        .left
         .iter()
-        .chain(right)
+        .chain(&section.right)
         .flat_map(|l| &l.heights)
         .map(|h| s_start + h.s_offset)
-        .chain(shapes.iter().map(|p| p.s))
+        .chain(road.shapes.iter().map(|p| p.s))
         .collect();
     let sample_s = sample_positions(s_start, s_end, &bends, &knots);
     let road_bank: Vec<f64> = sample_s
         .iter()
-        .map(|&s| active(superelevations, s).map(|e| e.eval(s)).unwrap_or(0.0))
+        .map(|&s| active(&road.superelevations, s).map_or(0.0, |e| e.eval(s)))
         .collect();
     let level_bank = unless_flat(road_bank.iter().map(|&b| b as f32).collect());
-    for side in [left, right] {
+    for (defs, side) in [(&def.left, &section.left), (&def.right, &section.right)] {
         let is_left = side.first().map(|l| l.id > 0).unwrap_or(false);
         let sign = if is_left { 1.0 } else { -1.0 };
-        let direction = rule.direction(is_left);
+        let direction = road.rule.direction(is_left);
         // Lanes emitted on this side, center-outward, as (id, index in `out`,
         // kind). Consecutive ones are lateral neighbors (lane-change edges),
         // subject to the drivability test below.
         let mut emitted: Vec<(LaneId, usize, LaneType)> = Vec::new();
-        let across = side_across(side, sign, lane_offsets, s_start, &sample_s);
-        let heights = side_height_rows(
-            side,
-            sign,
-            shapes,
-            lane_offsets,
-            s_start,
-            &sample_s,
-            &road_bank,
-            &across,
-        );
-        for (k, ((lane, borders), heights)) in side.iter().zip(&across).zip(&heights).enumerate() {
-            let kind = lane.kind;
+        let across = side_across(road, side, sign, s_start, &sample_s);
+        let heights = side_height_rows(road, side, sign, s_start, &sample_s, &road_bank, &across);
+        let lanes = defs.iter().zip(side).zip(&across).zip(&heights);
+        for (k, (((def, lane), borders), heights)) in lanes.enumerate() {
+            let kind = def.kind;
             let held = side[..=k].iter().any(|l| l.level);
-            let (points, headings) = sample_lane(
-                geoms,
-                elevations,
-                superelevations,
-                borders,
-                heights,
-                sign,
-                &sample_s,
-            );
+            let (points, headings) = sample_lane(road, borders, heights, sign, &sample_s);
             // Anchor the ends on the true curve tangents so this section's ribs
             // line up with its neighbours'.
             let (Some(&start_tangent), Some(&end_tangent)) = (headings.first(), headings.last())
@@ -1866,12 +1291,12 @@ fn emit_section(
                 section: section_idx,
                 od_id: lane.id,
                 direction,
-                succ_link: lane.succ_link,
-                pred_link: lane.pred_link,
+                succ_link: def.succ_link,
+                pred_link: def.pred_link,
                 heights: lane_heights(lane, s_start, &sample_s),
             });
             emitted.push((id, out.len(), kind));
-            let tilted = !lane.heights.is_empty() || !shapes.is_empty() || held;
+            let tilted = !lane.heights.is_empty() || !road.shapes.is_empty() || held;
             let (width, widths) = width_profile(borders, tilted.then_some(&heights[..]));
             out.push(Lane {
                 id,
@@ -1912,25 +1337,6 @@ fn emit_section(
         }
     }
     sample_s
-}
-
-/// The road's own axes at station `s`, as libOpenDRIVE has them: along the
-/// reference line up its grade, across it tilted by the superelevation, and
-/// square to both. Unit length and square to each other, right-handed.
-fn road_axes(
-    geoms: &[GeomRec],
-    elevations: &[Cubic],
-    superelevations: &[Cubic],
-    s: f64,
-) -> [[f64; 3]; 3] {
-    let (_, _, hdg) = geom_at(geoms, s).pose(s);
-    let grade = active(elevations, s).map_or(0.0, |e| e.slope(s));
-    let phi = active(superelevations, s).map_or(0.0, |e| e.eval(s));
-    let (sin_h, cos_h) = hdg.sin_cos();
-    let (sin_p, cos_p) = phi.sin_cos();
-    let along = unit([cos_h, sin_h, grade]);
-    let up = unit(cross(along, [-sin_h * cos_p, cos_h * cos_p, sin_p]));
-    [along, cross(up, along), up]
 }
 
 /// A lane's bank at each station, parallel to its `borders` and the
@@ -1976,7 +1382,7 @@ fn unless_flat(bank: Vec<f32>) -> Vec<f32> {
 
 /// A lane's heights at each of `sample_s`, parallel to them. Empty for a
 /// lane level with the road at every station.
-fn lane_heights(lane: &LaneDef, s_start: f64, sample_s: &[f64]) -> Vec<LaneHeight> {
+fn lane_heights(lane: &LaneGeom, s_start: f64, sample_s: &[f64]) -> Vec<LaneHeight> {
     if lane.heights.is_empty() {
         return Vec::new();
     }
@@ -1997,15 +1403,6 @@ fn lane_heights(lane: &LaneDef, s_start: f64, sample_s: &[f64]) -> Vec<LaneHeigh
     }
 }
 
-fn cross([a, b, c]: [f64; 3], [x, y, z]: [f64; 3]) -> [f64; 3] {
-    [b * z - c * y, c * x - a * z, a * y - b * x]
-}
-
-fn unit(v: [f64; 3]) -> [f64; 3] {
-    let length = v.iter().map(|c| c * c).sum::<f64>().sqrt();
-    v.map(|c| c / length)
-}
-
 /// Sample one lane's centerline to points in our coordinate frame, with the
 /// reference line's analytical heading at each sample. A raised lane's
 /// centerline stands off the road along its normal by the lane's height at
@@ -2020,9 +1417,7 @@ fn unit(v: [f64; 3]) -> [f64; 3] {
 /// from [`side_across`], `heights` its border heights there, from
 /// [`border_heights`], and `sign` which way it stacks.
 fn sample_lane(
-    geoms: &[GeomRec],
-    elevations: &[Cubic],
-    superelevations: &[Cubic],
+    road: &Road,
     borders: &[LaneBorders],
     heights: &[(f64, f64)],
     sign: f64,
@@ -2034,13 +1429,7 @@ fn sample_lane(
         .zip(heights)
         .map(|((&s, b), &(inner, outer))| {
             let t = b.inner + sign * b.width / 2.0;
-            let (point, hdg) = raised(
-                geoms,
-                elevations,
-                superelevations,
-                (s, t),
-                (inner + outer) / 2.0,
-            );
+            let (point, hdg) = road.raised(s, t, (inner + outer) / 2.0);
             // A lane offset laterally by a constant `t` is parallel to the
             // reference line, so it shares its heading. Where `t` varies with
             // `s` the lane's own tangent swings off it slightly; the reference
@@ -2053,102 +1442,12 @@ fn sample_lane(
         .unzip()
 }
 
-/// The road surface at station `s`, lateral offset `t` from the reference
-/// line, and the reference line's heading there.
-fn surface_at(
-    geoms: &[GeomRec],
-    elevations: &[Cubic],
-    superelevations: &[Cubic],
-    s: f64,
-    t: f64,
-) -> (Point, f64) {
-    let (x, y, hdg) = geom_at(geoms, s).pose(s);
-    let elev = active(elevations, s).map(|e| e.eval(s)).unwrap_or(0.0);
-    // Reference-line pivot: superelevation rolls the cross-section about the
-    // reference line by phi, so a point at lateral t rides up by t·sin phi
-    // (positive t = left edge, raised for phi > 0) and its horizontal reach
-    // shrinks to t·cos phi. phi = 0 leaves this the pure-horizontal offset it
-    // was.
-    let phi = active(superelevations, s).map(|e| e.eval(s)).unwrap_or(0.0);
-    let (sin_phi, cos_phi) = phi.sin_cos();
-    let t_h = t * cos_phi;
-    // The baked frame is OpenDRIVE's own, so the reference-line point needs no
-    // mapping. Offset along the left-hand normal, which in the reference line's
-    // plane is (-sin hdg, cos hdg).
-    let point = Point::new(
-        (x - t_h * hdg.sin()) as f32,
-        (y + t_h * hdg.cos()) as f32,
-        (elev + t * sin_phi) as f32,
-    );
-    (point, hdg)
-}
-
-/// The road surface at `(s, t)` as [`surface_at`] gives it, stood off along
-/// the road's normal there by `height`.
-fn raised(
-    geoms: &[GeomRec],
-    elevations: &[Cubic],
-    superelevations: &[Cubic],
-    (s, t): (f64, f64),
-    height: f64,
-) -> (Point, f64) {
-    let (point, hdg) = surface_at(geoms, elevations, superelevations, s, t);
-    if height == 0.0 {
-        return (point, hdg);
-    }
-    let up = road_axes(geoms, elevations, superelevations, s)[2];
-    (
-        point + Vector::from_array(up.map(|c| (c * height) as f32)),
-        hdg,
-    )
-}
-
-/// Where one lane lies across the road at one station: the `t` of its inner
-/// and outer border, and its width between them.
-#[derive(Clone, Copy)]
-struct LaneBorders {
-    inner: f64,
-    outer: f64,
-    width: f64,
-}
-
-/// Each lane of `side` across the road `s_lane` metres into its section,
-/// from the center outward. `sign` is 1.0 for the left side and -1.0 for the
-/// right, and `base` the `t` of the center lane, from `<laneOffset>`. Every
-/// place that needs a lane's borders reads them here.
-///
-/// A lane is 0 wide before its first `<width>` or `<border>`, and where
-/// either would make it narrower than 0. See [`LaneExtent`].
-fn side_borders(
-    side: &[LaneDef],
-    sign: f64,
-    base: f64,
-    s_lane: f64,
-) -> impl Iterator<Item = LaneBorders> + '_ {
-    side.iter().scan(base, move |t, lane| {
-        let inner = *t;
-        let width = match &lane.extent {
-            LaneExtent::Width(widths) => active(widths, s_lane).map_or(0.0, |w| w.eval(s_lane)),
-            LaneExtent::Border(borders) => {
-                active(borders, s_lane).map_or(0.0, |b| sign * (b.eval(s_lane) - inner))
-            }
-        }
-        .max(0.0);
-        *t += sign * width;
-        Some(LaneBorders {
-            inner,
-            outer: *t,
-            width,
-        })
-    })
-}
-
 /// Each lane of `side` across the road at each of `sample_s`, from
 /// [`side_borders`]: one row per lane, parallel to `sample_s`.
 fn side_across(
-    side: &[LaneDef],
+    road: &Road,
+    side: &[LaneGeom],
     sign: f64,
-    lane_offsets: &[Cubic],
     s_start: f64,
     sample_s: &[f64],
 ) -> Vec<Vec<LaneBorders>> {
@@ -2156,7 +1455,7 @@ fn side_across(
         .map(|_| Vec::with_capacity(sample_s.len()))
         .collect();
     for &s in sample_s {
-        let base = active(lane_offsets, s).map_or(0.0, |o| o.eval(s));
+        let base = road.base(s);
         for (row, b) in rows
             .iter_mut()
             .zip(side_borders(side, sign, base, s - s_start))
@@ -2171,12 +1470,10 @@ fn side_across(
 /// [`side_heights`]: one row per lane, parallel to `sample_s` and to the
 /// rows of `across`, from [`side_across`]. `road_bank` is the
 /// superelevation at each station.
-#[allow(clippy::too_many_arguments)]
 fn side_height_rows(
-    side: &[LaneDef],
+    road: &Road,
+    side: &[LaneGeom],
     sign: f64,
-    shapes: &[ShapeProfile],
-    lane_offsets: &[Cubic],
     s_start: f64,
     sample_s: &[f64],
     road_bank: &[f64],
@@ -2186,9 +1483,16 @@ fn side_height_rows(
         .map(|_| Vec::with_capacity(sample_s.len()))
         .collect();
     for (i, (&s, &phi)) in sample_s.iter().zip(road_bank).enumerate() {
-        let base = active(lane_offsets, s).map_or(0.0, |o| o.eval(s));
         let borders = across.iter().map(|row| row[i]);
-        let heights = side_heights(side, sign, shapes, (s, s - s_start), base, phi, borders);
+        let heights = side_heights(
+            side,
+            sign,
+            &road.shapes,
+            (s, s - s_start),
+            road.base(s),
+            phi,
+            borders,
+        );
         for (row, h) in rows.iter_mut().zip(heights) {
             row.push(h);
         }
@@ -2224,14 +1528,6 @@ fn width_profile(borders: &[LaneBorders], heights: Option<&[(f64, f64)]>) -> (f3
     let nominal = widths.iter().copied().fold(0.0_f32, f32::max);
     let constant = widths.iter().all(|w| (w - nominal).abs() < 1e-6);
     (nominal, if constant { Vec::new() } else { widths })
-}
-
-fn geom_at(geoms: &[GeomRec], s: f64) -> &GeomRec {
-    geoms
-        .iter()
-        .rev()
-        .find(|g| g.s <= s + 1e-9)
-        .unwrap_or(&geoms[0])
 }
 
 /// Arc-length sample positions over `[start, end]`, always including the
@@ -2311,7 +1607,7 @@ fn sample_positions(start: f64, end: f64, bends: &[f64], knots: &[f64]) -> Vec<f
 fn section_bends(
     geoms: &[GeomRec],
     lane_offsets: &[Cubic],
-    sides: [&[LaneDef]; 2],
+    sides: [&[LaneGeom]; 2],
     start: f64,
     end: f64,
 ) -> Vec<f64> {
@@ -2495,7 +1791,7 @@ struct Structures {
 /// One missing `s` or `length`, or with a negative length, is skipped.
 fn place_structures(
     objects_node: roxmltree::Node,
-    road: &BakedRoad,
+    road: &Road,
     lanes: &[Lane],
     out: &mut Structures,
 ) {
@@ -2525,10 +1821,14 @@ fn place_structures(
             if to - from < 1e-6 {
                 continue;
             }
-            for lane in sec.lanes.iter().filter(|l| is_valid(l.od_id, &validity)) {
-                let center = &lanes[lane.index].center;
+            for &(_, id) in sec
+                .lanes
+                .iter()
+                .filter(|(od_id, _)| is_valid(*od_id, &validity))
+            {
+                let center = &lanes[id.0].center;
                 covered.push(Coverage {
-                    lane: lane.id,
+                    lane: id,
                     from: along(center.points(), &sec.stations, from),
                     to: along(center.points(), &sec.stations, to),
                 });
@@ -2543,7 +1843,7 @@ fn place_structures(
         });
         out.provenance.push(StructureProvenance {
             structure: id,
-            road_id: road.id.clone(),
+            road_id: road.od_id.clone(),
             od_id: text("id"),
             s,
             length,
@@ -2679,7 +1979,7 @@ fn orientation(node: roxmltree::Node) -> Orientation {
 fn place_objects(
     objects_node: roxmltree::Node,
     index: &ObjectIndex,
-    road: &BakedRoad,
+    road: &Road,
     out: &mut Objects,
 ) {
     for node in objects_node.children() {
@@ -2723,7 +2023,7 @@ fn place_objects(
 ///
 /// Each baked object applies to the lanes alongside the stretch of road it
 /// spans, narrowed by `at`'s validity.
-fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &mut Objects) {
+fn place_object(node: roxmltree::Node, at: &Placement, road: &Road, out: &mut Objects) {
     let base = Station {
         s: at.s,
         t: at.t,
@@ -2834,7 +2134,7 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &BakedRoad, out: &m
         });
         out.provenance.push(ObjectProvenance {
             object: id,
-            road_id: road.id.clone(),
+            road_id: road.od_id.clone(),
             od_id: text("id"),
             s: part.s,
             t: part.t,
@@ -2856,7 +2156,7 @@ fn outline_parts(
     origin: Option<&Frame>,
     st: &Station,
     shift: (f64, f64),
-    road: &BakedRoad,
+    road: &Road,
 ) -> Vec<Part> {
     let mut parts = Vec::new();
     let mut holes = Vec::new();
@@ -3002,7 +2302,7 @@ impl<'a> Repeat<'a> {
 /// resting on `zOffset`, and `width` and `height` play no part. Also returns
 /// the station the sections start at, and the `s` they end at. `None` if less
 /// than a millimetre of it is on the road.
-fn sweep(repeat: &Repeat, base: &Station, road: &BakedRoad) -> Option<(Shape, Station, f64)> {
+fn sweep(repeat: &Repeat, base: &Station, road: &Road) -> Option<(Shape, Station, f64)> {
     let start = repeat.start.max(0.0);
     let end = (repeat.start + repeat.length).min(road.length);
     if end - start < 1e-3 {
@@ -3120,7 +2420,7 @@ fn outline(
     frame: Option<&Frame>,
     s: f64,
     (shift_s, shift_t): (f64, f64),
-    road: &BakedRoad,
+    road: &Road,
 ) -> Option<Ring> {
     let mut stretch = (f64::INFINITY, f64::NEG_INFINITY);
     let mut spans = |s: f64| stretch = (stretch.0.min(s), stretch.1.max(s));
@@ -3444,6 +2744,7 @@ fn child<'a>(node: roxmltree::Node<'a, 'a>, tag: &str) -> Option<roxmltree::Node
 mod tests {
     use super::*;
     use crate::coords::Vector;
+    use crate::Direction;
 
     // A straight 40 m road climbing at 4%, one right (forward) driving lane.
     const STRAIGHT: &str = r#"<?xml version="1.0"?>
@@ -5184,43 +4485,27 @@ mod tests {
             c,
             d: 0.0,
         };
-        let lane = |widths| LaneDef {
+        let lane = |widths| LaneGeom {
             id: -1,
-            kind: LaneType::Driving,
             extent: LaneExtent::Width(vec![widths]),
-            pred_link: None,
-            succ_link: None,
-            marks: Vec::new(),
             heights: Vec::new(),
-            speeds: Vec::new(),
-            rules: Vec::new(),
-            access: Vec::new(),
-            materials: Vec::new(),
             level: false,
         };
-        let road = |geom| {
-            [GeomRec {
-                s: 0.0,
-                x: 0.0,
-                y: 0.0,
-                hdg: 0.0,
-                geom,
-            }]
-        };
-        let bend = |geom, right: &[LaneDef]| {
-            section_bends(&road(geom), &[], [&[], right], 0.0, 10.0)
+        let road = |shape| [GeomRec::new(0.0, 0.0, 0.0, 0.0, 10.0, shape)];
+        let bend = |shape, right: &[LaneGeom]| {
+            section_bends(&road(shape), &[], [&[], right], 0.0, 10.0)
                 .into_iter()
                 .fold(0.0, f64::max)
         };
         let even = [lane(width(3.0, 0.0))];
         // Straight and even, nothing bends. On a 10 m radius every edge turns
         // 0.1 rad a metre, however far out.
-        assert!(bend(Geom::Line, &even) < 1e-9);
-        let arc = bend(Geom::Arc { curvature: 0.1 }, &even);
+        assert!(bend(GeomShape::Line, &even) < 1e-9);
+        let arc = bend(GeomShape::Arc { curvature: 0.1 }, &even);
         assert!((arc - 0.1).abs() < 1e-6, "{arc}");
         // A lane widening as 0.1 s^2 swings its outer edge off a straight
         // line, turning it 0.2 rad a metre where it starts.
-        let flare = bend(Geom::Line, &[lane(width(3.0, 0.1))]);
+        let flare = bend(GeomShape::Line, &[lane(width(3.0, 0.1))]);
         assert!((flare - 0.2).abs() < 0.01, "{flare}");
 
         // Samples every 2 m with no bend, closer to keep to SAMPLE_TURN, and
@@ -5373,13 +4658,6 @@ mod tests {
     fn a_frames_angles_turn_it_as_it_is() {
         // Turned on a road that climbs, banks and bends, and pitched straight
         // up, where yaw and roll turn about the same axis.
-        let geoms = [GeomRec {
-            s: 0.0,
-            x: 0.0,
-            y: 0.0,
-            hdg: 0.4,
-            geom: Geom::Line,
-        }];
         let cubic = |a, b| Cubic {
             start: 0.0,
             a,
@@ -5387,7 +4665,18 @@ mod tests {
             c: 0.0,
             d: 0.0,
         };
-        let road = road_axes(&geoms, &[cubic(0.0, 0.08)], &[cubic(-0.2, 0.0)], 5.0);
+        let road = Road {
+            od_id: String::new(),
+            length: 10.0,
+            rule: TrafficRule::RightHand,
+            geoms: vec![GeomRec::new(0.0, 0.0, 0.0, 0.4, 10.0, GeomShape::Line)],
+            elevations: vec![cubic(0.0, 0.08)],
+            superelevations: vec![cubic(-0.2, 0.0)],
+            shapes: Vec::new(),
+            lane_offsets: Vec::new(),
+            sections: Vec::new(),
+        }
+        .axes(5.0);
         let half = std::f64::consts::FRAC_PI_2;
         for (axes, turn) in [
             (FLAT, (0.3, -0.2, 0.5)),

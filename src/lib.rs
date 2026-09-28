@@ -741,6 +741,7 @@ mod network;
 mod object;
 mod object_mesh;
 mod parse;
+mod road;
 mod road_mark;
 mod route;
 mod signal;
