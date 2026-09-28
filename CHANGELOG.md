@@ -17,6 +17,8 @@
   `nearest_lane`'s point is within 1.1 cm of the exact center for 99 % of
   the points tried, so moving them to road `s` would break every caller
   for no gain in where they land.
+- The viewer's lane readout shows the lane offset and the centerline's `s`
+  beside the road `s` and `t`.
 
 ### Road coordinates
 

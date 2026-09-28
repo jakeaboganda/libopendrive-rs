@@ -98,7 +98,8 @@ lit as you hover others. The readout shows:
 - the road id, the OpenDRIVE lane id and the lane type
 - the surface point `x, y, z`
 - the road `s` and `t` there, in OpenDRIVE's road coordinates
-- `s` and the offset along the lane
+- the lane position: the offset from the lane's center toward `+t`, and how
+  far along the lane's centerline the point is
 - the lane's width at that point, which grows along a lane that opens out
   of nothing, whether its widths or its `<border>`s shape it. A tilted
   lane's is measured across its surface.
@@ -312,10 +313,12 @@ centerline vertex its road `s` and `t` from `RoadNetwork::road_position_on`,
 on the lane's own road. The page interpolates them along the lane, and adds
 the hovered point's offset from the centerline, tilted with the lane.
 
-The lane `s` and offset are measured from the lane centerline, as
-`Polyline::project` measures them. `s` is arc length along the lane. The
-offset is signed, positive to the left of the lane's stored heading, so it
-is near zero in the middle of a lane.
+A lane position shares the road's `s`. Its offset is from the lane's
+center toward `+t`, as `RoadNetwork::lane_position` gives it, so it is near
+zero in the middle of a lane. The centerline `s` is the distance along the
+lane's baked centerline, as `Polyline::project` measures it and
+`RoadNetwork::centerline_s` gives it. The speed limits and other stretches
+along a lane use it. On a bend it drifts away from the road's `s`.
 
 ## How a hover finds its lane
 
