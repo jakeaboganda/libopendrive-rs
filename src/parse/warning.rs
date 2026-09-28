@@ -129,6 +129,17 @@ pub enum Warning {
         /// Its `rule`, as the file writes it. Empty if it has none.
         rule: String,
     },
+    /// A `<lane>` without `level="true"` outside one with it. The spec
+    /// says every lane outside a level lane is level too. The crate holds
+    /// it level.
+    LaneNotLevel {
+        /// The `<road id>` it is on.
+        road_id: String,
+        /// The zero-based lane-section index.
+        section: usize,
+        /// Its `<lane id>`.
+        lane: i32,
+    },
 }
 
 /// Why a `<road>` baked nothing.
@@ -159,6 +170,7 @@ impl Warning {
             | Self::UnknownTrafficRule { road_id, .. }
             | Self::SpeedLimitDropped { road_id, .. }
             | Self::AccessDropped { road_id, .. }
+            | Self::LaneNotLevel { road_id, .. }
             | Self::ConnectionDropped {
                 incoming_road_id: road_id,
                 ..
@@ -243,6 +255,14 @@ impl fmt::Display for Warning {
             } => write!(
                 f,
                 "road {road_id:?}: lane {lane}'s <access> at s {s:.2} m dropped, rule {rule:?} is neither allow nor deny"
+            ),
+            Self::LaneNotLevel {
+                road_id,
+                section,
+                lane,
+            } => write!(
+                f,
+                "road {road_id:?}, lane section {section}: lane {lane} is outside a level lane but not level, held level"
             ),
         }
     }

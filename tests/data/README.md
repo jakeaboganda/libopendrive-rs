@@ -84,6 +84,13 @@ read. Regenerate with
 
     python3 tests/data/speed_limits.py
 
+`level_lanes.xodr` comes from `level_lanes.py`, which writes the XML
+itself. It has level shoulders and a raised level sidewalk beside a
+superelevated road, a level shoulder beside a crowned road, and a lane
+outside a level lane that isn't level. Regenerate with
+
+    python3 tests/data/level_lanes.py
+
 `lane_heights.xodr` comes from `lane_heights.py` the same way. It has
 raised sidewalks, one flat and one with a kerb ramp, on a flat road, a
 banked and climbing road, a road with two lane sections, and an arc. The

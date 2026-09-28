@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Level lanes
+
+- A lane with `level="true"` is kept out of the superelevation and the
+  lateral shape. It starts at its inner neighbour's outer border and runs
+  level, with its own `<height>`s on top, so its `Lane::bank` is 0. The
+  lanes outside it stack on it. Objects, signals and road marks stand on
+  it. The A9 Testfeld map has 16, beside banked roads.
+- A level lane is `w / cos φ` wide in plan on a road superelevated by `φ`,
+  as libOpenDRIVE builds it: 2.5 mm more on a 2 m lane at 5 %.
+- Where the crate departs from the spec:
+  - A lane outside a level lane is held level even where the file says it
+    is not, and raises `Warning::LaneNotLevel`. The spec says it is level.
+  - A level lane starts at its inner neighbour's outer height, `<height>`
+    included. libOpenDRIVE starts it on the road.
+
 ### Lane rules, access and materials
 
 - `RoadNetwork::lane_rules`, `lane_access` and `lane_materials` hold each
@@ -138,8 +153,6 @@
   - A profile that starts inside the road holds its first shape's value
     out to the edge, and raises `Warning::ShapeShortOfRoad`. The spec
     says each profile covers the road.
-  - A lane with `level="true"` is shaped like any other. The spec keeps it
-    out of the shape.
   - An `attached` CRG over a shaped road answers without the shape.
   - A shape without `s` or `t` is skipped, and a missing `a`, `b`, `c` or
     `d` is 0. The spec requires all six. Shapes out of order are sorted.

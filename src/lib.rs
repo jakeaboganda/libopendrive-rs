@@ -62,7 +62,7 @@
 //! | `<lanes><laneOffset>` | `s`, `a`, `b`, `c`, `d` |
 //! | `<laneSection>` | `s` |
 //! | `<left>`, `<center>`, `<right>` | none |
-//! | `<lane>` | `id`, `type` |
+//! | `<lane>` | `id`, `type`, `level` |
 //! | `<lane><width>` | `sOffset`, `a`, `b`, `c`, `d` |
 //! | `<lane><border>` | `sOffset`, `a`, `b`, `c`, `d` |
 //! | `<lane><height>` | `sOffset`, `inner`, `outer` |
@@ -344,8 +344,6 @@
 //!   inside the road's right edge, the crate holds the first shape's value
 //!   from its `t` out to the edge, and raises [`Warning::ShapeShortOfRoad`].
 //!   The last shape runs on to the left edge, as each runs to the next.
-//! - The spec keeps a lane with `level="true"` out of the shape. The crate
-//!   does not read `level`, so it shapes such a lane like any other.
 //! - The spec's surface curves between a lane's borders. The crate's goes
 //!   straight across, as above, and objects and signals stand on it, flush
 //!   with the mesh.
@@ -355,6 +353,29 @@
 //! - The spec requires `s`, `t`, `a`, `b`, `c` and `d`. A shape without `s`
 //!   or `t` is skipped, and a missing `a`, `b`, `c` or `d` is 0, as for
 //!   superelevation. Shapes out of order are sorted rather than dropped.
+//!
+//! # Level lanes
+//!
+//! A lane with `level="true"`, such as a verge beside a banked motorway,
+//! is kept out of the superelevation and the lateral shape. It starts at
+//! its inner neighbour's outer border and runs level from there, so its
+//! [`Lane::bank`] is 0 and the mesh stays closed. Its own `<height>`s
+//! stand on top, and the lane outside it stacks on its outer border. Its
+//! objects, signals and road marks stand on it.
+//!
+//! The crate builds a level lane from the road's tilted cross-section, as
+//! libOpenDRIVE does. So in plan it is `w / cos φ` wide on a road
+//! superelevated by `φ`: 2.5 mm more on a 2 m lane at 5 %.
+//!
+//! The crate departs from the OpenDRIVE 1.9 spec here:
+//!
+//! - The spec says every lane outside a level lane is level too. The crate
+//!   holds such a lane level even where the file says it is not, and raises
+//!   [`Warning::LaneNotLevel`].
+//! - The spec says a level lane stays at the height of its inner
+//!   neighbour's outer border. The crate reads that height with the
+//!   neighbour's `<height>`, so a level lane outside a raised sidewalk
+//!   starts at the sidewalk's height. libOpenDRIVE starts it on the road.
 //!
 //! # Lane heights
 //!
@@ -663,6 +684,8 @@
 //!   [Lane rules, access and materials](#lane-rules-access-and-materials).
 //! - [`Warning::SpeedLimitDropped`] for a `<speed>` it can't read. See
 //!   [Speed limits and road types](#speed-limits-and-road-types).
+//! - [`Warning::LaneNotLevel`] for a lane outside a level lane that is not
+//!   level. See [Level lanes](#level-lanes).
 //!
 //! Elements the crate does not read at all raise none. Real maps are full of
 //! them, and they would bury the rest. Other things it drops, such as a lane

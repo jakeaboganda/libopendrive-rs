@@ -31,6 +31,8 @@ files declaring 1.4, 1.6 and 1.7.
   middle of a 3.5 m lane on a crown falling 2.5 % at 7 m out. The first
   profile holds before it, where the spec gives 0. Objects, signals and
   road marks stand on the shape as the mesh has it.
+- Level lanes, `level="true"`, kept out of the superelevation and the
+  shape. Each runs level from its inner neighbour's outer border.
 - Per-lane widths, `laneOffset`, and multiple lane sections.
 - The whole lane cross-section, the carriageway included. `LaneType` names
   every function the format defines, among them sidewalks, kerbs, ramps and
@@ -195,6 +197,7 @@ road raises `Warning::ShapeShortOfRoad`. A road `rule` other than `RHT` or
 the roads it joins raises `Warning::ConnectionDropped`. A `<speed>` the
 crate can't read raises `Warning::SpeedLimitDropped`, and an `<access>`
 whose `rule` is neither `allow` nor `deny` raises `Warning::AccessDropped`.
+A lane outside a level lane that isn't level raises `Warning::LaneNotLevel`.
 The elements below raise nothing.
 
 ## What it ignores
