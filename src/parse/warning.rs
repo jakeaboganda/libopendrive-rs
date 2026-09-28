@@ -157,6 +157,16 @@ pub enum Warning {
         /// How far apart they are, in metres.
         gap: f64,
     },
+    /// A junction `<priority>` whose `high` or `low` names no road the load
+    /// baked. The crate drops it.
+    PriorityDropped {
+        /// The `<junction id>` it is in.
+        junction_id: String,
+        /// Its `high`, empty if it has none.
+        high: String,
+        /// Its `low`, empty if it has none.
+        low: String,
+    },
     /// A `<speed>` whose `max` or `unit` the crate can't read. The crate
     /// drops it, so the lane's limit there is its road's, or the lane's
     /// `<speed>` before it.
@@ -249,6 +259,7 @@ impl Warning {
             | Self::RoadLengthMismatch { road_id, .. }
             | Self::LinkGap { road_id, .. }
             | Self::LaneNotLevel { road_id, .. }
+            | Self::PriorityDropped { low: road_id, .. }
             | Self::ConnectionDropped {
                 incoming_road_id: road_id,
                 ..
@@ -353,6 +364,14 @@ impl fmt::Display for Warning {
             } => write!(
                 f,
                 "road {road_id:?}, lane section {section}: lane {lane} links to road {to_road_id:?}, lane section {to_section}, lane {to_lane}, {gap:.2} m away"
+            ),
+            Self::PriorityDropped {
+                junction_id,
+                high,
+                low,
+            } => write!(
+                f,
+                "junction {junction_id:?}: <priority> of road {high:?} over road {low:?} dropped, the load has no such road"
             ),
             Self::UnknownLaneDirection {
                 road_id,

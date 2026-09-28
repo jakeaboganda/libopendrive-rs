@@ -89,6 +89,7 @@
 //! | `<junction>` | `id`, `type` |
 //! | `<connection>` | `id`, `incomingRoad`, `connectingRoad`, `linkedRoad`, `contactPoint` |
 //! | `<laneLink>` | `from`, `to` |
+//! | `<junction><priority>` | `high`, `low` |
 //! | `<objects><object>` | `id`, `type`, `subtype`, `name`, `dynamic`, `orientation`, `validLength`, `s`, `t`, `zOffset`, `hdg`, `pitch`, `roll`, `length`, `width`, `height`, `radius` |
 //! | `<objects><objectReference>` | `id`, `s`, `t`, `zOffset`, `orientation`, `validLength` |
 //! | `<objects><tunnel>` | `id`, `name`, `type`, `s`, `length`, `lighting`, `daylight` |
@@ -144,6 +145,13 @@
 //! through a direct junction links in both directions. A connection
 //! missing its `incomingRoad`, or the road it leads into, is dropped with a
 //! [`Warning::ConnectionDropped`].
+//!
+//! A junction's `<priority>`s say which of its roads gives way to which.
+//! Each is a [`Priority`] in [`RoadNetwork::priorities`], and
+//! [`RoadNetwork::yields_to`] reads them for one road. The crate reads
+//! nothing else into them, such as the signs or the lanes' order. One
+//! naming a road the load did not bake is dropped, with a
+//! [`Warning::PriorityDropped`]. libOpenDRIVE stores them too.
 //!
 //! A road's lanes drive into a common junction from the end whose road
 //! `<link>` names it. The spec requires every incoming road to name its
@@ -884,6 +892,8 @@
 //!   roads it joins.
 //! - [`Warning::JunctionLinkMissing`] for an incoming road whose `<link>`
 //!   leaves out its junction.
+//! - [`Warning::PriorityDropped`] for a junction `<priority>` naming a road
+//!   the load did not bake.
 //! - [`Warning::RoadLengthMismatch`] for a road whose `length` is more than
 //!   1 cm from where its `<planView>` ends. The road bakes to its `length`.
 //! - [`Warning::LinkGap`] for a lane link whose lanes don't meet: more than
@@ -967,10 +977,10 @@ pub use opencrg;
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ControllerProvenance,
     ImportError, JunctionControllerProvenance, LaneHeight, LaneProvenance, ObjectProvenance,
-    Orientation, Provenance, RoadEnd, RoadMarkProvenance, RoadSkipReason, SignalProvenance,
-    SignalReferenceProvenance, StructureProvenance, Warning,
+    Orientation, PriorityProvenance, Provenance, RoadEnd, RoadMarkProvenance, RoadSkipReason,
+    SignalProvenance, SignalReferenceProvenance, StructureProvenance, Warning,
 };
-pub use road::{LanePosition, Road, RoadId, RoadLane, RoadPosition};
+pub use road::{LanePosition, Priority, Road, RoadId, RoadLane, RoadPosition};
 pub use road_mark::{
     LaneChange, LinePattern, LineRule, RoadMark, RoadMarkId, RoadMarkLine, RoadMarkType,
     RoadMarkWeight,

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Junction priority
+
+- `RoadNetwork::priorities` lists each junction `<priority>` as a
+  `Priority`: the road with priority and the road that gives way to it.
+  `RoadNetwork::yields_to` reads them for one road, and
+  `Provenance::priorities` names each one's junction. They serialize with
+  the network.
+- `Warning::PriorityDropped` names a `<priority>` whose `high` or `low` is
+  no road the load baked.
+
 ### Lane direction
 
 - `feat!`: a lane's `direction` overrides the way its side of the road runs.
@@ -54,7 +64,7 @@
 
 - `docs/comparison.md` sets each of the 671 elements and attributes in the
   OpenDRIVE 1.9 schema beside what this crate, esmini 3.8.2, libOpenDRIVE
-  0.5.0 and CARLA 0.10.0 do with it, with the source line for each. 34
+  0.5.0 and CARLA 0.10.0 do with it, with the source line for each. 31
   rows have another library doing more, mostly names the others keep and
   signal logic. It also compares the queries each answers.
 

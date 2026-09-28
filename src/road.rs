@@ -30,6 +30,17 @@ pub struct RoadPosition {
     pub t: f64,
 }
 
+/// One road giving way to another where both are in the same junction, from
+/// an OpenDRIVE junction `<priority>`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Priority {
+    /// The road with priority.
+    pub high: RoadId,
+    /// The road that gives way to it.
+    pub low: RoadId,
+}
+
 /// A place on a lane: `s` along its road's reference line, and `offset`
 /// across from the lane's center, as esmini's `SetLanePos` takes them.
 ///

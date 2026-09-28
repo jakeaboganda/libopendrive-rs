@@ -96,6 +96,12 @@ itself. It has standard, reversed and two-way lanes, and one with a
 
     python3 tests/data/lane_direction.py
 
+`junction_priority.xodr` comes from `junction_priority.py`, which writes
+the XML itself. It has a junction giving one connecting road priority over
+another, and a priority naming a road the file lacks. Regenerate with
+
+    python3 tests/data/junction_priority.py
+
 `lane_visibility.xodr` comes from `lane_visibility.py`, which writes the
 XML itself. It has lane visibilities out of order, one without `sOffset`,
 and two with a distance the crate can't read, across two lane sections.

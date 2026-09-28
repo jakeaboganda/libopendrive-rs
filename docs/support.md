@@ -68,6 +68,8 @@ files declaring 1.4, 1.6 and 1.7.
 - Direct junctions, which join roads end to end through a `linkedRoad`.
   Each connection links both ways, as esmini reads it, unless the junction
   gives the way back itself.
+- Junction `<priority>`s, as `RoadNetwork::priorities`: which road of a
+  junction gives way to which.
 - An incoming road whose `<link>` leaves out its common junction, which the
   spec forbids, links into it at the end its connecting road names, with a
   warning.
@@ -238,7 +240,8 @@ road raises `Warning::ShapeShortOfRoad`. A road `rule` other than `RHT` or
 `LHT` raises `Warning::UnknownTrafficRule`. A junction connection without
 the roads it joins raises `Warning::ConnectionDropped`, and an incoming road
 whose `<link>` leaves out its junction raises `Warning::JunctionLinkMissing`.
-A road whose `length` isn't where its `<planView>` ends raises
+A junction `<priority>` naming a road the load didn't bake raises
+`Warning::PriorityDropped`. A road whose `length` isn't where its `<planView>` ends raises
 `Warning::RoadLengthMismatch`, and a lane link between lanes more than
 10 cm apart raises `Warning::LinkGap`. A `<speed>` the
 crate can't read raises `Warning::SpeedLimitDropped`, and an `<access>`

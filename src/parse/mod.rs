@@ -21,8 +21,8 @@ use crate::road::{
 use crate::{
     Border, ControllerId, Corner, Coverage, CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface,
     Direction, Extent, GeoOffset, GeoReference, Lane, LaneId, LaneType, Marking, Material, Object,
-    ObjectId, ObjectType, ParkingSpace, Polyline, RoadMarkId, RoadNetwork, Section, Shape,
-    SignalId, Structure, StructureId, StructureKind, UserData,
+    ObjectId, ObjectType, ParkingSpace, Polyline, Priority, RoadMarkId, RoadNetwork, Section,
+    Shape, SignalId, Structure, StructureId, StructureKind, UserData,
 };
 
 mod gaps;
@@ -325,9 +325,21 @@ pub struct Provenance {
     pub controllers: Vec<ControllerProvenance>,
     /// One per baked road mark, in baked-road-mark order.
     pub road_marks: Vec<RoadMarkProvenance>,
+    /// One per junction priority, in step with
+    /// [`RoadNetwork::priorities`](crate::RoadNetwork::priorities).
+    pub priorities: Vec<PriorityProvenance>,
     /// What the load dropped, or read against the spec, in file order.
     /// Empty for a clean file.
     pub warnings: Vec<Warning>,
+}
+
+/// The OpenDRIVE identity of one junction priority: the `<junction>` whose
+/// `<priority>` gives it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct PriorityProvenance {
+    /// The `<junction id>`.
+    pub junction_id: String,
 }
 
 /// Load an OpenDRIVE file from disk and bake it into a `RoadNetwork`.
@@ -407,6 +419,8 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     let signals = signals::place(root, &roads, &objects.provenance);
     let road_marks = road_marks::place(&roads);
     let properties = properties::place(roads.iter().map(|(_, road)| road), &lanes);
+    let (priorities, priority_provenance, dropped_priorities) = priorities(root, &roads);
+    warnings.extend(dropped_priorities);
     // Resolve connectivity once all lanes exist and are registered.
     let (junctions, dropped) = links::junctions(root, &mut topo.roads);
     topo.junctions = junctions;
@@ -432,6 +446,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
         signals: signals.provenance,
         controllers: signals.controller_provenance,
         road_marks: road_marks.provenance,
+        priorities: priority_provenance,
         warnings,
     };
     Ok((
@@ -449,9 +464,46 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             .with_lane_materials(properties.lane_materials)
             .with_lane_visibility(properties.lane_visibility)
             .with_geo_reference(geo_reference(root))
-            .with_roads(roads.into_iter().map(|(_, baked)| baked.road).collect()),
+            .with_roads(roads.into_iter().map(|(_, baked)| baked.road).collect())
+            .with_priorities(priorities),
         provenance,
     ))
+}
+
+/// Every junction `<priority>` between two baked roads, in file order, with
+/// the junction each is in, and a warning for each that names a road the
+/// load has none of.
+fn priorities(
+    root: roxmltree::Node,
+    roads: &[(roxmltree::Node, BakedRoad)],
+) -> (Vec<Priority>, Vec<PriorityProvenance>, Vec<Warning>) {
+    let road = |id: Option<&str>| {
+        roads
+            .iter()
+            .find(|(_, r)| Some(r.road.od_id.as_str()) == id)
+            .map(|(_, r)| r.road.id)
+    };
+    let (mut out, mut provenance, mut warnings) = (Vec::new(), Vec::new(), Vec::new());
+    for junction in root.children().filter(|n| n.has_tag_name("junction")) {
+        let junction_id = junction.attribute("id").unwrap_or_default().to_string();
+        for p in junction.children().filter(|n| n.has_tag_name("priority")) {
+            let (high, low) = (p.attribute("high"), p.attribute("low"));
+            match (road(high), road(low)) {
+                (Some(high), Some(low)) => {
+                    out.push(Priority { high, low });
+                    provenance.push(PriorityProvenance {
+                        junction_id: junction_id.clone(),
+                    });
+                }
+                _ => warnings.push(Warning::PriorityDropped {
+                    junction_id: junction_id.clone(),
+                    high: high.unwrap_or_default().to_string(),
+                    low: low.unwrap_or_default().to_string(),
+                }),
+            }
+        }
+    }
+    (out, provenance, warnings)
 }
 
 /// Every `<junction>` `<CRG>`, over the lanes of the roads in its junction.

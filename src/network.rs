@@ -11,7 +11,7 @@ use crate::geo::GeoReference;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
 use crate::object::{Material, Object, ObjectId};
-use crate::road::{LanePosition, Road, RoadId, RoadLane, RoadPosition};
+use crate::road::{LanePosition, Priority, Road, RoadId, RoadLane, RoadPosition};
 use crate::road_mark::{RoadMark, RoadMarkId};
 use crate::signal::{Controller, ControllerId, Signal, SignalId};
 use crate::structure::{Coverage, Structure, StructureId};
@@ -278,6 +278,7 @@ pub struct RoadNetwork {
     lane_visibility: Vec<Along<Visibility>>,
     geo: GeoReference,
     roads: Vec<Road>,
+    priorities: Vec<Priority>,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
     /// [`Self::nearest_lane`]. Derived from `lanes`, so it takes no part in
     /// equality.
@@ -309,6 +310,7 @@ impl PartialEq for RoadNetwork {
             && self.lane_visibility == other.lane_visibility
             && self.geo == other.geo
             && self.roads == other.roads
+            && self.priorities == other.priorities
     }
 }
 
@@ -337,6 +339,8 @@ struct NetworkData {
     geo: GeoReference,
     #[serde(default)]
     roads: Vec<Road>,
+    #[serde(default)]
+    priorities: Vec<Priority>,
 }
 
 #[cfg(feature = "serde")]
@@ -357,6 +361,7 @@ impl From<NetworkData> for RoadNetwork {
             .with_lane_visibility(data.lane_visibility)
             .with_geo_reference(data.geo)
             .with_roads(data.roads)
+            .with_priorities(data.priorities)
     }
 }
 
@@ -379,6 +384,7 @@ impl From<RoadNetwork> for NetworkData {
             lane_visibility: net.lane_visibility,
             geo: net.geo,
             roads: net.roads,
+            priorities: net.priorities,
         }
     }
 }
@@ -540,6 +546,7 @@ impl RoadNetwork {
             lane_visibility: Vec::new(),
             geo: GeoReference::default(),
             roads: Vec::new(),
+            priorities: Vec::new(),
             index,
             road_lanes: HashMap::new(),
             footprints: LaneIndex::default(),
@@ -572,6 +579,26 @@ impl RoadNetwork {
         };
         self.roads = roads;
         self
+    }
+
+    /// This network with `priorities` between its roads, replacing any it had.
+    pub fn with_priorities(mut self, priorities: Vec<Priority>) -> Self {
+        self.priorities = priorities;
+        self
+    }
+
+    /// Every priority between two roads of a junction, in the order the
+    /// importer emitted them: file order for an OpenDRIVE import.
+    pub fn priorities(&self) -> &[Priority] {
+        &self.priorities
+    }
+
+    /// The roads `road` gives way to, by the junction priorities.
+    pub fn yields_to(&self, road: RoadId) -> impl Iterator<Item = RoadId> + '_ {
+        self.priorities
+            .iter()
+            .filter(move |p| p.low == road)
+            .map(|p| p.high)
     }
 
     /// Every road, in the order the importer emitted them, which is file
