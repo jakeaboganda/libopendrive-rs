@@ -219,6 +219,14 @@ hides both.
 The crate does not move the junction's roads onto the grid, so where a
 file's roads and grid disagree, the ground shows above or below the roads.
 
+## Virtual junctions
+
+A virtual junction's stretch of its main road is drawn as a cyan tube along
+the road, and each place one of its roads meets another part way along as a
+pink tube from one side to the other. Hover one to read the junction's main
+road, stretch and orientation, and a link's sides and the lanes it joins.
+They show and hide with the `junctions` checkbox.
+
 ## Railways
 
 Each station platform is drawn as a grey strip beside its track, and each

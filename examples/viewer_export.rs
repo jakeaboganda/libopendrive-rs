@@ -49,11 +49,11 @@ use libopendrive::opencrg::CrgGrid;
 use libopendrive::{
     load_file_with_provenance, Access, Along, Controller, ControllerProvenance, Corner, CrgMode,
     CrgPurpose, CrgSurface, CrossPathEnd, Direction, Extent, JunctionArea, JunctionGroupKind,
-    LaneId, LanePosition, LaneProvenance, LaneSpan, LinePattern, Marking, Mesh, Object,
-    ObjectProvenance, Orientation, PlatformSegment, Point, Provenance, Referenced, RoadMark,
-    RoadMarkProvenance, RoadNetwork, RoadPosition, RoadSurface, RoadUser, Semantic, Shape, Side,
-    Signal, SignalBoard, SignalProvenance, SpeedLimit, Structure, StructureKind,
-    StructureProvenance, SurfaceHint, SwitchPosition, TrackPoint, Warning,
+    LaneId, LanePosition, LaneProvenance, LaneSpan, LinePattern, LinkPoint, Marking, Mesh, Object,
+    ObjectProvenance, Orientation, PlatformSegment, Point, Provenance, Referenced, RoadEnd,
+    RoadMark, RoadMarkProvenance, RoadNetwork, RoadPosition, RoadSurface, RoadUser, Semantic,
+    Shape, Side, Signal, SignalBoard, SignalProvenance, SpeedLimit, Structure, StructureKind,
+    StructureProvenance, SurfaceHint, SwitchPosition, TrackPoint, VirtualJunction, Warning,
 };
 use serde_json::{json, Map, Value};
 
@@ -273,6 +273,11 @@ fn build_scene(
         "priorities": priorities(net, provenance),
         "roadNeighbors": road_neighbors(net),
         "junctionAreas": net.junction_areas().iter().map(junction_area).collect::<Vec<_>>(),
+        "virtualJunctions": net
+            .virtual_junctions()
+            .iter()
+            .map(|j| virtual_junction(net, j))
+            .collect::<Vec<_>>(),
         "switches": net
             .switches()
             .iter()
@@ -470,6 +475,61 @@ fn board_entry(board: &SignalBoard) -> Value {
                 .collect::<Vec<_>>(),
         }),
     }
+}
+
+/// A virtual junction's viewer record: its main road and the stretch of it
+/// it spans, as points along the reference line a metre or so apart, and
+/// each link, with the point at each side and the lanes it joins.
+fn virtual_junction(net: &RoadNetwork, j: &VirtualJunction) -> Value {
+    let od = |road| net.road(road).map(|r| r.od_id());
+    let at = |road, s| {
+        net.road_point(RoadPosition { road, s, t: 0.0 })
+            .map(|p| p.to_array())
+    };
+    let side = |p: &LinkPoint| match *p {
+        LinkPoint::End { road, end } => {
+            let s = match end {
+                RoadEnd::Start => 0.0,
+                RoadEnd::End => net.road(road).map_or(0.0, |r| r.length()),
+            };
+            json!({ "road": od(road), "end": end.to_string(), "point": at(road, s) })
+        }
+        LinkPoint::Along { road, s, forward } => json!({
+            "road": od(road),
+            "s": s,
+            "dir": if forward { "+" } else { "-" },
+            "point": at(road, s),
+        }),
+    };
+    let lane = |id| {
+        net.road_lane(id)
+            .map(|at| format!("{}:{}", od(at.road).unwrap_or_default(), at.od_id))
+    };
+    let steps = ((j.s_end - j.s_start).abs().ceil() as usize).max(1);
+    json!({
+        "id": j.od_id,
+        "name": j.name,
+        "mainRoad": od(j.main_road),
+        "sStart": j.s_start,
+        "sEnd": j.s_end,
+        "orientation": match j.orientation {
+            Orientation::Positive => "+",
+            Orientation::Negative => "-",
+            Orientation::Both => "none",
+        },
+        "stretch": (0..=steps)
+            .filter_map(|k| at(j.main_road, j.s_start + (j.s_end - j.s_start) * k as f64 / steps as f64))
+            .collect::<Vec<_>>(),
+        "links": j
+            .links
+            .iter()
+            .map(|l| json!({
+                "from": side(&l.from),
+                "to": side(&l.to),
+                "lanes": l.lanes.iter().map(|(a, b)| [lane(*a), lane(*b)]).collect::<Vec<_>>(),
+            }))
+            .collect::<Vec<_>>(),
+    })
 }
 
 /// How wide the viewer draws a platform, in metres.

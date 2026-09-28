@@ -17,6 +17,8 @@
   does not follow them.
 - `Warning::VirtualJunctionDropped` and `Warning::VirtualLinkDropped` name a
   virtual junction or link the crate can't place.
+- The viewer draws each virtual junction's stretch and links, and names them
+  on hover.
 
 ### Railways
 
