@@ -1481,6 +1481,7 @@ fn bake_lanes(
         baked.road.od_id.clone(),
         RoadInfo {
             sections: sections.len(),
+            junction: baked.road.junction().map(String::from),
             predecessor,
             successor,
         },

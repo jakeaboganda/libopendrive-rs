@@ -136,6 +136,13 @@ Regenerate with
 
     python3 tests/data/lane_visibility.py
 
+`virtual_junction.xodr` comes from `virtual_junction.py`, which writes the
+XML itself. It has a driveway: two connecting roads meeting a main road
+part way along it, a lot road, and two deprecated virtual connections, one
+naming a road the file lacks. Regenerate with
+
+    python3 tests/data/virtual_junction.py
+
 `railways.xodr` comes from `railways.py`, which writes the XML itself. It
 has a switch from a track onto a side track, a switch naming a track the
 file lacks, and a station with a platform and a segment whose side the spec

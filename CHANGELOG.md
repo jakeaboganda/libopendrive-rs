@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Virtual junctions
+
+- Fixed: a road in a `type="virtual"` junction whose `<predecessor>` or
+  `<successor>` gives an `elementS` meets that road part way along it. It
+  was joined to the road's start instead. Its lanes now get no lane-graph
+  link there, the main road is no longer linked into the junction with a
+  `JunctionLinkMissing`, and deprecated `type="virtual"` connections are
+  not reported as dropped.
+
 ### Railways
 
 - `RoadNetwork::switches` gives each road's `<railroad><switch>` as a

@@ -32,10 +32,15 @@ pub(crate) struct LinkTarget {
     /// Whether the file gives the `contactPoint`, rather than it reading as
     /// the start.
     pub contact_given: bool,
+    /// Whether it gives an `elementS`: a place part way along the road,
+    /// not an end.
+    pub along: bool,
 }
 
 pub(crate) struct RoadInfo {
     pub sections: usize,
+    /// The road's `junction`, if it is in one.
+    pub junction: Option<String>,
     pub predecessor: Option<LinkTarget>,
     pub successor: Option<LinkTarget>,
 }
@@ -300,6 +305,7 @@ pub(crate) fn road_link(road: roxmltree::Node) -> (Option<LinkTarget>, Option<Li
                 id: n.attribute("elementId")?.to_string(),
                 contact: contact_of(n),
                 contact_given: n.attribute("contactPoint").is_some(),
+                along: n.attribute("elementS").is_some(),
             })
         })
     };
@@ -325,17 +331,41 @@ pub(crate) fn lane_link(lane: roxmltree::Node) -> (Option<i32>, Option<i32>) {
 /// road's links, to find where a direct junction's incoming road meets it.
 /// A common junction's incoming road whose `<link>` leaves the junction out
 /// gets it, with a warning. See [`missing_links`].
+///
+/// A virtual junction's roads meet its main road part way along it, which
+/// the lane graph can't, so their links with an `elementS` are dropped from
+/// it, as are its deprecated `type="virtual"` connections, and its incoming
+/// roads are not linked into it.
 pub(crate) fn junctions(
     root: roxmltree::Node,
     roads: &mut HashMap<String, RoadInfo>,
 ) -> (HashMap<String, Vec<JunctionConn>>, Vec<Warning>) {
     let mut out = HashMap::new();
     let mut warnings = Vec::new();
+    let virtual_ids: Vec<&str> = root
+        .children()
+        .filter(|n| n.has_tag_name("junction") && n.attribute("type") == Some("virtual"))
+        .filter_map(|n| n.attribute("id"))
+        .collect();
+    for road in roads.values_mut() {
+        if road
+            .junction
+            .as_deref()
+            .is_some_and(|j| virtual_ids.contains(&j))
+        {
+            for slot in [&mut road.predecessor, &mut road.successor] {
+                if slot.as_ref().is_some_and(|t| t.along) {
+                    *slot = None;
+                }
+            }
+        }
+    }
     for j in root.children().filter(|n| n.has_tag_name("junction")) {
         let Some(jid) = j.attribute("id") else {
             continue;
         };
         let direct = j.attribute("type") == Some("direct");
+        let is_virtual = j.attribute("type") == Some("virtual");
         let target = if direct {
             "linkedRoad"
         } else {
@@ -343,6 +373,9 @@ pub(crate) fn junctions(
         };
         let mut conns = Vec::new();
         for c in j.children().filter(|n| n.has_tag_name("connection")) {
+            if is_virtual && c.attribute("type") == Some("virtual") {
+                continue;
+            }
             let (Some(incoming), Some(connecting)) =
                 (c.attribute("incomingRoad"), c.attribute(target))
             else {
@@ -372,7 +405,7 @@ pub(crate) fn junctions(
         if direct {
             let back = reversed(jid, &conns, roads);
             conns.extend(back);
-        } else {
+        } else if !is_virtual {
             warnings.extend(missing_links(jid, &conns, roads));
         }
         out.insert(jid.to_string(), conns);
@@ -429,6 +462,7 @@ fn missing_links(
             id: jid.to_string(),
             contact: end,
             contact_given: true,
+            along: false,
         });
         warnings.push(Warning::JunctionLinkMissing {
             road_id: c.incoming_road.clone(),
