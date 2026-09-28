@@ -29,6 +29,7 @@ mod gaps;
 mod junction_areas;
 mod links;
 mod properties;
+mod railway;
 mod road_marks;
 mod signals;
 mod warning;
@@ -446,6 +447,10 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     warnings.extend(cross_path_warnings);
     let (groups, group_warnings) = junction_areas::groups(root);
     warnings.extend(group_warnings);
+    let (switches, switch_warnings) = railway::switches(&roads);
+    warnings.extend(switch_warnings);
+    let (stations, station_warnings) = railway::stations(root, &roads);
+    warnings.extend(station_warnings);
     // Resolve connectivity once all lanes exist and are registered.
     let (junctions, dropped) = links::junctions(root, &mut topo.roads);
     topo.junctions = junctions;
@@ -497,7 +502,8 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             .with_road_neighbors(neighbors)
             .with_junction_areas(areas)
             .with_cross_paths(cross_paths)
-            .with_junction_groups(groups),
+            .with_junction_groups(groups)
+            .with_railways(switches, stations),
         provenance,
     ))
 }

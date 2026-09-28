@@ -10,6 +10,7 @@ const PARSER: &str = include_str!("../src/parse/mod.rs");
 const LINKS: &str = include_str!("../src/parse/links.rs");
 const SIGNALS: &str = include_str!("../src/parse/signals.rs");
 const ROAD_MARKS: &str = include_str!("../src/parse/road_marks.rs");
+const RAILWAY: &str = include_str!("../src/parse/railway.rs");
 const PROPERTIES: &str = include_str!("../src/parse/properties.rs");
 const JUNCTION_AREAS: &str = include_str!("../src/parse/junction_areas.rs");
 const CRATE_DOCS: &str = include_str!("../src/lib.rs");
@@ -56,6 +57,7 @@ fn tags_the_parser_reads() -> Vec<String> {
         ROAD_MARKS,
         PROPERTIES,
         JUNCTION_AREAS,
+        RAILWAY,
     ] {
         // Each of these takes the tag as its first (or only) string literal.
         for marker in ["has_tag_name(", "child(", "cubics_in(", "by_offset("] {

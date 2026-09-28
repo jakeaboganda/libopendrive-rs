@@ -12,6 +12,7 @@ use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
 use crate::junction::{CrossPath, JunctionArea, JunctionGroup};
 use crate::object::{Material, Object, ObjectId};
+use crate::railway::{Station, Switch};
 use crate::road::{LanePosition, Priority, Road, RoadId, RoadLane, RoadNeighbor, RoadPosition};
 use crate::road_mark::{RoadMark, RoadMarkId};
 use crate::signal::{Controller, ControllerId, Signal, SignalId};
@@ -284,6 +285,8 @@ pub struct RoadNetwork {
     junction_areas: Vec<JunctionArea>,
     cross_paths: Vec<CrossPath>,
     junction_groups: Vec<JunctionGroup>,
+    switches: Vec<Switch>,
+    stations: Vec<Station>,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
     /// [`Self::nearest_lane`]. Derived from `lanes`, so it takes no part in
     /// equality.
@@ -320,6 +323,8 @@ impl PartialEq for RoadNetwork {
             && self.junction_areas == other.junction_areas
             && self.cross_paths == other.cross_paths
             && self.junction_groups == other.junction_groups
+            && self.switches == other.switches
+            && self.stations == other.stations
     }
 }
 
@@ -358,6 +363,10 @@ struct NetworkData {
     cross_paths: Vec<CrossPath>,
     #[serde(default)]
     junction_groups: Vec<JunctionGroup>,
+    #[serde(default)]
+    switches: Vec<Switch>,
+    #[serde(default)]
+    stations: Vec<Station>,
 }
 
 #[cfg(feature = "serde")]
@@ -383,6 +392,7 @@ impl From<NetworkData> for RoadNetwork {
             .with_junction_areas(data.junction_areas)
             .with_cross_paths(data.cross_paths)
             .with_junction_groups(data.junction_groups)
+            .with_railways(data.switches, data.stations)
     }
 }
 
@@ -410,6 +420,8 @@ impl From<RoadNetwork> for NetworkData {
             junction_areas: net.junction_areas,
             cross_paths: net.cross_paths,
             junction_groups: net.junction_groups,
+            switches: net.switches,
+            stations: net.stations,
         }
     }
 }
@@ -576,6 +588,8 @@ impl RoadNetwork {
             junction_areas: Vec::new(),
             cross_paths: Vec::new(),
             junction_groups: Vec::new(),
+            switches: Vec::new(),
+            stations: Vec::new(),
             index,
             road_lanes: HashMap::new(),
             footprints: LaneIndex::default(),
@@ -690,6 +704,26 @@ impl RoadNetwork {
         self.junction_groups
             .iter()
             .filter(move |g| junction.is_some_and(|j| g.junctions.iter().any(|m| m == j)))
+    }
+
+    /// This network with `switches` and `stations` on its tracks, replacing
+    /// any it had.
+    pub fn with_railways(mut self, switches: Vec<Switch>, stations: Vec<Station>) -> Self {
+        self.switches = switches;
+        self.stations = stations;
+        self
+    }
+
+    /// Every railway switch, road by road in file order. A switch joins
+    /// tracks part way along them, which [`Lane::successors`] can't, so they
+    /// are kept beside the lane graph.
+    pub fn switches(&self) -> &[Switch] {
+        &self.switches
+    }
+
+    /// Every railway station, in file order.
+    pub fn stations(&self) -> &[Station] {
+        &self.stations
     }
 
     /// Every road, in the order the importer emitted them, which is file

@@ -103,6 +103,13 @@
 //! | `<connection>` | `id`, `incomingRoad`, `connectingRoad`, `linkedRoad`, `contactPoint` |
 //! | `<laneLink>` | `from`, `to` |
 //! | `<junction><priority>` | `high`, `low` |
+//! | `<road><railroad>` | none |
+//! | `<railroad><switch>` | `id`, `name`, `position` |
+//! | `<switch><mainTrack>`, `<switch><sideTrack>` | `id`, `s`, `dir` |
+//! | `<switch><partner>` | `id` |
+//! | `<station>` | `id`, `name`, `type` |
+//! | `<station><platform>` | `id`, `name` |
+//! | `<platform><segment>` | `roadId`, `sStart`, `sEnd`, `side` |
 //! | `<junctionGroup>` | `id`, `name`, `type` |
 //! | `<junctionGroup><junctionReference>` | `junction` |
 //! | `<junction><crossPath>` | `id`, `crossingRoad`, `roadAtStart`, `roadAtEnd` |
@@ -426,6 +433,21 @@
 //! - The spec's formula for the height puts the grid's rows and columns the
 //!   other way round in its matrix of corners from its product of powers.
 //!   The crate follows the product, with `s` along the rows.
+//!
+//! # Railways
+//!
+//! A road's `<railroad>` holds its switches, each a [`Switch`] in
+//! [`RoadNetwork::switches`]: where on the main track it is, where the side
+//! track leaves it, each a [`TrackPoint`] with a road, an `s` and which way
+//! along it the switch leads, which way it is set, and its partner's id. A
+//! switch joins tracks part way along them, so, as a cross path is, it is
+//! kept beside the lane graph, and the router does not follow it. Each
+//! `<station>` is a [`Station`] in [`RoadNetwork::stations`], with its
+//! platforms and the stretches of track each runs beside. A switch or a
+//! platform segment naming a road the load lacks, an `s` off it, or a
+//! `position`, `dir` or `side` the spec does not allow is dropped, with a
+//! [`Warning::RailwayDropped`]. No other reader to compare against reads
+//! either.
 //!
 //! # Lane borders
 //!
@@ -844,8 +866,8 @@
 //!
 //! # What the importer ignores
 //!
-//! Everything else in the file, silently. That includes `<station>`,
-//! `<railroad>`, `<vmsGroup>`, a header's `<license>` and
+//! Everything else in the file, silently. That includes `<vmsGroup>`, a
+//! header's `<license>` and
 //! `<defaultRegulations>`, `<dataQuality>` and `<include>` anywhere, a
 //! junction's `<objects>` and `<roadSection>`s, and an object's `<surface>`,
 //! `<skeleton>` and `<curveLocal>` corners. Of signals, it ignores a signal's
@@ -1071,6 +1093,8 @@
 //!   roads it joins.
 //! - [`Warning::JunctionLinkMissing`] for an incoming road whose `<link>`
 //!   leaves out its junction.
+//! - [`Warning::RailwayDropped`] for a railway switch or platform segment
+//!   the crate can't place. See [Railways](#railways).
 //! - [`Warning::JunctionReferenceDropped`] and
 //!   [`Warning::UnknownJunctionGroupType`] for a `<junctionGroup>` the
 //!   crate can't read whole.
@@ -1137,6 +1161,7 @@ mod network;
 mod object;
 mod object_mesh;
 mod parse;
+mod railway;
 mod road;
 mod road_mark;
 mod route;
@@ -1173,6 +1198,7 @@ pub use parse::{
     ObjectProvenance, Orientation, PriorityProvenance, Provenance, RoadEnd, RoadMarkProvenance,
     RoadSkipReason, SignalProvenance, SignalReferenceProvenance, StructureProvenance, Warning,
 };
+pub use railway::{Platform, PlatformSegment, Station, Switch, SwitchPosition, TrackPoint};
 pub use road::{LanePosition, Priority, Road, RoadId, RoadLane, RoadNeighbor, RoadPosition, Side};
 pub use road_mark::{
     LaneChange, LinePattern, LineRule, RoadMark, RoadMarkId, RoadMarkLine, RoadMarkType,

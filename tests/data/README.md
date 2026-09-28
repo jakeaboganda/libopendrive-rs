@@ -136,6 +136,13 @@ Regenerate with
 
     python3 tests/data/lane_visibility.py
 
+`railways.xodr` comes from `railways.py`, which writes the XML itself. It
+has a switch from a track onto a side track, a switch naming a track the
+file lacks, and a station with a platform and a segment whose side the spec
+doesn't allow. Regenerate with
+
+    python3 tests/data/railways.py
+
 `road_neighbors.xodr` comes from `road_neighbors.py`, which writes the XML
 itself. It has roads naming the roads beside them, the same way and the
 other, one naming a road the file lacks, and one with a `side` 1.4 doesn't

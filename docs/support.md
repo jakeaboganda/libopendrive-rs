@@ -78,6 +78,8 @@ files declaring 1.4, 1.6 and 1.7.
   the height of that ground, with a mesh of it. The grid does not replace
   the height of the junction's roads, as the spec says it does, and a
   warning says so.
+- Railway `<switch>`es and `<station>`s, as `RoadNetwork::switches` and
+  `RoadNetwork::stations`, each on the roads of its tracks.
 - `<junctionGroup>`s, as `RoadNetwork::junction_groups`: junctions routing
   should see as one, such as a roundabout's.
 - Junction `<crossPath>`s, as `RoadNetwork::cross_paths`: paths for
@@ -271,8 +273,7 @@ The elements below raise nothing.
 
 ## What it ignores
 
-The importer silently skips everything else in the file: `<station>`,
-`<railroad>`, `<vmsGroup>`, a header's `<license>` and
+The importer silently skips everything else in the file: `<vmsGroup>`, a header's `<license>` and
 `<defaultRegulations>`, `<dataQuality>` and `<include>`, a junction's
 `<objects>` and `<roadSection>`s, and an object's `<surface>`, `<skeleton>`
 and `<curveLocal>` corners. One omission changes the road you get back, not only the detail

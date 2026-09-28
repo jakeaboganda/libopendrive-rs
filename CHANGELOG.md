@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Railways
+
+- `RoadNetwork::switches` gives each road's `<railroad><switch>` as a
+  `Switch`: the point on its main and side tracks, each a `TrackPoint`,
+  which way it is set, and its partner. `RoadNetwork::stations` gives each
+  `<station>` as a `Station`, with its platforms and the stretches of track
+  they run beside. The router does not follow switches.
+- `Warning::RailwayDropped` names a switch or a platform segment the crate
+  can't place.
+
 ### Signal semantics and boards
 
 - `feat!`: `Signal::semantics` says what a signal means, from its

@@ -182,6 +182,18 @@ pub enum Warning {
         /// The road of the two the load has, or `low` if it has neither.
         road_id: String,
     },
+    /// A railway `<switch>` or a platform `<segment>` the crate can't place:
+    /// one naming a road the load lacks, an `s` off that road, or a
+    /// `position`, `dir` or `side` the spec does not allow. The crate drops
+    /// it.
+    RailwayDropped {
+        /// `switch` or `platform segment`.
+        element: String,
+        /// The switch's `id`, or the platform's.
+        id: String,
+        /// The road it is on, or names.
+        road_id: String,
+    },
     /// A `<junctionReference>` naming a junction the file does not have. The
     /// crate leaves it out of the group.
     JunctionReferenceDropped {
@@ -378,6 +390,7 @@ impl Warning {
             | Self::BoundarySegmentDropped { road_id, .. }
             | Self::CrossPathDropped { road_id, .. }
             | Self::CrossSectionWithShape { road_id }
+            | Self::RailwayDropped { road_id, .. }
             | Self::UnknownStripMode { road_id, .. }
             | Self::StripDropped { road_id, .. }
             | Self::ConnectionDropped {
@@ -491,6 +504,11 @@ impl fmt::Display for Warning {
                 f,
                 "road {road_id:?}, lane section {section}: lane {lane} links to road {to_road_id:?}, lane section {to_section}, lane {to_lane}, {gap:.2} m away"
             ),
+            Self::RailwayDropped {
+                element,
+                id,
+                road_id,
+            } => write!(f, "road {road_id:?}: {element} {id:?} dropped"),
             Self::JunctionReferenceDropped {
                 group_id,
                 junction_id,
