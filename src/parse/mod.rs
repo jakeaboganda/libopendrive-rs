@@ -1987,7 +1987,9 @@ fn side_across(
     s_start: f64,
     sample_s: &[f64],
 ) -> Vec<Vec<LaneBorders>> {
-    let mut rows = vec![Vec::with_capacity(sample_s.len()); side.len()];
+    let mut rows: Vec<Vec<LaneBorders>> = (0..side.len())
+        .map(|_| Vec::with_capacity(sample_s.len()))
+        .collect();
     for &s in sample_s {
         let base = active(lane_offsets, s).map_or(0.0, |o| o.eval(s));
         for (row, b) in rows
