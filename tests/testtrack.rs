@@ -321,6 +321,7 @@ fn both_lanes_carry_the_road_level_banking() {
         match lane.direction {
             libopendrive::Direction::Forward => saw_forward = true,
             libopendrive::Direction::Backward => saw_backward = true,
+            libopendrive::Direction::Both => panic!("no two-way lanes here"),
         }
     }
     assert!(

@@ -120,6 +120,7 @@ fn a_fork_gives_one_branch_per_lane_it_leads_to() {
         let exit = match lane.direction {
             Direction::Forward => points[points.len() - 1],
             Direction::Backward => points[0],
+            Direction::Both => continue,
         };
         let road = net.road_lane(lane.id).unwrap().road;
         let s = net.road_position_on(road, exit).unwrap().s;

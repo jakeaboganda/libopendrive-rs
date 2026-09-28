@@ -45,13 +45,16 @@ pub(super) fn link_gaps(lanes: &[Lane], metas: &[LaneMeta]) -> Vec<Warning> {
     };
     let mut out = Vec::new();
     for (lane, from) in lanes.iter().zip(metas) {
-        let exit = across(lane, lane.direction == Direction::Forward);
         for &next in &lane.successors {
             let Some(i) = position(next) else {
                 continue;
             };
             let (to, into) = (&lanes[i], &metas[i]);
-            let gap = distance(exit, across(to, to.direction == Direction::Backward));
+            let gap = ends(lane, Direction::Forward)
+                .flat_map(|exit| {
+                    ends(to, Direction::Backward).map(move |entry| distance(exit, entry))
+                })
+                .fold(f32::INFINITY, f32::min);
             if gap <= GAP_TOLERANCE {
                 continue;
             }
@@ -67,6 +70,19 @@ pub(super) fn link_gaps(lanes: &[Lane], metas: &[LaneMeta]) -> Vec<Warning> {
         }
     }
     out
+}
+
+/// The lines across `lane` at the ends where a lane whose traffic runs
+/// `direction` leaves it: its centerline's end for [`Direction::Forward`],
+/// its start for [`Direction::Backward`]. A two-way lane leaves by both.
+fn ends(lane: &Lane, direction: Direction) -> impl Iterator<Item = [Point; 2]> + '_ {
+    [true, false].into_iter().filter_map(move |end| {
+        let leaves = match lane.direction {
+            Direction::Both => true,
+            d => (d == direction) == end,
+        };
+        leaves.then(|| across(lane, end))
+    })
 }
 
 /// The line across `lane` from border to border at the end of its

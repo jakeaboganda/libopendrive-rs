@@ -114,32 +114,86 @@ pub(crate) fn resolve(lanes: &mut [Lane], topo: &Topology) {
     }
 }
 
-/// The lanes reachable by driving off `meta`'s exit end. A forward lane exits at
-/// the road's `+s` end (next section, or the road's successor); a backward lane
-/// exits at the `-s` (start) end (previous section, or the predecessor).
+/// The lanes reachable by driving off `meta`'s exit end, or ends: both of a
+/// [`Direction::Both`] lane's.
+///
+/// From a two-way lane, only lanes whose traffic runs away from the joint
+/// count: a lane entered at its road's start that runs forward, one entered
+/// at its end that runs backward, or another two-way lane. A one-way lane's
+/// links are the file's, as they are.
 fn successors_of(meta: &LaneMeta, topo: &Topology) -> Vec<LaneId> {
-    let last = topo.last_section(&meta.road);
     match meta.direction {
-        Direction::Forward => {
-            if meta.section < last {
-                lookup(topo, &meta.road, meta.section + 1, meta.succ_link)
-            } else {
-                let target = topo.roads.get(&meta.road).and_then(|r| r.successor.clone());
-                cross(topo, meta, target, meta.succ_link)
-            }
+        Direction::Both => {
+            let away = |&(id, entry): &(LaneId, Contact)| {
+                let direction = topo
+                    .metas
+                    .get(id.0)
+                    .filter(|m| m.id == id)
+                    .or_else(|| topo.metas.iter().find(|m| m.id == id))
+                    .map(|m| m.direction);
+                matches!(
+                    (direction, entry),
+                    (Some(Direction::Both), _)
+                        | (Some(Direction::Forward), Contact::Start)
+                        | (Some(Direction::Backward), Contact::End)
+                )
+            };
+            let mut out: Vec<LaneId> = exits(meta, topo, Direction::Forward)
+                .into_iter()
+                .chain(exits(meta, topo, Direction::Backward))
+                .filter(away)
+                .map(|(id, _)| id)
+                .collect();
+            out.sort_by_key(|l| l.0);
+            out.dedup();
+            out
         }
-        Direction::Backward => {
-            if meta.section > 0 {
-                lookup(topo, &meta.road, meta.section - 1, meta.pred_link)
-            } else {
-                let target = topo
-                    .roads
-                    .get(&meta.road)
-                    .and_then(|r| r.predecessor.clone());
-                cross(topo, meta, target, meta.pred_link)
-            }
-        }
+        direction => exits(meta, topo, direction)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect(),
     }
+}
+
+/// The lanes reachable by driving off `meta` travelling `direction`, each
+/// with the end of its road it is entered at. Forward exits at the road's
+/// `+s` end (next section, or the road's successor); backward at the `-s`
+/// (start) end (previous section, or the predecessor).
+fn exits(meta: &LaneMeta, topo: &Topology, direction: Direction) -> Vec<(LaneId, Contact)> {
+    let last = topo.last_section(&meta.road);
+    let road = topo.roads.get(&meta.road);
+    if direction == Direction::Forward {
+        if meta.section < last {
+            at(
+                Contact::Start,
+                lookup(topo, &meta.road, meta.section + 1, meta.succ_link),
+            )
+        } else {
+            cross(
+                topo,
+                meta,
+                road.and_then(|r| r.successor.clone()),
+                meta.succ_link,
+            )
+        }
+    } else if meta.section > 0 {
+        at(
+            Contact::End,
+            lookup(topo, &meta.road, meta.section - 1, meta.pred_link),
+        )
+    } else {
+        cross(
+            topo,
+            meta,
+            road.and_then(|r| r.predecessor.clone()),
+            meta.pred_link,
+        )
+    }
+}
+
+/// Each of `lanes`, entered at `contact`.
+fn at(contact: Contact, lanes: Vec<LaneId>) -> Vec<(LaneId, Contact)> {
+    lanes.into_iter().map(|id| (id, contact)).collect()
 }
 
 /// The lane with OpenDRIVE id `od` in (`road`, `section`), if it exists.
@@ -150,14 +204,15 @@ fn lookup(topo: &Topology, road: &str, section: usize, od: Option<i32>) -> Vec<L
 }
 
 /// Resolve a cross-road boundary: follow the road's link target (another road,
-/// or a junction) to the lane(s) it leads into. `lane_link` is this lane's own
-/// `<link>` neighbor id (used for a direct road link).
+/// or a junction) to the lane(s) it leads into, each with the end of its road
+/// it is entered at. `lane_link` is this lane's own `<link>` neighbor id (used
+/// for a direct road link).
 fn cross(
     topo: &Topology,
     meta: &LaneMeta,
     target: Option<LinkTarget>,
     lane_link: Option<i32>,
-) -> Vec<LaneId> {
+) -> Vec<(LaneId, Contact)> {
     let Some(target) = target else {
         return Vec::new();
     };
@@ -169,7 +224,7 @@ fn cross(
                 Contact::Start => 0,
                 Contact::End => topo.last_section(&target.id),
             };
-            lookup(topo, &target.id, section, lane_link)
+            at(target.contact, lookup(topo, &target.id, section, lane_link))
         }
         // Through a junction: each connection out of our road maps our lane id
         // to a connecting-road lane via its laneLinks. May fan out.
@@ -184,7 +239,10 @@ fn cross(
                     Contact::End => topo.last_section(&c.connecting_road),
                 };
                 for (_, to) in c.lane_links.iter().filter(|(f, _)| *f == meta.od_id) {
-                    out.extend(lookup(topo, &c.connecting_road, section, Some(*to)));
+                    out.extend(at(
+                        c.contact,
+                        lookup(topo, &c.connecting_road, section, Some(*to)),
+                    ));
                 }
             }
             out

@@ -69,7 +69,7 @@
 //! | `<lanes><laneOffset>` | `s`, `a`, `b`, `c`, `d` |
 //! | `<laneSection>` | `s` |
 //! | `<left>`, `<center>`, `<right>` | none |
-//! | `<lane>` | `id`, `type`, `level` |
+//! | `<lane>` | `id`, `type`, `level`, `direction` |
 //! | `<lane><width>` | `sOffset`, `a`, `b`, `c`, `d` |
 //! | `<lane><border>` | `sOffset`, `a`, `b`, `c`, `d` |
 //! | `<lane><height>` | `sOffset`, `inner`, `outer` |
@@ -696,6 +696,26 @@
 //! `RHT`, the spec's default, and raises [`Warning::UnknownTrafficRule`].
 //! esmini also reads `lht` as left-hand traffic. The crate does not.
 //!
+//! A lane's `direction` overrides its side's. `reversed` runs it against
+//! its side, and `both` makes it a [`Direction::Both`] lane, which runs
+//! either way. A two-way lane's successors are the lanes off both of its
+//! ends, and its predecessors those that drive into it at either end. From
+//! one, only lanes whose traffic runs away from the joint count. A lane
+//! change is only ever to a lane running the same way. [`RoadNetwork::route`]
+//! drives a two-way lane toward the next lane on the route, and
+//! [`RoadNetwork::advance`] each way from one. esmini, libOpenDRIVE and
+//! CARLA ignore `direction`.
+//!
+//! The crate departs from the OpenDRIVE 1.9 spec here:
+//!
+//! - The spec allows only `standard`, `reversed` and `both`. The crate reads
+//!   any other value as `standard`, the spec's default, and raises
+//!   [`Warning::UnknownLaneDirection`].
+//! - The spec says a signal's `orientation` names the traffic it applies to.
+//!   The crate picks a signal's lanes by the side of the road, as it did
+//!   before `direction`, so a `+` signal applies to the right lanes under
+//!   right-hand traffic even where one of them is reversed.
+//!
 //! # Road coordinates
 //!
 //! The network keeps each road it baked, in [`RoadNetwork::roads`]: its
@@ -855,7 +875,8 @@
 //! - [`Warning::ShapeShortOfRoad`] for a lateral profile that does not
 //!   cover the road. See [Lateral shapes](#lateral-shapes).
 //! - [`Warning::UnknownTrafficRule`] for a road `rule` other than `RHT` or
-//!   `LHT`. See [Coordinate frame](#coordinate-frame).
+//!   `LHT`, and [`Warning::UnknownLaneDirection`] for a lane `direction`
+//!   the spec does not allow. See [Coordinate frame](#coordinate-frame).
 //! - [`Warning::ConnectionDropped`] for a junction connection without the
 //!   roads it joins.
 //! - [`Warning::JunctionLinkMissing`] for an incoming road whose `<link>`

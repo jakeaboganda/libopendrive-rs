@@ -90,6 +90,12 @@ link across a 2 m gap, and a road whose `length` is short of its
 
     python3 tests/data/link_gaps.py
 
+`lane_direction.xodr` comes from `lane_direction.py`, which writes the XML
+itself. It has standard, reversed and two-way lanes, and one with a
+`direction` the spec doesn't allow, on two linked roads. Regenerate with
+
+    python3 tests/data/lane_direction.py
+
 `lane_visibility.xodr` comes from `lane_visibility.py`, which writes the
 XML itself. It has lane visibilities out of order, one without `sOffset`,
 and two with a distance the crate can't read, across two lane sections.

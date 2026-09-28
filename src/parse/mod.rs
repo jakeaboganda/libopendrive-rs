@@ -20,9 +20,9 @@ use crate::road::{
 };
 use crate::{
     Border, ControllerId, Corner, Coverage, CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface,
-    Extent, GeoOffset, GeoReference, Lane, LaneId, LaneType, Marking, Material, Object, ObjectId,
-    ObjectType, ParkingSpace, Polyline, RoadMarkId, RoadNetwork, Section, Shape, SignalId,
-    Structure, StructureId, StructureKind, UserData,
+    Direction, Extent, GeoOffset, GeoReference, Lane, LaneId, LaneType, Marking, Material, Object,
+    ObjectId, ObjectType, ParkingSpace, Polyline, RoadMarkId, RoadNetwork, Section, Shape,
+    SignalId, Structure, StructureId, StructureKind, UserData,
 };
 
 mod gaps;
@@ -513,6 +513,40 @@ struct LaneDef {
     access: Vec<(f64, properties::AccessDef)>,
     materials: Vec<(f64, Material)>,
     visibility: Vec<(f64, properties::VisibilityDef)>,
+    /// Its `direction`, or its value if the crate can't read it.
+    direction: Result<LaneDirection, String>,
+}
+
+/// A lane's `direction`: which way it runs against the way its side of the
+/// road does.
+#[derive(Clone, Copy)]
+enum LaneDirection {
+    Standard,
+    Reversed,
+    Both,
+}
+
+impl LaneDirection {
+    /// A lane's `direction`. A missing one is `standard`, as the spec says.
+    fn parse(lane: roxmltree::Node) -> Result<Self, String> {
+        match lane.attribute("direction") {
+            None | Some("standard") => Ok(Self::Standard),
+            Some("reversed") => Ok(Self::Reversed),
+            Some("both") => Ok(Self::Both),
+            Some(other) => Err(other.to_string()),
+        }
+    }
+
+    /// Which way a lane with this `direction` runs, on a side whose traffic
+    /// runs `side`.
+    fn apply(self, side: Direction) -> Direction {
+        match (self, side) {
+            (Self::Both, _) => Direction::Both,
+            (Self::Standard, side) => side,
+            (Self::Reversed, Direction::Forward) => Direction::Backward,
+            (Self::Reversed, _) => Direction::Forward,
+        }
+    }
 }
 
 /// A `<lateralProfile>`'s `<shape>`s, grouped into profiles by `s`, in
@@ -637,6 +671,7 @@ impl SectionDef {
                     access: properties::lane_access(lane),
                     materials: properties::lane_materials(lane),
                     visibility: properties::lane_visibility(lane),
+                    direction: LaneDirection::parse(lane),
                 };
                 let geom = LaneGeom {
                     id,
@@ -997,6 +1032,16 @@ impl BakedRoad {
                     s,
                 }),
         );
+        for lane in def.left.iter().chain(&def.right) {
+            if let Err(direction) = &lane.direction {
+                out.push(Warning::UnknownLaneDirection {
+                    road_id: road_id.clone(),
+                    section: index,
+                    lane: lane.id,
+                    direction: direction.clone(),
+                });
+            }
+        }
         for side in [&section.left, &section.right] {
             let first_level = side.iter().position(|l| l.level).unwrap_or(side.len());
             out.extend(side[first_level..].iter().filter(|l| !l.level).map(|l| {
@@ -1271,16 +1316,21 @@ fn emit_section(
     for (defs, side) in [(&def.left, &section.left), (&def.right, &section.right)] {
         let is_left = side.first().map(|l| l.id > 0).unwrap_or(false);
         let sign = if is_left { 1.0 } else { -1.0 };
-        let direction = road.rule.direction(is_left);
+        let side_direction = road.rule.direction(is_left);
         // Lanes emitted on this side, center-outward, as (id, index in `out`,
-        // kind). Consecutive ones are lateral neighbors (lane-change edges),
-        // subject to the drivability test below.
-        let mut emitted: Vec<(LaneId, usize, LaneType)> = Vec::new();
+        // kind, direction). Consecutive ones are lateral neighbors (lane-change
+        // edges), subject to the tests below.
+        let mut emitted: Vec<(LaneId, usize, LaneType, Direction)> = Vec::new();
         let across = side_across(road, side, sign, s_start, &sample_s);
         let heights = side_height_rows(road, side, sign, s_start, &sample_s, &road_bank, &across);
         let lanes = defs.iter().zip(side).zip(&across).zip(&heights);
         for (k, (((def, lane), borders), heights)) in lanes.enumerate() {
             let kind = def.kind;
+            let direction = def
+                .direction
+                .as_ref()
+                .map_or(LaneDirection::Standard, |d| *d)
+                .apply(side_direction);
             let held = side[..=k].iter().any(|l| l.level);
             let (points, headings) = sample_lane(road, borders, heights, sign, &sample_s);
             // Anchor the ends on the true curve tangents so this section's ribs
@@ -1307,7 +1357,7 @@ fn emit_section(
                 pred_link: def.pred_link,
                 heights: lane_heights(lane, s_start, &sample_s),
             });
-            emitted.push((id, out.len(), kind));
+            emitted.push((id, out.len(), kind, direction));
             let tilted = !lane.heights.is_empty() || !road.shapes.is_empty() || held;
             let (width, widths) = width_profile(borders, tilted.then_some(&heights[..]));
             out.push(Lane {
@@ -1329,23 +1379,25 @@ fn emit_section(
             });
         }
         // Consecutive same-side lanes are each other's lane-change neighbors,
-        // but only where both ends carry through traffic. Without that test a
-        // driving lane would list the sidewalk beside it as a lane change, and
-        // the router would happily take it. A non-drivable lane between two
-        // driving lanes separates them for the same reason: it stands in the
-        // sequence, so they are not consecutive and no edge spans it.
+        // but only where both ends carry through traffic the same way. Without
+        // that test a driving lane would list the sidewalk beside it, or a
+        // reversed lane, as a lane change, and the router would happily take
+        // it. A lane between two driving lanes that fails it separates them
+        // for the same reason: it stands in the sequence, so they are not
+        // consecutive and no edge spans it.
         for k in 0..emitted.len() {
-            if !emitted[k].2.is_drivable() {
+            let (_, at, kind, direction) = emitted[k];
+            if !kind.is_drivable() {
                 continue;
             }
             let nbrs = [k.checked_sub(1), Some(k + 1)]
                 .into_iter()
                 .flatten()
                 .filter_map(|n| emitted.get(n))
-                .filter(|(_, _, kind)| kind.is_drivable())
-                .map(|(id, _, _)| *id)
+                .filter(|(_, _, kind, d)| kind.is_drivable() && *d == direction)
+                .map(|(id, _, _, _)| *id)
                 .collect();
-            out[emitted[k].1].neighbors = nbrs;
+            out[at].neighbors = nbrs;
         }
     }
     sample_s
@@ -2739,7 +2791,6 @@ fn child<'a>(node: roxmltree::Node<'a, 'a>, tag: &str) -> Option<roxmltree::Node
 mod tests {
     use super::*;
     use crate::coords::Vector;
-    use crate::Direction;
 
     // A straight 40 m road climbing at 4%, one right (forward) driving lane.
     const STRAIGHT: &str = r#"<?xml version="1.0"?>

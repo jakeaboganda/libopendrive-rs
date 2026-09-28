@@ -58,6 +58,7 @@ fn grade_and_bank_compose_to_elev_plus_t_sin_phi() {
         match lane.direction {
             Direction::Backward => left = Some(lane),
             Direction::Forward => right = Some(lane),
+            Direction::Both => panic!("no two-way lanes here"),
         }
     }
     let left = left.expect("a left lane");

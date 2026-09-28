@@ -88,6 +88,19 @@ pub enum Warning {
         /// The value of its `rule`.
         rule: String,
     },
+    /// A `<lane>` whose `direction` is none of `standard`, `reversed` and
+    /// `both`, the values the spec allows. The crate reads it as
+    /// `standard`, the spec's default.
+    UnknownLaneDirection {
+        /// The `<road id>` it is on.
+        road_id: String,
+        /// The zero-based lane-section index.
+        section: usize,
+        /// Its `<lane id>`.
+        lane: i32,
+        /// The value of its `direction`.
+        direction: String,
+    },
     /// A junction `<connection>` without an `incomingRoad`, or without the
     /// road it leads into: a `connectingRoad`, or a `linkedRoad` in a
     /// `type="direct"` junction. The spec requires both. The crate drops the
@@ -228,6 +241,7 @@ impl Warning {
             | Self::BorderCrossesInnerLane { road_id, .. }
             | Self::ShapeShortOfRoad { road_id, .. }
             | Self::UnknownTrafficRule { road_id, .. }
+            | Self::UnknownLaneDirection { road_id, .. }
             | Self::SpeedLimitDropped { road_id, .. }
             | Self::AccessDropped { road_id, .. }
             | Self::VisibilityDropped { road_id, .. }
@@ -339,6 +353,15 @@ impl fmt::Display for Warning {
             } => write!(
                 f,
                 "road {road_id:?}, lane section {section}: lane {lane} links to road {to_road_id:?}, lane section {to_section}, lane {to_lane}, {gap:.2} m away"
+            ),
+            Self::UnknownLaneDirection {
+                road_id,
+                section,
+                lane,
+                direction,
+            } => write!(
+                f,
+                "road {road_id:?}, lane section {section}: lane {lane} has direction {direction:?}, read as standard"
             ),
             Self::JunctionLinkMissing {
                 road_id,

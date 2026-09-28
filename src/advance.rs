@@ -3,7 +3,8 @@
 
 use std::collections::HashSet;
 
-use crate::network::{Direction, LaneId, RoadNetwork};
+use crate::coords::Point;
+use crate::network::{Direction, Lane, LaneId, RoadNetwork};
 use crate::road::{station_at, LanePosition};
 
 /// Where one branch of [`RoadNetwork::advance`] ended.
@@ -33,10 +34,13 @@ impl Advance {
 }
 
 /// One branch in flight: the lane it is on, how far along its centerline,
-/// and the distance still to go.
+/// which way it moves along it, its offset to the left of the traffic, and
+/// the distance still to go.
 struct Branch {
     lane: LaneId,
     arc: f32,
+    up: bool,
+    left: f64,
     remaining: f64,
 }
 
@@ -51,6 +55,11 @@ impl RoadNetwork {
     /// esmini's `MoveAlongS` and CARLA step by road `s` instead, which is
     /// shorter on the outside of a bend. The offset keeps its side of the
     /// traffic, so it flips sign onto a road that runs the other way.
+    ///
+    /// A [`Direction::Both`] lane runs either way. From one, a branch goes
+    /// each way, and one that drives onto one carries on away from where it
+    /// came in. On such a lane, the side of the traffic is the side of the
+    /// way the branch moves when the distance is positive.
     ///
     /// A branch that reaches a lane with nothing after it stops there, as an
     /// [`Advance::DeadEnd`]. Branches that meet again, entering the same
@@ -69,19 +78,30 @@ impl RoadNetwork {
             return Vec::new();
         }
         let millimetres = |m: f64| (m * 1000.0).round() as i64;
-        let mut entered: HashSet<(LaneId, u32, i64)> = HashSet::new();
-        let mut placed: HashSet<(LaneId, i64, Option<i64>)> = HashSet::new();
+        let mut entered: HashSet<(LaneId, u32, i64, i64)> = HashSet::new();
+        let mut placed: HashSet<(LaneId, i64, i64, Option<i64>)> = HashSet::new();
         let ahead = distance >= 0.0;
-        let side = from.offset * travel(lane.direction);
-        let mut out: Vec<Advance> = Vec::new();
-        let mut todo = vec![Branch {
+        // Which way the traffic runs along the centerline, for a branch
+        // moving `up` it: 1.0 along it.
+        let side = move |up: bool| if up == ahead { 1.0 } else { -1.0 };
+        let branch = |up: bool| Branch {
             lane: lane.id,
             arc,
+            up,
+            left: from.offset * side(up),
             remaining: distance.abs(),
-        }];
+        };
+        let mut todo = match lane.direction {
+            Direction::Both => vec![branch(false), branch(true)],
+            Direction::Forward => vec![branch(ahead)],
+            Direction::Backward => vec![branch(!ahead)],
+        };
+        let mut out: Vec<Advance> = Vec::new();
         while let Some(Branch {
             lane,
             arc,
+            up,
+            left,
             remaining,
         }) = todo.pop()
         {
@@ -89,30 +109,49 @@ impl RoadNetwork {
                 continue;
             };
             let length = lane.center.length();
-            let up = (lane.direction == Direction::Forward) == ahead;
             let room = f64::from(if up { length - arc } else { arc });
-            let next = if ahead {
+            let exit = lane.center.point_at(if up { length } else { 0.0 });
+            let linked = if ahead {
                 &lane.successors
             } else {
                 &lane.predecessors
             };
+            let next: Vec<&Lane> = linked
+                .iter()
+                .filter_map(|&id| self.lane(id))
+                .filter(|next| lane.direction != Direction::Both || self.at_end(lane, next, up))
+                .collect();
             if remaining > room && !next.is_empty() {
-                todo.extend(next.iter().rev().filter_map(|&id| {
-                    let next = self.lane(id)?;
-                    let up = (next.direction == Direction::Forward) == ahead;
+                todo.extend(next.iter().rev().filter_map(|next| {
+                    let up = match next.direction {
+                        Direction::Forward => ahead,
+                        Direction::Backward => !ahead,
+                        Direction::Both => {
+                            let points = next.center.points();
+                            exit.distance_to(points[0])
+                                <= exit.distance_to(points[points.len() - 1])
+                        }
+                    };
                     let branch = Branch {
-                        lane: id,
+                        lane: next.id,
                         arc: if up { 0.0 } else { next.center.length() },
+                        up,
+                        left,
                         remaining: remaining - room,
                     };
-                    let key = (id, branch.arc.to_bits(), millimetres(branch.remaining));
+                    let key = (
+                        next.id,
+                        branch.arc.to_bits(),
+                        millimetres(branch.remaining),
+                        millimetres(left),
+                    );
                     entered.insert(key).then_some(branch)
                 }));
                 continue;
             }
             let moved = remaining.min(room) as f32;
             let arc = if up { arc + moved } else { arc - moved };
-            let Some(at) = self.on_centerline(lane.id, arc, side * travel(lane.direction)) else {
+            let Some(at) = self.on_centerline(lane.id, arc, left * side(up)) else {
                 continue;
             };
             let end = if remaining > room {
@@ -127,11 +166,25 @@ impl RoadNetwork {
                 Advance::DeadEnd { short, .. } => Some(millimetres(short)),
                 Advance::Reached(_) => None,
             };
-            if placed.insert((at.lane, millimetres(at.s), short)) {
+            if placed.insert((at.lane, millimetres(at.s), millimetres(at.offset), short)) {
                 out.push(end);
             }
         }
         out
+    }
+
+    /// Whether `next` joins `lane` at the end a branch moving `up` its
+    /// centerline leaves by, rather than the other. What tells a two-way
+    /// lane's links at one end from those at the other.
+    fn at_end(&self, lane: &Lane, next: &Lane, up: bool) -> bool {
+        let points = lane.center.points();
+        let (exit, other) = if up {
+            (points[points.len() - 1], points[0])
+        } else {
+            (points[0], points[points.len() - 1])
+        };
+        let away = |p: Point| (next.center.project(p).point - p).length_squared();
+        away(exit) <= away(other)
     }
 
     /// The lane beside `at`'s on the left of its traffic, at the same `s`
@@ -187,10 +240,11 @@ impl RoadNetwork {
     }
 }
 
-/// 1.0 for a lane whose traffic runs along `+s`, and -1.0 against it.
+/// 1.0 for a lane whose traffic runs along `+s`, or either way, and -1.0
+/// against it.
 fn travel(direction: Direction) -> f64 {
     match direction {
-        Direction::Forward => 1.0,
+        Direction::Forward | Direction::Both => 1.0,
         Direction::Backward => -1.0,
     }
 }

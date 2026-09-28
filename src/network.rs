@@ -178,6 +178,10 @@ pub enum Direction {
     Forward,
     /// Travel runs against it, end to start.
     Backward,
+    /// Travel runs either way, as on a single-track road. Its
+    /// [`Lane::successors`] are the lanes off both ends, and its
+    /// [`Lane::predecessors`] those that drive into it at either end.
+    Both,
 }
 
 /// One lane: a strip of road surface described by its centerline and width.
@@ -235,7 +239,9 @@ pub struct Lane {
     /// Lanes that drive into this lane, the reverse of `successors`.
     pub predecessors: Vec<LaneId>,
     /// Adjacent same-section, same-direction lanes you can change into (lateral
-    /// lane-change edges). Empty if there's no neighbor to change to.
+    /// lane-change edges). Empty if there's no neighbor to change to. A lane
+    /// running the other way is never one, and a [`Direction::Both`] lane is
+    /// only one of another.
     pub neighbors: Vec<LaneId>,
 }
 

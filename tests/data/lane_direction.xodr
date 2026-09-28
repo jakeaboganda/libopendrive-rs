@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+  <header revMajor="1" revMinor="8" name="lane_direction"/>
+  <road name="" length="50" id="0" junction="-1">
+    <link><successor elementType="road" elementId="1" contactPoint="start"/></link>
+    <planView><geometry s="0" x="0" y="0" hdg="0" length="50"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><link><successor id="1"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false" direction="standard"><link><successor id="-1"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane><lane id="-2" type="driving" level="false" direction="reversed"><link><successor id="-2"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane><lane id="-3" type="driving" level="false" direction="both"><link><successor id="-3"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane><lane id="-4" type="driving" level="false" direction="sideways"><link><successor id="-4"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+  <road name="" length="50" id="1" junction="-1">
+    <link><predecessor elementType="road" elementId="0" contactPoint="end"/></link>
+    <planView><geometry s="0" x="50" y="0" hdg="0" length="50"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><link><predecessor id="1"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false" direction="standard"><link><predecessor id="-1"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane><lane id="-2" type="driving" level="false" direction="reversed"><link><predecessor id="-2"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane><lane id="-3" type="driving" level="false" direction="both"><link><predecessor id="-3"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane><lane id="-4" type="driving" level="false" direction="sideways"><link><predecessor id="-4"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+</OpenDRIVE>

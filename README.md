@@ -34,7 +34,7 @@ mesh.validate()?;
 - Lanes of every type, with their widths, borders, offsets, heights and
   sections.
 - Links and junctions, direct junctions included, as a lane graph, in
-  right- or left-hand traffic.
+  right- or left-hand traffic, with reversed and two-way lanes.
 - Road types and speed limits along each lane.
 - Lane rules, access, materials and visibility along each lane.
 - Objects, with repeats, outlines, markings and borders.

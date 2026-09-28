@@ -86,11 +86,13 @@ impl RoadNetwork {
             let Some(lane) = self.lane(lid) else { continue };
             let len = lane.center.length();
             // Travel order: a forward lane runs along its polyline, a backward
-            // one against it.
-            let (travel_start, travel_end) = match lane.direction {
-                Direction::Forward => (0.0, len),
-                Direction::Backward => (len, 0.0),
+            // one against it, and a two-way one toward the next lane.
+            let forward = match lane.direction {
+                Direction::Forward => true,
+                Direction::Backward => false,
+                Direction::Both => self.nearer_end(lane, path.get(i + 1)),
             };
+            let (travel_start, travel_end) = if forward { (0.0, len) } else { (len, 0.0) };
             let entry = match (i, cursor) {
                 (0, _) => start_s.clamp(0.0, len),
                 (_, Some(c)) => lane.center.project(c).s,
@@ -112,6 +114,20 @@ impl RoadNetwork {
             cursor = Some(lane.center.point_at(exit));
         }
         pts
+    }
+}
+
+impl RoadNetwork {
+    /// Whether `next` lies nearer the end of `lane`'s centerline than its
+    /// start, so a two-way lane is driven along its centerline to reach it.
+    /// A lane with nothing after it on the route is driven along it.
+    fn nearer_end(&self, lane: &Lane, next: Option<&LaneId>) -> bool {
+        let Some(next) = next.and_then(|&id| self.lane(id)) else {
+            return true;
+        };
+        let points = lane.center.points();
+        let away = |p: Point| (next.center.project(p).point - p).length_squared();
+        away(points[points.len() - 1]) <= away(points[0])
     }
 }
 

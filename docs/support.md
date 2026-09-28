@@ -61,6 +61,9 @@ files declaring 1.4, 1.6 and 1.7.
 - A road's `rule`, so a left-hand-traffic road drives its left lanes along
   `+s`. A value other than `RHT` or `LHT` reads as `RHT` and raises a
   warning.
+- A lane's `direction`: `reversed` runs it against its side, and `both`
+  makes it a two-way lane, linked off both of its ends. An unknown value
+  reads as `standard` and raises a warning.
 - Direct junctions, which join roads end to end through a `linkedRoad`.
   Each connection links both ways, as esmini reads it, unless the junction
   gives the way back itself.

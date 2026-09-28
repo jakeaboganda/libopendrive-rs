@@ -618,6 +618,7 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
         json!(lane.map(|l| match l.direction {
             Direction::Forward => "forward",
             Direction::Backward => "backward",
+            Direction::Both => "both",
         })),
     );
     entry.insert("width".into(), json!(lane.map(|l| l.width)));

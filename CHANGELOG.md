@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Lane direction
+
+- `feat!`: a lane's `direction` overrides the way its side of the road runs.
+  `reversed` runs it the other way, and `both` makes it a new
+  `Direction::Both` lane. `Direction` gains the variant, so a `match` on it
+  without a wildcard no longer compiles.
+- A two-way lane's successors are the lanes off both of its ends, and its
+  predecessors those that drive into it at either end. From one, only lanes
+  whose traffic runs away from the joint count. In ASAM's
+  `Ex_Bidirectional_Junction`, road 2 now leads back into road 5.
+- A lane change is only ever to a lane running the same way.
+  `RoadNetwork::route` drives a two-way lane toward the next lane on the
+  route, and `RoadNetwork::advance` goes each way from one.
+- `Warning::UnknownLaneDirection` names a `direction` other than
+  `standard`, `reversed` or `both`, which the crate reads as `standard`.
+- A signal still picks its lanes by side, not by the way each runs.
+
 ### Links across a gap
 
 - `Warning::RoadLengthMismatch` names a road whose `length` is more than
