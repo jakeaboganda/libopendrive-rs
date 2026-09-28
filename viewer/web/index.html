@@ -14,6 +14,8 @@
   #sidebar h1 { font-size: 14px; margin: 0 0 8px; font-weight: 600; }
   #search { width: 100%; padding: 6px 8px; background: #1b1f27; border: 1px solid #2a2f3a; border-radius: 5px; color: inherit; }
   #count { color: #7c8595; font-size: 11px; margin-top: 6px; }
+  #geo { color: #7c8595; font-size: 11px; margin: -4px 0 8px; overflow-wrap: anywhere; }
+  #geo:empty { display: none; }
   #list { overflow: auto; flex: 1; padding: 4px 0; }
   .road { padding: 4px 12px 2px; color: #8fa1b3; font-weight: 600; letter-spacing: .02em; cursor: pointer; }
   .group { padding: 2px 12px 2px 22px; color: #8fa1b3; cursor: pointer; }
@@ -51,6 +53,7 @@
   <aside id="sidebar">
     <header>
       <h1>map</h1>
+      <div id="geo"></div>
       <input id="search" placeholder="filter: road, lane, object, signal or warning…" autocomplete="off" />
       <div id="count"></div>
     </header>
@@ -248,6 +251,14 @@ async function pickScene() {
   return { sceneUrl: chosen, count: names.length };
 }
 
+// The map's PROJ string and offset, as the file gives them, or '' for none.
+function geoText(geo) {
+  if (!geo) return '';
+  const o = geo.offset;
+  const offset = o && `offset x ${o.x} y ${o.y} z ${o.z} hdg ${o.hdg}`;
+  return [geo.proj, offset].filter(Boolean).join(' · ');
+}
+
 // What the page shows before a map is picked.
 function showPrompt(count) {
   const el = document.getElementById('err');
@@ -271,6 +282,7 @@ async function init() {
       `(e.g. <code>python3 -m http.server</code>) rather than opening the file directly, ` +
       `and bake a map with <code>viewer_export</code> first.`);
   }
+  document.getElementById('geo').textContent = geoText(data.geoReference);
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x12151a);

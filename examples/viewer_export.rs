@@ -184,8 +184,8 @@ fn write_scene_list(folder: &Path) -> std::io::Result<()> {
 }
 
 /// Assemble the viewer scene: flat mesh buffers, the lane table, the object
-/// table, the object mesh, and the structure, signal, controller, road mark
-/// and warning tables.
+/// table, the object mesh, the structure, signal, controller, road mark and
+/// warning tables, and the geo reference.
 fn build_scene(
     net: &RoadNetwork,
     mesh: &Mesh,
@@ -266,6 +266,7 @@ fn build_scene(
         "controllers": controllers,
         "roadMarks": road_marks,
         "warnings": provenance.warnings.iter().map(warning_entry).collect::<Vec<_>>(),
+        "geoReference": net.geo_reference(),
     })
 }
 

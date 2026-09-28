@@ -83,6 +83,9 @@ readout opens beside it. It stays outlined, with its lanes lit and a
 signal's dashed lines drawn, while you hover other things. Click it again
 to clear it.
 
+Under the map's name, the sidebar shows its `<geoReference>` PROJ string
+and `<offset>` as the file gives them. A map without either shows neither.
+
 ## Lanes
 
 Hover a lane to highlight its lane section. A white arrow on its centerline
