@@ -25,6 +25,7 @@
   serialized before deserializes with none, and the road queries answer
   `None`.
 - Import takes about 4 % longer, to index every lane's footprint.
+- The viewer's lane readout shows the road `s` and `t` under the mouse.
 
 ### Geo reference
 

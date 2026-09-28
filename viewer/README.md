@@ -96,7 +96,9 @@ it are orange. While a lane is selected in the sidebar, its own links stay
 lit as you hover others. The readout shows:
 
 - the road id, the OpenDRIVE lane id and the lane type
-- the surface point `x, y, z`, and `s` and `t` along the lane
+- the surface point `x, y, z`
+- the road `s` and `t` there, in OpenDRIVE's road coordinates
+- `s` and the offset along the lane
 - the lane's width at that point, which grows along a lane that opens out
   of nothing, whether its widths or its `<border>`s shape it. A tilted
   lane's is measured across its surface.
@@ -304,11 +306,16 @@ The normal is the baked up-normal interpolated across the hit triangle, the
 value `Mesh::height_at` reports. It varies smoothly across facet edges
 instead of jumping at each one.
 
-`s` and `t` are measured from the lane centerline, as `Polyline::project`
-measures them. `s` is arc length along the lane. `t` is the signed sideways
-offset, positive to the left of the lane's stored heading. This is not
-OpenDRIVE's road-reference `t`. The baked network has no reference line, so
-`t` here is near zero in the middle of a lane.
+The road `s` and `t` are OpenDRIVE's own: `s` along the road's reference
+line and `t` across it, positive to the left. The exporter gives each
+centerline vertex its road `s` and `t` from `RoadNetwork::road_position_on`,
+on the lane's own road. The page interpolates them along the lane, and adds
+the hovered point's offset from the centerline, tilted with the lane.
+
+The lane `s` and offset are measured from the lane centerline, as
+`Polyline::project` measures them. `s` is arc length along the lane. The
+offset is signed, positive to the left of the lane's stored heading, so it
+is near zero in the middle of a lane.
 
 ## How a hover finds its lane
 

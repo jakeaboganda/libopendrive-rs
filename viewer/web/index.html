@@ -1289,7 +1289,8 @@ function onHover(ev) {
   const rows = [
     `<b>road ${lane.roadId}</b>  lane ${lane.odLaneId}  <b>${lane.laneType}</b>`,
     `x ${p.x.toFixed(2)}   y ${p.y.toFixed(2)}   z ${p.z.toFixed(2)}`,
-    `s ${s.toFixed(2)} m   t ${t.toFixed(2)} m`,
+    roadText(lane, i, u, t),
+    `lane s ${s.toFixed(2)} m   offset ${t.toFixed(2)} m`,
     `width ${laneWidth(lane, i, u).toFixed(2)} m   heading ${vec3(heading)}`,
     `cross slope ${slopeText(laneSlope(lane, i, u))}`,
   ];
@@ -1550,6 +1551,18 @@ function project(lane, p) {
     }
   }
   return best;
+}
+
+// The road `s` and `t` a fraction `u` along segment `i`, lerped between the
+// segment's two vertices, with the lane `offset` in plan carried out along
+// the lane's tilt.
+function roadText(lane, i, u, offset) {
+  const a = lane.roadSt && lane.roadSt[i], b = lane.roadSt && lane.roadSt[i + 1];
+  if (!a || !b) return 'road s -   t -';
+  const b0 = lane.bank && lane.bank.length ? lane.bank[i] + (lane.bank[i + 1] - lane.bank[i]) * u : 0;
+  const s = a[0] + (b[0] - a[0]) * u;
+  const t = a[1] + (b[1] - a[1]) * u + offset / Math.cos(b0);
+  return `road s ${s.toFixed(2)} m   t ${t.toFixed(2)} m`;
 }
 
 // Unit heading a fraction `u` along segment `i`, lerped between the segment's

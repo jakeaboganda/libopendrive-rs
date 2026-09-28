@@ -18,7 +18,8 @@
 //! the lane is for, the lanes before and after it, the mesh slice it owns (so a
 //! picked triangle resolves to a lane), and its centerline with the heading at each point (so the viewer can
 //! project the cursor to `(s, t)` and read out the same heading the crate
-//! would), and the speed limits and road types along it. Each object entry is its type, name, and shape: a pose and extent
+//! would), the road `s` and `t` at each point, and the speed limits and road
+//! types along it. Each object entry is its type, name, and shape: a pose and extent
 //! for a solid, or world-space corners for an outline or a sweep. The object
 //! mesh from [`RoadNetwork::object_mesh`] comes too, in the same flat buffers
 //! with each object's slice of it. A structure table lists the tunnels and
@@ -591,6 +592,19 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
     let heights: Vec<[f32; 2]> = prov
         .map(|p| p.heights.iter().map(|h| [h.inner, h.outer]).collect())
         .unwrap_or_default();
+    // Parallel to `centerline`: each vertex's road `s` and `t`, on the
+    // lane's own road where roads overlap.
+    let road = net.road_lane(span.lane).map(|at| at.road);
+    let road_st: Vec<[f64; 2]> = match (lane, road) {
+        (Some(lane), Some(road)) => lane
+            .center
+            .points()
+            .iter()
+            .filter_map(|&p| net.road_position_on(road, p))
+            .map(|at| [at.s, at.t])
+            .collect(),
+        _ => Vec::new(),
+    };
 
     let mut entry = Map::new();
     entry.insert("laneId".into(), json!(span.lane.0));
@@ -638,6 +652,7 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
     entry.insert("centerline".into(), json!(centerline));
     entry.insert("headings".into(), json!(headings));
     entry.insert("heights".into(), json!(heights));
+    entry.insert("roadSt".into(), json!(road_st));
     let limit = |l: &SpeedLimit| match l {
         SpeedLimit::Max(mps) => json!(mps),
         SpeedLimit::Unlimited => Value::Null,
