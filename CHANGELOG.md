@@ -18,6 +18,8 @@
 - `Warning::UnknownLaneDirection` names a `direction` other than
   `standard`, `reversed` or `both`, which the crate reads as `standard`.
 - A signal still picks its lanes by side, not by the way each runs.
+- The viewer's lane readout says `both` for a two-way lane, and its arrow
+  points both ways. The marker steps each way along one.
 
 ### Links across a gap
 
