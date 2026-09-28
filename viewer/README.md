@@ -87,7 +87,8 @@ to clear it.
 
 Hover a lane to highlight its lane section. A white arrow on its centerline
 points the way traffic drives, so on a `backward` lane it runs against the
-heading below. The lanes it leads to are green and the lanes that lead into
+heading below. On a left-hand-traffic road the left lanes are the
+`forward` ones. The lanes it leads to are green and the lanes that lead into
 it are orange. While a lane is selected in the sidebar, its own links stay
 lit as you hover others. The readout shows:
 

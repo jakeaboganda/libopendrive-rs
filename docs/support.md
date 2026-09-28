@@ -52,6 +52,9 @@ files declaring 1.4, 1.6 and 1.7.
   vertex.
 - Road and lane `<link>`s and `<junction>`s, resolved into a lane graph in
   the direction traffic drives.
+- A road's `rule`, so a left-hand-traffic road drives its left lanes along
+  `+s`. A value other than `RHT` or `LHT` reads as `RHT` and raises a
+  warning.
 
 ## Objects
 
@@ -173,7 +176,8 @@ raises `Warning::RoadSkipped`. A lane with no `<width>` or `<border>` raises
 `Warning::LaneDropped`. The lane borders the spec forbids raise
 `Warning::WidthAndBorder`, `Warning::BorderWithLaneOffset` and
 `Warning::BorderCrossesInnerLane`. A lateral profile that doesn't cover the
-road raises `Warning::ShapeShortOfRoad`. The elements below raise nothing.
+road raises `Warning::ShapeShortOfRoad`. A road `rule` other than `RHT` or
+`LHT` raises `Warning::UnknownTrafficRule`. The elements below raise nothing.
 
 ## What it ignores
 

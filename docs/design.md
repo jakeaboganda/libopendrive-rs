@@ -10,8 +10,9 @@ unchanged, so a coordinate you read out of the `.xodr` is the coordinate you
 get back. An OpenDRIVE left turn curves toward +Y, and positive lane offset
 `t` is to the left of the heading.
 
-Travel direction follows right-hand traffic: negative-id lanes run with `+s`,
-positive-id lanes against it.
+Travel direction follows each road's `rule`. Under right-hand traffic, the
+default, negative-id lanes run with `+s` and positive-id lanes against it.
+Under `rule="LHT"` it is the other way round.
 
 ## Coordinate types
 
@@ -70,8 +71,8 @@ logging crate. A clean file allocates no warnings.
 
 The crate warns where it drops something, or reads a file that breaks a rule
 of the spec. So far that is a skipped road, a lane with no `<width>` or
-`<border>`, the lane borders the spec forbids, and a lateral profile short
-of the road. It
+`<border>`, the lane borders the spec forbids, a lateral profile short
+of the road, and a road `rule` the spec does not allow. It
 doesn't warn for elements it doesn't read, such as `<userData>`, which real
 maps are full of. [support.md](support.md) lists those.
 

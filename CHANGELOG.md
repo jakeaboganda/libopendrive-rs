@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Left-hand traffic
+
+- Fix: a road with `rule="LHT"` drives its left lanes along `+s` and its
+  right lanes against it. The crate used to read every road as right-hand
+  traffic, so on esmini's `e6mini-lht.xodr` every `Lane::direction`,
+  successor and predecessor was reversed. A signal's `orientation` picks
+  its lanes by the same rule.
+- Where the crate departs from the spec:
+  - A `rule` other than `RHT` or `LHT` reads as `RHT`, the spec's default,
+    and raises `Warning::UnknownTrafficRule`. esmini also reads `lht` as
+    left-hand traffic.
+- The viewer's travel arrows and link colours follow the rule, and its
+  sidebar lists the new warning.
+
 ### Warnings
 
 - Breaking: `Provenance` has a new `warnings` field, so a `Provenance`

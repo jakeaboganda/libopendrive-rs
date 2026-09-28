@@ -54,6 +54,13 @@ sections, a road whose marks give `<type><line>`s, and one with
 
     uv run --with scenariogeneration==0.16.6 tests/data/road_marks.py
 
+`traffic_rule.xodr` comes from `traffic_rule.py`, which writes the XML
+itself. It has the same pair of linked roads in right- and left-hand
+traffic, each with a signal, and a road whose `rule` the spec does not
+allow. Regenerate with
+
+    python3 tests/data/traffic_rule.py
+
 `lane_heights.xodr` comes from `lane_heights.py` the same way. It has
 raised sidewalks, one flat and one with a kerb ramp, on a flat road, a
 banked and climbing road, a road with two lane sections, and an arc. The

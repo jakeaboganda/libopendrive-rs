@@ -370,6 +370,12 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             &mut topo,
         ) {
             Ok(baked) => {
+                if let Err(rule) = traffic_rule(road) {
+                    warnings.push(Warning::UnknownTrafficRule {
+                        road_id: baked.id.clone(),
+                        rule: rule.to_string(),
+                    });
+                }
                 for section in &baked.sections {
                     warnings.extend(baked.lane_warnings(section));
                 }
@@ -963,6 +969,43 @@ fn attr_f64(node: roxmltree::Node, name: &str) -> Option<f64> {
         .filter(|v| v.is_finite())
 }
 
+/// Which side of a road drives along `+s`, from its `<road rule>`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TrafficRule {
+    RightHand,
+    LeftHand,
+}
+
+impl TrafficRule {
+    /// How the lanes on the left side of the road travel, or on the right.
+    fn direction(self, left: bool) -> Direction {
+        if left == (self == Self::LeftHand) {
+            Direction::Forward
+        } else {
+            Direction::Backward
+        }
+    }
+
+    /// The `<lane id>`s of the side whose traffic travels `direction`.
+    fn side(self, direction: Direction) -> (i32, i32) {
+        if self.direction(true) == direction {
+            (1, i32::MAX)
+        } else {
+            (i32::MIN, -1)
+        }
+    }
+}
+
+/// `road`'s traffic rule, or the value of its `rule` if that is neither
+/// `RHT` nor `LHT`. A road without one is right-hand traffic.
+fn traffic_rule<'a>(road: roxmltree::Node<'a, '_>) -> Result<TrafficRule, &'a str> {
+    match road.attribute("rule") {
+        None | Some("RHT") => Ok(TrafficRule::RightHand),
+        Some("LHT") => Ok(TrafficRule::LeftHand),
+        Some(other) => Err(other),
+    }
+}
+
 /// Bakes one `<road>`'s lanes into `out`, places its objects in `objects`,
 /// looking up what its `<objectReference>`s name in `index`, and puts its
 /// tunnels and bridges over its lanes in `structures`. Returns the road, for
@@ -985,6 +1028,7 @@ fn parse_road(
 ) -> Result<BakedRoad, RoadSkipReason> {
     let road_id = road.attribute("id").unwrap_or_default().to_string();
     let length = attr_f64(road, "length").ok_or(RoadSkipReason::NoLength)?;
+    let rule = traffic_rule(road).unwrap_or(TrafficRule::RightHand);
     let plan_view = child(road, "planView").ok_or(RoadSkipReason::NoPlanView)?;
     let mut geoms: Vec<GeomRec> = Vec::new();
     for g in plan_view.children().filter(|n| n.has_tag_name("geometry")) {
@@ -1088,12 +1132,14 @@ fn parse_road(
         &superelevations,
         &shapes,
         &lane_offsets,
+        rule,
         out,
         topo,
     );
     let baked = BakedRoad {
         id: road_id,
         length,
+        rule,
         geoms,
         elevations,
         superelevations,
@@ -1376,6 +1422,7 @@ fn is_valid(od_id: i32, validity: &[(i32, i32)]) -> bool {
 struct BakedRoad {
     id: String,
     length: f64,
+    rule: TrafficRule,
     geoms: Vec<GeomRec>,
     elevations: Vec<Cubic>,
     superelevations: Vec<Cubic>,
@@ -1540,6 +1587,7 @@ fn bake_lanes(
     superelevations: &[Cubic],
     shapes: &[ShapeProfile],
     lane_offsets: &[Cubic],
+    rule: TrafficRule,
     out: &mut Vec<Lane>,
     topo: &mut Topology,
 ) -> Vec<BakedSection> {
@@ -1599,6 +1647,7 @@ fn bake_lanes(
             topo,
             road_id,
             i,
+            rule,
         );
         // emit_section records a lane's meta as it pushes the lane, so the
         // new metas and the new lanes are in step.
@@ -1641,6 +1690,7 @@ fn emit_section(
     topo: &mut Topology,
     road_id: &str,
     section_idx: usize,
+    rule: TrafficRule,
 ) -> Vec<f64> {
     let (left, right) = (&def.left, &def.right);
     let bends = section_bends(geoms, lane_offsets, [left, right], s_start, s_end);
@@ -1658,18 +1708,9 @@ fn emit_section(
         .collect();
     let level_bank = unless_flat(road_bank.iter().map(|&b| b as f32).collect());
     for side in [left, right] {
-        // Left lanes (positive id) offset toward +t and travel against +s;
-        // right lanes (negative id) offset toward -t and travel with +s.
         let is_left = side.first().map(|l| l.id > 0).unwrap_or(false);
         let sign = if is_left { 1.0 } else { -1.0 };
-        // Standard right-hand-traffic convention: negative-id (right) lanes run
-        // with +s, positive-id (left) against it. OpenDRIVE itself encodes no
-        // travel direction; a left-hand-traffic map would invert this.
-        let direction = if is_left {
-            Direction::Backward
-        } else {
-            Direction::Forward
-        };
+        let direction = rule.direction(is_left);
         // Lanes emitted on this side, center-outward, as (id, index in `out`,
         // kind). Consecutive ones are lateral neighbors (lane-change edges),
         // subject to the drivability test below.

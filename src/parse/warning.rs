@@ -80,6 +80,14 @@ pub enum Warning {
         /// The profile's `s`.
         s: f64,
     },
+    /// A `<road>` whose `rule` is neither `RHT` nor `LHT`, the two values
+    /// the spec allows. The crate reads it as `RHT`, the spec's default.
+    UnknownTrafficRule {
+        /// Its `<road id>`.
+        road_id: String,
+        /// The value of its `rule`.
+        rule: String,
+    },
 }
 
 /// Why a `<road>` baked nothing.
@@ -106,7 +114,8 @@ impl Warning {
             | Self::WidthAndBorder { road_id, .. }
             | Self::BorderWithLaneOffset { road_id, .. }
             | Self::BorderCrossesInnerLane { road_id, .. }
-            | Self::ShapeShortOfRoad { road_id, .. } => road_id,
+            | Self::ShapeShortOfRoad { road_id, .. }
+            | Self::UnknownTrafficRule { road_id, .. } => road_id,
         }
     }
 }
@@ -153,6 +162,10 @@ impl fmt::Display for Warning {
             Self::ShapeShortOfRoad { road_id, s } => write!(
                 f,
                 "road {road_id:?}: the <shape>s at s {s:.2} m start inside the road's right edge"
+            ),
+            Self::UnknownTrafficRule { road_id, rule } => write!(
+                f,
+                "road {road_id:?}: rule {rule:?} is neither \"RHT\" nor \"LHT\", read as \"RHT\""
             ),
         }
     }

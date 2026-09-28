@@ -46,7 +46,7 @@
 //!
 //! | Element | Attributes read |
 //! | --- | --- |
-//! | `<road>` | `id`, `length`, `junction` |
+//! | `<road>` | `id`, `length`, `junction`, `rule` |
 //! | `<road><link>` | `elementType`, `elementId`, `contactPoint` |
 //! | `<planView><geometry>` | `s`, `x`, `y`, `hdg`, `length` |
 //! | `<line>` | none |
@@ -101,8 +101,10 @@
 //! | `<road><surface><CRG>` | `file`, `mode`, `purpose`, `orientation`, `sStart`, `sEnd`, `sOffset`, `tOffset`, `hOffset`, `xOffset`, `yOffset`, `zOffset`, `zScale` |
 //! | `<junction><surface><CRG>` | `file`, `mode`, `purpose`, `xOffset`, `yOffset`, `hOffset`, `zOffset`, `zScale` |
 //!
-//! Four attribute values steer the import:
+//! Five attribute values steer the import:
 //!
+//! - `<road rule>` is `LHT` for left-hand traffic, or right-hand traffic
+//!   for `RHT` or none. See [Coordinate frame](#coordinate-frame).
 //! - `<lane type>` chooses the [`LaneType`] a lane bakes as. A name this
 //!   crate does not recognise bakes as [`LaneType::Unknown`], so no lane is
 //!   ever dropped for its type.
@@ -537,10 +539,14 @@
 //! Doing that here instead would mean every coordinate in this API disagreed
 //! with the file it came from, which is the harder bug to find.
 //!
-//! Travel direction follows right-hand traffic: negative-id (right) lanes run
-//! with `+s`, positive-id (left) lanes against it. OpenDRIVE encodes no travel
-//! direction of its own, so a left-hand-traffic map imports with its
-//! directions inverted.
+//! Travel direction follows each road's `rule`. Under right-hand traffic,
+//! the default, negative-id (right) lanes run with `+s` and positive-id
+//! (left) lanes against it. Under `rule="LHT"` the left lanes run with `+s`.
+//! Links, lane changes and a signal's `orientation` follow the direction.
+//!
+//! The spec allows only `RHT` and `LHT`. The crate reads any other value as
+//! `RHT`, the spec's default, and raises [`Warning::UnknownTrafficRule`].
+//! esmini also reads `lht` as left-hand traffic. The crate does not.
 //!
 //! # Robustness
 //!
@@ -566,6 +572,8 @@
 //!   forbids. See [Lane borders](#lane-borders).
 //! - [`Warning::ShapeShortOfRoad`] for a lateral profile that does not
 //!   cover the road. See [Lateral shapes](#lateral-shapes).
+//! - [`Warning::UnknownTrafficRule`] for a road `rule` other than `RHT` or
+//!   `LHT`. See [Coordinate frame](#coordinate-frame).
 //!
 //! Elements the crate does not read at all raise none. Real maps are full of
 //! them, and they would bury the rest. Other things it drops, such as a lane

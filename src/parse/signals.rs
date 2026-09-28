@@ -10,8 +10,8 @@ use super::{
 };
 use crate::coords::{Point, Vector};
 use crate::{
-    Control, Controller, ControllerId, Dependency, ObjectId, Reference, Referenced, Signal,
-    SignalId, Unit,
+    Control, Controller, ControllerId, Dependency, Direction, ObjectId, Reference, Referenced,
+    Signal, SignalId, Unit,
 };
 
 /// The signals and controllers baked so far, and the provenance of each, in
@@ -150,7 +150,7 @@ fn apply_reference(
         return;
     }
     let orientation = orientation(node);
-    for lane in road.lanes((s, s), &lane_ranges(orientation, validity(node))) {
+    for lane in road.lanes((s, s), &lane_ranges(road, orientation, validity(node))) {
         if !signal.lanes.contains(&lane) {
             signal.lanes.push(lane);
         }
@@ -216,7 +216,7 @@ fn place_signal(
         controllers: Vec::new(),
         dependencies: Vec::new(),
         references: Vec::new(),
-        lanes: road.lanes((s, s), &lane_ranges(orientation, validity(node))),
+        lanes: road.lanes((s, s), &lane_ranges(road, orientation, validity(node))),
         applies_at: vec![road.surface(s, t).0],
         position: board.position,
         heading: wrap(board.heading) as f32,
@@ -323,13 +323,17 @@ fn inertial(node: roxmltree::Node) -> Option<Board> {
 
 /// The `<lane id>` ranges a signal applies to: its `<validity>` ranges if it
 /// has any, else the side of the road whose traffic its `orientation` names.
-fn lane_ranges(orientation: Orientation, validity: Vec<(i32, i32)>) -> Vec<(i32, i32)> {
+fn lane_ranges(
+    road: &BakedRoad,
+    orientation: Orientation,
+    validity: Vec<(i32, i32)>,
+) -> Vec<(i32, i32)> {
     if !validity.is_empty() {
         return validity;
     }
     match orientation {
-        Orientation::Positive => vec![(i32::MIN, -1)],
-        Orientation::Negative => vec![(1, i32::MAX)],
+        Orientation::Positive => vec![road.rule.side(Direction::Forward)],
+        Orientation::Negative => vec![road.rule.side(Direction::Backward)],
         Orientation::Both => Vec::new(),
     }
 }

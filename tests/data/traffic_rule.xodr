@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+  <header revMajor="1" revMinor="8" name="traffic_rule"/>
+  <road name="" length="50" id="0" junction="-1">
+    <link><successor elementType="road" elementId="1" contactPoint="start"/></link>
+    <planView><geometry s="0" x="0" y="0" hdg="0" length="50"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><link><successor id="1"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><link><successor id="-1"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+    <signals><signal id="s0" s="10" t="-5" zOffset="2" orientation="+" dynamic="no" country="DE" type="274" subtype="-1" value="50" unit="km/h"/></signals>
+  </road>
+  <road name="" length="50" id="1" junction="-1">
+    <link><predecessor elementType="road" elementId="0" contactPoint="end"/></link>
+    <planView><geometry s="0" x="50" y="0" hdg="0" length="50"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><link><predecessor id="1"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><link><predecessor id="-1"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+  <road name="" length="50" id="2" junction="-1" rule="LHT">
+    <link><successor elementType="road" elementId="3" contactPoint="start"/></link>
+    <planView><geometry s="0" x="0" y="20" hdg="0" length="50"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><link><successor id="1"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><link><successor id="-1"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+    <signals><signal id="s2" s="10" t="5" zOffset="2" orientation="+" dynamic="no" country="DE" type="274" subtype="-1" value="50" unit="km/h"/></signals>
+  </road>
+  <road name="" length="50" id="3" junction="-1" rule="LHT">
+    <link><predecessor elementType="road" elementId="2" contactPoint="end"/></link>
+    <planView><geometry s="0" x="50" y="20" hdg="0" length="50"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><link><predecessor id="1"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><link><predecessor id="-1"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+  <road name="" length="50" id="4" junction="-1" rule="lht">
+    <link></link>
+    <planView><geometry s="0" x="0" y="40" hdg="0" length="50"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><link></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><link></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+</OpenDRIVE>
