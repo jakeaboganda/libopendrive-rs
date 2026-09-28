@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Junction areas
+
+- `RoadNetwork::junction_areas` gives each junction with a `<boundary>` or
+  an `<elevationGrid>` as a `JunctionArea`: the boundary as a closed ring on
+  the road surface, and the grid, read bicubically as the spec gives it by
+  `JunctionArea::height_at`. `JunctionArea::mesh` triangulates the ground
+  inside the boundary at the grid's height.
+- The grid doesn't replace the junction's roads' heights, as the spec says
+  it does, nor blend into the roads coming in. `Warning::ElevationGridNotApplied`
+  says so.
+- `Warning::BoundaryNotClosed`, `BoundarySegmentDropped` and
+  `BoundaryClockwise` name a boundary the spec doesn't allow. In ASAM's
+  `UC_5Road_Junction`, road 384's lane offset leaves a 15 cm gap.
+- `Warning::road_id` is empty for a warning about a junction as a whole.
+
 ### Road neighbors
 
 - `RoadNetwork::road_neighbors` lists each road `<neighbor>`, an element of

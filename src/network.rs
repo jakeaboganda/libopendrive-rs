@@ -10,6 +10,7 @@ use crate::crg::CrgSurface;
 use crate::geo::GeoReference;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
+use crate::junction::JunctionArea;
 use crate::object::{Material, Object, ObjectId};
 use crate::road::{LanePosition, Priority, Road, RoadId, RoadLane, RoadNeighbor, RoadPosition};
 use crate::road_mark::{RoadMark, RoadMarkId};
@@ -280,6 +281,7 @@ pub struct RoadNetwork {
     roads: Vec<Road>,
     priorities: Vec<Priority>,
     road_neighbors: Vec<RoadNeighbor>,
+    junction_areas: Vec<JunctionArea>,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
     /// [`Self::nearest_lane`]. Derived from `lanes`, so it takes no part in
     /// equality.
@@ -313,6 +315,7 @@ impl PartialEq for RoadNetwork {
             && self.roads == other.roads
             && self.priorities == other.priorities
             && self.road_neighbors == other.road_neighbors
+            && self.junction_areas == other.junction_areas
     }
 }
 
@@ -345,6 +348,8 @@ struct NetworkData {
     priorities: Vec<Priority>,
     #[serde(default)]
     road_neighbors: Vec<RoadNeighbor>,
+    #[serde(default)]
+    junction_areas: Vec<JunctionArea>,
 }
 
 #[cfg(feature = "serde")]
@@ -367,6 +372,7 @@ impl From<NetworkData> for RoadNetwork {
             .with_roads(data.roads)
             .with_priorities(data.priorities)
             .with_road_neighbors(data.road_neighbors)
+            .with_junction_areas(data.junction_areas)
     }
 }
 
@@ -391,6 +397,7 @@ impl From<RoadNetwork> for NetworkData {
             roads: net.roads,
             priorities: net.priorities,
             road_neighbors: net.road_neighbors,
+            junction_areas: net.junction_areas,
         }
     }
 }
@@ -554,6 +561,7 @@ impl RoadNetwork {
             roads: Vec::new(),
             priorities: Vec::new(),
             road_neighbors: Vec::new(),
+            junction_areas: Vec::new(),
             index,
             road_lanes: HashMap::new(),
             footprints: LaneIndex::default(),
@@ -619,6 +627,19 @@ impl RoadNetwork {
     /// order the importer emitted them: road by road, in file order.
     pub fn road_neighbors(&self) -> &[RoadNeighbor] {
         &self.road_neighbors
+    }
+
+    /// This network with `junction_areas` over its junctions, replacing any
+    /// it had.
+    pub fn with_junction_areas(mut self, junction_areas: Vec<JunctionArea>) -> Self {
+        self.junction_areas = junction_areas;
+        self
+    }
+
+    /// The area of each junction that gives a boundary or an elevation grid,
+    /// in file order.
+    pub fn junction_areas(&self) -> &[JunctionArea] {
+        &self.junction_areas
     }
 
     /// Every road, in the order the importer emitted them, which is file

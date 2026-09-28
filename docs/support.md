@@ -71,6 +71,11 @@ files declaring 1.4, 1.6 and 1.7.
   gives the way back itself.
 - A road's `<neighbor>`s, from OpenDRIVE 1.4, as
   `RoadNetwork::road_neighbors`: the road beside it, and which way it runs.
+- Junction `<boundary>`s and `<elevationGrid>`s, as
+  `RoadNetwork::junction_areas`: the ring round a junction's ground, and
+  the height of that ground, with a mesh of it. The grid does not replace
+  the height of the junction's roads, as the spec says it does, and a
+  warning says so.
 - Junction `<priority>`s, as `RoadNetwork::priorities`: which road of a
   junction gives way to which.
 - An incoming road whose `<link>` leaves out its common junction, which the

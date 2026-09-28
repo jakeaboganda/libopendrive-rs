@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+  <header revMajor="1" revMinor="8" name="junction_areas"/>
+  <road name="" length="20" id="1" junction="-1">
+    <link><successor elementType="junction" elementId="7"/></link>
+    <planView><geometry s="0" x="0" y="0" hdg="0" length="20"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+  <road name="" length="20" id="2" junction="-1">
+    <link><predecessor elementType="junction" elementId="7"/></link>
+    <planView><geometry s="0" x="30" y="0" hdg="0" length="20"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+  <road name="" length="10" id="10" junction="7">
+    <link><predecessor elementType="road" elementId="1" contactPoint="end"/><successor elementType="road" elementId="2" contactPoint="start"/></link>
+    <planView><geometry s="0" x="20" y="0" hdg="0" length="10"><line/></geometry></planView>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><link><predecessor id="1"/><successor id="1"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><link><predecessor id="-1"/><successor id="-1"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+  <junction id="7">
+    <connection id="0" incomingRoad="1" connectingRoad="10" contactPoint="start"><laneLink from="-1" to="-1"/></connection>
+    <connection id="1" incomingRoad="2" connectingRoad="10" contactPoint="end"><laneLink from="1" to="1"/></connection>
+    <planView><geometry s="0" x="18" y="0" hdg="0" length="14"><line/></geometry></planView>
+    <boundary><segment type="lane" roadId="10" boundaryLane="-1" sStart="start" sEnd="end"/><segment type="joint" roadId="2" contactPoint="start" jointLaneStart="-1" jointLaneEnd="1"/><segment type="lane" roadId="10" boundaryLane="1" sStart="end" sEnd="start"/><segment type="joint" roadId="1" contactPoint="end" jointLaneStart="1" jointLaneEnd="-1"/></boundary>
+    <elevationGrid sStart="0" gridSpacing="4"><elevation left="0.0" center="0.0" right="0.0"/><elevation left="0.0" center="0.2" right="0.0"/><elevation left="0.0" center="0.2" right="0.0"/><elevation left="0.0" center="0.0" right="0.0"/></elevationGrid>
+  </junction>
+  <junction id="8">
+    <boundary><segment type="joint" roadId="1" contactPoint="end" jointLaneStart="1" jointLaneEnd="-1"/><segment type="lane" roadId="10" boundaryLane="1" sStart="end" sEnd="start"/><segment type="joint" roadId="2" contactPoint="start" jointLaneStart="-1" jointLaneEnd="1"/><segment type="lane" roadId="99" boundaryLane="-1" sStart="start" sEnd="end"/></boundary>
+  </junction>
+</OpenDRIVE>

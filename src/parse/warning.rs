@@ -182,6 +182,40 @@ pub enum Warning {
         /// The road of the two the load has, or `low` if it has neither.
         road_id: String,
     },
+    /// A junction's `<elevationGrid>`. The spec says it overrides the height
+    /// of the junction's roads, and blends into the roads coming in. The
+    /// crate keeps the roads' own heights, and gives the grid's in
+    /// [`JunctionArea::height_at`](crate::JunctionArea::height_at) and its
+    /// [`JunctionArea::mesh`](crate::JunctionArea::mesh).
+    ElevationGridNotApplied {
+        /// The `<junction id>`.
+        junction_id: String,
+    },
+    /// A junction `<boundary>` `<segment>` naming no baked road, a lane its
+    /// road does not have, or a `type` other than `lane` or `joint`. The
+    /// crate drops it, so the boundary has a gap there.
+    BoundarySegmentDropped {
+        /// The `<junction id>`.
+        junction_id: String,
+        /// The segment's `roadId`, empty if it has none.
+        road_id: String,
+    },
+    /// A junction `<boundary>` whose segments don't meet: one leaves off
+    /// more than 10 cm in plan from where the next begins, or the last from where the
+    /// first begins. The spec says they close the boundary. The crate joins
+    /// them straight.
+    BoundaryNotClosed {
+        /// The `<junction id>`.
+        junction_id: String,
+        /// The widest gap, in metres.
+        gap: f64,
+    },
+    /// A junction `<boundary>` whose segments run clockwise. The spec says
+    /// they run counter-clockwise. The crate turns the boundary round.
+    BoundaryClockwise {
+        /// The `<junction id>`.
+        junction_id: String,
+    },
     /// A `<speed>` whose `max` or `unit` the crate can't read. The crate
     /// drops it, so the lane's limit there is its road's, or the lane's
     /// `<speed>` before it.
@@ -256,7 +290,8 @@ pub enum RoadSkipReason {
 }
 
 impl Warning {
-    /// The `<road id>` it happened on.
+    /// The `<road id>` it happened on. Empty for a warning about a junction
+    /// as a whole, such as its boundary or its elevation grid.
     pub fn road_id(&self) -> &str {
         match self {
             Self::RoadSkipped { road_id, .. }
@@ -276,10 +311,14 @@ impl Warning {
             | Self::LaneNotLevel { road_id, .. }
             | Self::PriorityDropped { road_id, .. }
             | Self::NeighborDropped { road_id, .. }
+            | Self::BoundarySegmentDropped { road_id, .. }
             | Self::ConnectionDropped {
                 incoming_road_id: road_id,
                 ..
             } => road_id,
+            Self::ElevationGridNotApplied { .. }
+            | Self::BoundaryNotClosed { .. }
+            | Self::BoundaryClockwise { .. } => "",
         }
     }
 }
@@ -380,6 +419,25 @@ impl fmt::Display for Warning {
             } => write!(
                 f,
                 "road {road_id:?}, lane section {section}: lane {lane} links to road {to_road_id:?}, lane section {to_section}, lane {to_lane}, {gap:.2} m away"
+            ),
+            Self::ElevationGridNotApplied { junction_id } => write!(
+                f,
+                "junction {junction_id:?}: <elevationGrid> read, but the junction's roads keep their own heights"
+            ),
+            Self::BoundarySegmentDropped {
+                junction_id,
+                road_id,
+            } => write!(
+                f,
+                "junction {junction_id:?}: <boundary> segment on road {road_id:?} dropped"
+            ),
+            Self::BoundaryNotClosed { junction_id, gap } => write!(
+                f,
+                "junction {junction_id:?}: <boundary> segments leave a {gap:.2} m gap, joined straight"
+            ),
+            Self::BoundaryClockwise { junction_id } => write!(
+                f,
+                "junction {junction_id:?}: <boundary> runs clockwise, turned round"
             ),
             Self::NeighborDropped {
                 road_id,

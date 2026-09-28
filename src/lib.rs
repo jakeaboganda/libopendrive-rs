@@ -97,6 +97,11 @@
 //! | `<connection>` | `id`, `incomingRoad`, `connectingRoad`, `linkedRoad`, `contactPoint` |
 //! | `<laneLink>` | `from`, `to` |
 //! | `<junction><priority>` | `high`, `low` |
+//! | `<junction><planView>` | its `<geometry>`'s `s`, `x`, `y`, `hdg` |
+//! | `<junction><boundary>` | none |
+//! | `<boundary><segment>` | `type`, `roadId`, `boundaryLane`, `sStart`, `sEnd`, `contactPoint`, `jointLaneStart`, `jointLaneEnd` |
+//! | `<junction><elevationGrid>` | `sStart`, `gridSpacing` |
+//! | `<elevationGrid><elevation>` | `left`, `center`, `right` |
 //! | `<objects><object>` | `id`, `type`, `subtype`, `name`, `dynamic`, `orientation`, `validLength`, `s`, `t`, `zOffset`, `hdg`, `pitch`, `roll`, `length`, `width`, `height`, `radius` |
 //! | `<objects><objectReference>` | `id`, `s`, `t`, `zOffset`, `orientation`, `validLength` |
 //! | `<objects><tunnel>` | `id`, `name`, `type`, `s`, `length`, `lighting`, `daylight` |
@@ -304,6 +309,55 @@
 //! `<controller>` list names controllers that switch in step there. The
 //! baked network has no junctions, so each entry is in the
 //! [`ControllerProvenance`] of the controller it names.
+//!
+//! # Junction areas
+//!
+//! A junction's `<boundary>` and `<elevationGrid>` give the ground it
+//! covers, between and around its connecting roads. Each junction with
+//! either is a [`JunctionArea`] in [`RoadNetwork::junction_areas`].
+//!
+//! Its [`JunctionArea::boundary`] is a closed ring on the road surface. A
+//! `lane` segment runs along the outer border of its `boundaryLane`, from
+//! `sStart` to `sEnd`, at each of its road's lane stations, and the center
+//! lane's is the line between the sides. A `joint` segment runs across its
+//! road at its `contactPoint`, from the outer border of `jointLaneStart` to
+//! that of `jointLaneEnd`, through each lane border between.
+//!
+//! Its [`JunctionArea::grid`] is the grid of heights along the junction's
+//! reference line, its `<planView>`, and square to it.
+//! [`JunctionArea::height_at`] reads it bicubically, as the spec gives it:
+//! from a square's corners and their slopes and twist, each slope from the
+//! cubic through the four grid points in line with the square's edge, or the
+//! straight line along the edge where the grid has too few. So between two
+//! equal heights the ground can rise past them, as the cubic through its
+//! neighbours does. [`JunctionArea::mesh`] triangulates the ground inside
+//! the boundary at the grid's spacing, at the grid's height where it
+//! reaches, so a renderer can draw the whole junction.
+//!
+//! No other reader to compare against reads either.
+//!
+//! The crate departs from the OpenDRIVE 1.9 spec here:
+//!
+//! - The spec's grid overrides the height of the junction's roads, and a
+//!   joint's `transitionLength` blends it into the roads coming in. The crate
+//!   keeps the roads' own heights, lanes, marks and objects on them alike,
+//!   and raises [`Warning::ElevationGridNotApplied`]. So where a file's roads
+//!   and grid disagree, the lanes and the junction mesh do too.
+//! - The spec requires the segments to close the boundary. The crate joins
+//!   them straight, and raises [`Warning::BoundaryNotClosed`] where two are
+//!   more than 10 cm apart in plan. A segment naming no baked road, or a
+//!   lane its road lacks, is dropped with a
+//!   [`Warning::BoundarySegmentDropped`].
+//! - The spec orders the segments counter-clockwise. The crate turns a
+//!   clockwise boundary round, and raises [`Warning::BoundaryClockwise`].
+//! - The spec orders a joint from `jointLaneStart` to `jointLaneEnd`. Where
+//!   the segment before it ends nearer its end, the crate turns it round, as
+//!   it does a lane segment, so each runs on from the one before.
+//! - The spec requires `sStart` and every row's `center`. A missing `sStart`
+//!   is 0, and a row without a `center` is skipped.
+//! - The spec's formula for the height puts the grid's rows and columns the
+//!   other way round in its matrix of corners from its product of powers.
+//!   The crate follows the product, with `s` along the rows.
 //!
 //! # Lane borders
 //!
@@ -899,6 +953,9 @@
 //!   roads it joins.
 //! - [`Warning::JunctionLinkMissing`] for an incoming road whose `<link>`
 //!   leaves out its junction.
+//! - [`Warning::ElevationGridNotApplied`], [`Warning::BoundaryNotClosed`],
+//!   [`Warning::BoundarySegmentDropped`] and [`Warning::BoundaryClockwise`]
+//!   for a junction's area. See [Junction areas](#junction-areas).
 //! - [`Warning::PriorityDropped`] for a junction `<priority>` naming a road
 //!   the load did not bake, and [`Warning::NeighborDropped`] for a road
 //!   `<neighbor>` the crate can't read.
@@ -950,6 +1007,7 @@ mod crg;
 mod geo;
 mod geometry;
 mod grid;
+mod junction;
 mod mesh;
 mod network;
 mod object;
@@ -973,6 +1031,7 @@ pub use crg::{
 pub use geo::{GeoOffset, GeoReference};
 pub use geometry::TooFewPoints;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
+pub use junction::{ElevationGrid, GridRow, JunctionArea};
 pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};
 pub use network::{Direction, Lane, LaneId, LaneType, RoadNetwork};
 pub use object::{

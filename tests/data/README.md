@@ -76,6 +76,13 @@ across two lane sections. Regenerate with
 
     python3 tests/data/lane_rules.py
 
+`junction_areas.xodr` comes from `junction_areas.py`, which writes the
+XML itself. It has a junction with a boundary, a reference line and an
+elevation grid with a hump in it, and a clockwise boundary with a segment
+on a road the file lacks. Regenerate with
+
+    python3 tests/data/junction_areas.py
+
 `junction_links.xodr` comes from `junction_links.py`, which writes the
 XML itself. It has an incoming road whose `<link>` leaves out its junction,
 and one whose connecting road doesn't name it either. Regenerate with

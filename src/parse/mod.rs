@@ -26,6 +26,7 @@ use crate::{
 };
 
 mod gaps;
+mod junction_areas;
 mod links;
 mod properties;
 mod road_marks;
@@ -422,6 +423,8 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     let properties = properties::place(roads.iter().map(|(_, road)| road), &lanes);
     let (neighbors, dropped_neighbors) = road_neighbors(&roads);
     warnings.extend(dropped_neighbors);
+    let (areas, area_warnings) = junction_areas::place(root, &roads);
+    warnings.extend(area_warnings);
     // Resolve connectivity once all lanes exist and are registered.
     let (junctions, dropped) = links::junctions(root, &mut topo.roads);
     topo.junctions = junctions;
@@ -469,7 +472,8 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             .with_geo_reference(geo_reference(root))
             .with_roads(roads.into_iter().map(|(_, baked)| baked.road).collect())
             .with_priorities(priorities)
-            .with_road_neighbors(neighbors),
+            .with_road_neighbors(neighbors)
+            .with_junction_areas(areas),
         provenance,
     ))
 }
