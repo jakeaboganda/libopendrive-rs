@@ -27,6 +27,13 @@ cross path, and one naming an `s` past the road's end. Regenerate with
 
     python3 tests/data/cross_paths.py
 
+`cross_sections.xodr` comes from `cross_sections.py`, which writes the XML
+itself. It has a cross-section surface with an offset, both inner strips
+and a relative outer strip, and one with superelevation and a strip mode
+the spec doesn't allow. Regenerate with
+
+    python3 tests/data/cross_sections.py
+
 `demo.xodr` is the OpenDRIVE twin of the `demo_road` fixture in `src`.
 `testtrack.xodr` is a purpose-built vehicle-tuning track: straight, crest, dip,
 and three banked curves of known radius. The rest are minimal files aimed at

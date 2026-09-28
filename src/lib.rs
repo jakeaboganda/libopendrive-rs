@@ -73,6 +73,12 @@
 //! | `<elevationProfile><elevation>` | `s`, `a`, `b`, `c`, `d` |
 //! | `<lateralProfile><superelevation>` | `s`, `a`, `b`, `c`, `d` |
 //! | `<lateralProfile><shape>` | `s`, `t`, `a`, `b`, `c`, `d` |
+//! | `<lateralProfile><crossSectionSurface>` | none |
+//! | `<crossSectionSurface><tOffset>` | none |
+//! | `<crossSectionSurface><surfaceStrips>` | none |
+//! | `<surfaceStrips><strip>` | `id`, `mode` |
+//! | `<strip><width>`, `<strip><constant>`, `<strip><linear>`, `<strip><quadratic>`, `<strip><cubic>` | none |
+//! | `<coefficients>`, under each of those and `<tOffset>` | `s`, `a`, `b`, `c`, `d` |
 //! | `<lanes><laneOffset>` | `s`, `a`, `b`, `c`, `d` |
 //! | `<laneSection>` | `s` |
 //! | `<left>`, `<center>`, `<right>` | none |
@@ -461,6 +467,42 @@
 //! - The spec requires `s`, `t`, `a`, `b`, `c` and `d`. A shape without `s`
 //!   or `t` is skipped, and a missing `a`, `b`, `c` or `d` is 0, as for
 //!   superelevation. Shapes out of order are sorted rather than dropped.
+//!
+//! # Cross-section surfaces
+//!
+//! A road's `<crossSectionSurface>` gives its surface across it another
+//! way than `<shape>`s do: up to two strips each side of the reference line,
+//! shifted across it by a `<tOffset>`. Each strip's height is a cubic in
+//! `dt`, the distance across the strip, whose four coefficients, its
+//! `<constant>`, `<linear>`, `<quadratic>` and `<cubic>`, are each cubics in
+//! `s`. An inner strip, `id` 1 or -1, reaches as far as its `<width>`, and an
+//! outer strip, 2 or -2, from there to the road's edge, measured from the
+//! inner strip's edge. A `mode="relative"` outer strip stands on the inner
+//! strip's edge, and an `independent` one on the reference plane.
+//!
+//! The crate bakes it as it bakes shapes: each lane border stands at the
+//! surface's height under it plus the lane's `<height>`, and the lane goes
+//! straight across between them. Level lanes keep out of it. So what
+//! [Lateral shapes](#lateral-shapes) says of the lanes, objects, signals and
+//! marks on a shaped road holds on one with a cross-section surface too.
+//!
+//! No other reader to compare against reads it.
+//!
+//! The crate departs from the OpenDRIVE 1.9 spec here:
+//!
+//! - The spec forbids a cross-section surface with `<shape>`s or a
+//!   `<superelevation>`. The crate adds their heights, and raises
+//!   [`Warning::CrossSectionWithShape`].
+//! - The spec gives no default `mode` for an outer strip. The crate reads a
+//!   missing one as `independent`, and one it doesn't know too, with a
+//!   [`Warning::UnknownStripMode`].
+//! - The spec says what lies past an inner strip only where an outer strip
+//!   is beside it. Past an inner strip with a width and no outer strip, the
+//!   crate runs the inner strip on, as the last shape runs on to the road's
+//!   edge. A side with no strip is flat.
+//! - The spec's rule for `dt` on the left side reads "if `t_effective <
+//!   w_left`" for the outer strip. The crate reads it as `>`, the mirror of
+//!   the right side.
 //!
 //! # Level lanes
 //!
@@ -966,6 +1008,9 @@
 //!   forbids. See [Lane borders](#lane-borders).
 //! - [`Warning::ShapeShortOfRoad`] for a lateral profile that does not
 //!   cover the road. See [Lateral shapes](#lateral-shapes).
+//! - [`Warning::CrossSectionWithShape`] and [`Warning::UnknownStripMode`]
+//!   for a cross-section surface the spec forbids. See
+//!   [Cross-section surfaces](#cross-section-surfaces).
 //! - [`Warning::UnknownTrafficRule`] for a road `rule` other than `RHT` or
 //!   `LHT`, and [`Warning::UnknownLaneDirection`] for a lane `direction`
 //!   the spec does not allow. See [Coordinate frame](#coordinate-frame).

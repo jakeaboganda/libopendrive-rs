@@ -115,7 +115,7 @@ pub struct Road {
     pub(crate) geoms: Vec<GeomRec>,
     pub(crate) elevations: Vec<Cubic>,
     pub(crate) superelevations: Vec<Cubic>,
-    pub(crate) shapes: Vec<ShapeProfile>,
+    pub(crate) lateral: Lateral,
     pub(crate) lane_offsets: Vec<Cubic>,
     pub(crate) sections: Vec<RoadSection>,
 }
@@ -193,6 +193,120 @@ pub(crate) struct HeightDef {
     pub s_offset: f64,
     pub inner: f64,
     pub outer: f64,
+}
+
+/// A road's height off its reference plane across it, from its
+/// `<lateralProfile>`: its `<shape>`s, and its `<crossSectionSurface>`. The
+/// spec forbids the two together. Where a file gives both, their heights add.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub(crate) struct Lateral {
+    pub profiles: Vec<ShapeProfile>,
+    pub surface: Option<CrossSection>,
+}
+
+impl Lateral {
+    /// The height at `(s, t)`. 0 on a road with neither.
+    pub fn height(&self, s: f64, t: f64) -> f64 {
+        shape_at(&self.profiles, s, t) + self.surface.as_ref().map_or(0.0, |c| c.height(s, t))
+    }
+
+    /// Whether the road is flat across.
+    pub fn is_empty(&self) -> bool {
+        self.profiles.is_empty() && self.surface.is_none()
+    }
+
+    /// Where along the road the height changes pace: each profile's `s`, and
+    /// each cross-section record's start.
+    pub fn knots(&self) -> impl Iterator<Item = f64> + '_ {
+        self.profiles
+            .iter()
+            .map(|p| p.s)
+            .chain(self.surface.iter().flat_map(CrossSection::knots))
+    }
+}
+
+/// A road's `<crossSectionSurface>`: up to two strips each side of the
+/// reference line, shifted across it by `t_offset`, each a cubic in `dt`
+/// whose four coefficients are cubics in `s`.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub(crate) struct CrossSection {
+    pub t_offset: Vec<Cubic>,
+    /// Strips 1 and 2, then -1 and -2.
+    pub left: [Option<Strip>; 2],
+    pub right: [Option<Strip>; 2],
+}
+
+/// One `<strip>` of a [`CrossSection`].
+#[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub(crate) struct Strip {
+    /// Its `<width>`s: how far across the road an inner strip reaches.
+    /// Empty for one that reaches to the road's edge.
+    pub width: Vec<Cubic>,
+    /// Its `<constant>`, `<linear>`, `<quadratic>` and `<cubic>` records.
+    pub terms: [Vec<Cubic>; 4],
+    /// An outer strip's `mode="relative"`: its height stands on the inner
+    /// strip's outer edge.
+    pub relative: bool,
+}
+
+impl Strip {
+    /// The strip's height `dt` across it at `s`.
+    fn height(&self, s: f64, dt: f64) -> f64 {
+        self.terms.iter().rev().fold(0.0, |h, term| {
+            h * dt + active(term, s).map_or(0.0, |c| c.eval(s))
+        })
+    }
+
+    /// How far across the road it reaches at `s`, or `None` to the edge.
+    fn width(&self, s: f64) -> Option<f64> {
+        active(&self.width, s).map(|w| w.eval(s).max(0.0))
+    }
+}
+
+impl CrossSection {
+    /// The height at `(s, t)`, as the spec gives it: `t` less the offset,
+    /// then the inner strip on that side up to its width, and the outer
+    /// strip past it, `dt` from the inner strip's edge. Past an inner strip
+    /// with no outer strip beside it, the inner strip runs on. 0 on a side
+    /// with no strip.
+    pub fn height(&self, s: f64, t: f64) -> f64 {
+        let t = t - active(&self.t_offset, s).map_or(0.0, |c| c.eval(s));
+        let (side, sign) = if t > 0.0 {
+            (&self.left, 1.0)
+        } else {
+            (&self.right, -1.0)
+        };
+        let [Some(inner), outer] = side else {
+            return 0.0;
+        };
+        let reach = inner.width(s);
+        match (reach, outer) {
+            (Some(w), Some(outer)) if sign * t > w => {
+                let base = if outer.relative {
+                    inner.height(s, sign * w)
+                } else {
+                    0.0
+                };
+                base + outer.height(s, t - sign * w)
+            }
+            _ => inner.height(s, t),
+        }
+    }
+
+    /// Where along the road any of its records starts.
+    fn knots(&self) -> impl Iterator<Item = f64> + '_ {
+        self.left
+            .iter()
+            .chain(&self.right)
+            .flatten()
+            .flat_map(|strip| strip.terms.iter().chain([&strip.width]))
+            .chain([&self.t_offset])
+            .flatten()
+            .map(|c| c.start)
+    }
 }
 
 /// A `<lateralProfile>`'s `<shape>`s at one `s`: the height off the
@@ -588,6 +702,7 @@ pub(crate) fn side_borders(
 
 /// Each lane of `side`'s height off the road at its inner and outer border
 /// at station `s`, `s_lane` into its section, from the center outward.
+/// `lateral` is the road's lateral shape and cross-section surface.
 /// `borders` is where each lies, from [`side_borders`], `sign` which way it
 /// stacks, `base` the `t` of the center lane, and `phi` the superelevation.
 ///
@@ -601,13 +716,13 @@ pub(crate) fn side_borders(
 pub(crate) fn side_heights<'a>(
     side: &'a [LaneGeom],
     sign: f64,
-    shapes: &'a [ShapeProfile],
+    lateral: &'a Lateral,
     (s, s_lane): (f64, f64),
     base: f64,
     phi: f64,
     borders: impl Iterator<Item = LaneBorders> + 'a,
 ) -> impl Iterator<Item = (f64, f64)> + 'a {
-    let start = (shape_at(shapes, s, base), false);
+    let start = (lateral.height(s, base), false);
     side.iter()
         .zip(borders)
         .scan(start, move |(outer, level), (lane, b)| {
@@ -620,8 +735,8 @@ pub(crate) fn side_heights<'a>(
                 )
             } else {
                 (
-                    own_inner + shape_at(shapes, s, b.inner),
-                    own_outer + shape_at(shapes, s, b.outer),
+                    own_inner + lateral.height(s, b.inner),
+                    own_outer + lateral.height(s, b.outer),
                 )
             };
             *outer = heights.1;
@@ -712,10 +827,10 @@ impl Road {
     fn surface_xyz(&self, s: f64, t: f64) -> ([f64; 3], f64) {
         let height = self
             .section_at(s)
-            .filter(|section| section.raised() || !self.shapes.is_empty())
+            .filter(|section| section.raised() || !self.lateral.is_empty())
             .and_then(|section| self.lane_at(section, s, t))
             .map_or_else(
-                || shape_at(&self.shapes, s, t),
+                || self.lateral.height(s, t),
                 |a| a.height(t.clamp(a.inner_t.min(a.outer_t), a.inner_t.max(a.outer_t))),
             );
         self.raised_xyz(s, t, height)
@@ -742,13 +857,13 @@ impl Road {
         s: f64,
         t: f64,
     ) -> (Point, f64) {
-        if !section.raised() && self.shapes.is_empty() {
+        if !section.raised() && self.lateral.is_empty() {
             return self.raised(s, t, 0.0);
         }
         let height = self
             .across(section, s)
             .find(|a| a.od_id == od_id)
-            .map_or_else(|| shape_at(&self.shapes, s, self.base(s)), |a| a.height(t));
+            .map_or_else(|| self.lateral.height(s, self.base(s)), |a| a.height(t));
         self.raised(s, t, height)
     }
 
@@ -854,7 +969,7 @@ impl Road {
                 let heights: Vec<(f64, f64)> = side_heights(
                     side,
                     sign,
-                    &self.shapes,
+                    &self.lateral,
                     (s, s_lane),
                     base,
                     phi,

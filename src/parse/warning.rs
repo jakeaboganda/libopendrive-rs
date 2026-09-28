@@ -195,6 +195,22 @@ pub enum Warning {
         /// file names none.
         road_id: String,
     },
+    /// A road with a `<crossSectionSurface>` and also `<shape>`s or a
+    /// `<superelevation>`, which the spec forbids. The crate adds them up.
+    CrossSectionWithShape {
+        /// Its `<road id>`.
+        road_id: String,
+    },
+    /// A cross-section `<strip>` whose `mode` is neither `independent` nor
+    /// `relative`. The crate reads it as `independent`.
+    UnknownStripMode {
+        /// The `<road id>` it is on.
+        road_id: String,
+        /// The strip's `id`.
+        strip: i32,
+        /// Its `mode`.
+        mode: String,
+    },
     /// A junction's `<elevationGrid>`. The spec says it overrides the height
     /// of the junction's roads, and blends into the roads coming in. The
     /// crate keeps the roads' own heights, and gives the grid's in
@@ -333,6 +349,8 @@ impl Warning {
             | Self::NeighborDropped { road_id, .. }
             | Self::BoundarySegmentDropped { road_id, .. }
             | Self::CrossPathDropped { road_id, .. }
+            | Self::CrossSectionWithShape { road_id }
+            | Self::UnknownStripMode { road_id, .. }
             | Self::ConnectionDropped {
                 incoming_road_id: road_id,
                 ..
@@ -441,6 +459,18 @@ impl fmt::Display for Warning {
             } => write!(
                 f,
                 "road {road_id:?}, lane section {section}: lane {lane} links to road {to_road_id:?}, lane section {to_section}, lane {to_lane}, {gap:.2} m away"
+            ),
+            Self::CrossSectionWithShape { road_id } => write!(
+                f,
+                "road {road_id:?}: <crossSectionSurface> with <shape>s or a <superelevation>, heights added"
+            ),
+            Self::UnknownStripMode {
+                road_id,
+                strip,
+                mode,
+            } => write!(
+                f,
+                "road {road_id:?}: <strip> {strip} has mode {mode:?}, read as independent"
             ),
             Self::CrossPathDropped {
                 junction_id,

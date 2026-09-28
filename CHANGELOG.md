@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Cross-section surfaces
+
+- A road's `<crossSectionSurface>` shapes its surface as the spec gives
+  it: strips each side of the reference line, shifted by a `<tOffset>`, each
+  a cubic across the road whose coefficients are cubics along it. It bakes
+  as `<shape>`s bake: each lane border stands on it, lanes go straight
+  across, and level lanes keep out of it. ASAM's `Ex_Camber_Straight_Profile`
+  and `Ex_Roof_Profile_1Strip` now have their camber and roof.
+- `Warning::CrossSectionWithShape` names a road with a cross-section surface
+  and shapes or superelevation, which the spec forbids. The crate adds them.
+  `Warning::UnknownStripMode` names an outer strip whose `mode` is neither
+  `independent` nor `relative`, read as `independent`, the crate's reading
+  of a missing one.
+
 ### Cross paths
 
 - `RoadNetwork::cross_paths` gives each `<crossPath>` as a `CrossPath`: the

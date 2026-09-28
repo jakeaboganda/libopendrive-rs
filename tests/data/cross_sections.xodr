@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+  <header revMajor="1" revMinor="8" name="cross_sections"/>
+  <road name="" length="60" id="0" junction="-1">
+    <planView><geometry s="0" x="0" y="0" hdg="0" length="60"><line/></geometry></planView>
+    <lateralProfile><crossSectionSurface><tOffset><coefficients s="0" a="0.5" b="0"/></tOffset><surfaceStrips><strip id="1"><width><coefficients s="0" a="3" b="0"/></width><linear><coefficients s="0" a="-0.02" b="0"/></linear></strip><strip id="2" mode="relative"><linear><coefficients s="0" a="0.05" b="0"/></linear></strip><strip id="-1"><constant><coefficients s="0" a="0.1" b="0.001"/></constant><linear><coefficients s="0" a="0.02" b="0"/></linear></strip></surfaceStrips></crossSectionSurface></lateralProfile>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><width sOffset="0" a="3" b="0" c="0" d="0"/></lane><lane id="2" type="driving" level="false"><width sOffset="0" a="3" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3" b="0" c="0" d="0"/></lane><lane id="-2" type="driving" level="false"><width sOffset="0" a="3" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+  <road name="" length="30" id="1" junction="-1">
+    <planView><geometry s="0" x="0" y="20" hdg="0" length="30"><line/></geometry></planView>
+    <lateralProfile><superelevation s="0" a="0.02" b="0" c="0" d="0"/><crossSectionSurface><surfaceStrips><strip id="1"><width><coefficients s="0" a="1" b="0"/></width></strip><strip id="2" mode="sideways"><linear><coefficients s="0" a="0.05" b="0"/></linear></strip></surfaceStrips></crossSectionSurface></lateralProfile>
+    <lanes><laneSection s="0"><left><lane id="1" type="driving" level="false"><width sOffset="0" a="3" b="0" c="0" d="0"/></lane></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="false"><width sOffset="0" a="3" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+  </road>
+</OpenDRIVE>

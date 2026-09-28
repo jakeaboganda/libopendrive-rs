@@ -14,9 +14,9 @@ use crate::coords::{Point, Vector};
 use crate::crg::Stretch;
 use crate::object::orient;
 use crate::road::{
-    active, along, height_at, is_valid, side_borders, side_heights, Cubic, GeomRec, GeomShape,
-    HeightDef, LaneBorders, LaneExtent, LaneGeom, Road, RoadId, RoadSection, ShapeProfile,
-    TrafficRule,
+    active, along, height_at, is_valid, side_borders, side_heights, CrossSection, Cubic, GeomRec,
+    GeomShape, HeightDef, LaneBorders, LaneExtent, LaneGeom, Lateral, Road, RoadId, RoadSection,
+    ShapeProfile, Strip, TrafficRule,
 };
 use crate::{
     Border, ControllerId, Corner, Coverage, CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface,
@@ -416,6 +416,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
                 for (section, def) in baked.sections() {
                     warnings.extend(baked.lane_warnings(section, def));
                 }
+                warnings.extend(baked.warnings.iter().cloned());
                 warnings.extend(baked.shape_warnings());
                 warnings.extend(gaps::road_length(&baked.road));
                 warnings.extend(baked.speed_warnings());
@@ -719,6 +720,62 @@ fn shape_profiles(lateral: roxmltree::Node) -> Vec<ShapeProfile> {
         }
     }
     profiles
+}
+
+/// A `<crossSectionSurface>`: its `<tOffset>`, and its `<strip>`s by `id`.
+/// A strip with an `id` other than 1, 2, -1 or -2 is skipped. The spec
+/// gives no default `mode` for an outer strip. The crate reads a missing one
+/// as `independent`, and one it doesn't know too, with a
+/// [`Warning::UnknownStripMode`] for `road_id`.
+fn cross_section(
+    node: roxmltree::Node,
+    road_id: &str,
+    warnings: &mut Vec<Warning>,
+) -> CrossSection {
+    let records = |parent: Option<roxmltree::Node>| {
+        parent.map_or_else(Vec::new, |p| cubics_in(p, "coefficients", "s"))
+    };
+    let mut out = CrossSection {
+        t_offset: records(child(node, "tOffset")),
+        ..CrossSection::default()
+    };
+    let strips = child(node, "surfaceStrips")
+        .into_iter()
+        .flat_map(|n| n.children())
+        .filter(|n| n.has_tag_name("strip"));
+    for strip in strips {
+        let id = strip.attribute("id").and_then(|v| v.parse::<i32>().ok());
+        let slot = match id {
+            Some(1) => &mut out.left[0],
+            Some(2) => &mut out.left[1],
+            Some(-1) => &mut out.right[0],
+            Some(-2) => &mut out.right[1],
+            _ => continue,
+        };
+        let relative = match strip.attribute("mode") {
+            Some("relative") => true,
+            None | Some("independent") => false,
+            Some(other) => {
+                warnings.push(Warning::UnknownStripMode {
+                    road_id: road_id.to_string(),
+                    strip: id.unwrap_or_default(),
+                    mode: other.to_string(),
+                });
+                false
+            }
+        };
+        *slot = Some(Strip {
+            width: records(child(strip, "width")),
+            terms: [
+                records(child(strip, "constant")),
+                records(child(strip, "linear")),
+                records(child(strip, "quadratic")),
+                records(child(strip, "cubic")),
+            ],
+            relative,
+        });
+    }
+    out
 }
 
 /// A lane's `<height>`s, in order along it.
@@ -1050,9 +1107,20 @@ fn parse_road(
     let superelevations = child(road, "lateralProfile")
         .map(|n| cubics_in(n, "superelevation", "s"))
         .unwrap_or_default();
-    let shapes = child(road, "lateralProfile")
-        .map(shape_profiles)
-        .unwrap_or_default();
+    let mut warnings = Vec::new();
+    let lateral = Lateral {
+        profiles: child(road, "lateralProfile")
+            .map(shape_profiles)
+            .unwrap_or_default(),
+        surface: child(road, "lateralProfile")
+            .and_then(|n| child(n, "crossSectionSurface"))
+            .map(|n| cross_section(n, &road_id, &mut warnings)),
+    };
+    if lateral.surface.is_some() && (!lateral.profiles.is_empty() || !superelevations.is_empty()) {
+        warnings.push(Warning::CrossSectionWithShape {
+            road_id: road_id.clone(),
+        });
+    }
     // laneOffset shifts the whole lane cross-section laterally off lane 0 (lane
     // widening, merges, a centerline that isn't the road reference). It adds to
     // every lane's offset, so it must be applied or all lanes are mis-placed.
@@ -1068,12 +1136,13 @@ fn parse_road(
             geoms,
             elevations,
             superelevations,
-            shapes,
+            lateral,
             lane_offsets,
             sections: Vec::new(),
         },
         types: properties::road_types(road),
         defs: Vec::new(),
+        warnings,
     };
     bake_lanes(road, &mut baked, out, topo);
     if let Some(objects_node) = child(road, "objects") {
@@ -1194,7 +1263,8 @@ impl BakedRoad {
     /// short.
     fn shape_warnings(&self) -> Vec<Warning> {
         let road = &self.road;
-        road.shapes
+        road.lateral
+            .profiles
             .iter()
             .filter(|p| {
                 let Some(section) = road.section_at(p.s) else {
@@ -1327,6 +1397,8 @@ struct BakedRoad {
     road: Road,
     types: Vec<properties::TypeDef>,
     defs: Vec<SectionDef>,
+    /// What reading the road itself found wrong.
+    warnings: Vec<Warning>,
 }
 
 impl BakedRoad {
@@ -1438,7 +1510,7 @@ fn emit_section(
         .chain(&section.right)
         .flat_map(|l| &l.heights)
         .map(|h| s_start + h.s_offset)
-        .chain(road.shapes.iter().map(|p| p.s))
+        .chain(road.lateral.knots())
         .collect();
     let sample_s = sample_positions(s_start, s_end, &bends, &knots);
     let road_bank: Vec<f64> = sample_s
@@ -1491,7 +1563,7 @@ fn emit_section(
                 heights: lane_heights(lane, s_start, &sample_s),
             });
             emitted.push((id, out.len(), kind, direction));
-            let tilted = !lane.heights.is_empty() || !road.shapes.is_empty() || held;
+            let tilted = !lane.heights.is_empty() || !road.lateral.is_empty() || held;
             let (width, widths) = width_profile(borders, tilted.then_some(&heights[..]));
             out.push(Lane {
                 id,
@@ -1684,7 +1756,7 @@ fn side_height_rows(
         let heights = side_heights(
             side,
             sign,
-            &road.shapes,
+            &road.lateral,
             (s, s - s_start),
             road.base(s),
             phi,
@@ -4852,7 +4924,7 @@ mod tests {
             geoms: vec![GeomRec::new(0.0, 0.0, 0.0, 0.4, 10.0, GeomShape::Line)],
             elevations: vec![cubic(0.0, 0.08)],
             superelevations: vec![cubic(-0.2, 0.0)],
-            shapes: Vec::new(),
+            lateral: Lateral::default(),
             lane_offsets: Vec::new(),
             sections: Vec::new(),
         }
