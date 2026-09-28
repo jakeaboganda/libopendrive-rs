@@ -96,6 +96,13 @@ on a road the file lacks. Regenerate with
 
     python3 tests/data/junction_areas.py
 
+`junction_groups.xodr` comes from `junction_groups.py`, which writes the
+XML itself. It has a roundabout group of two junctions that also names a
+junction the file lacks, and a group with a type the spec doesn't allow.
+Regenerate with
+
+    python3 tests/data/junction_groups.py
+
 `junction_links.xodr` comes from `junction_links.py`, which writes the
 XML itself. It has an incoming road whose `<link>` leaves out its junction,
 and one whose connecting road doesn't name it either. Regenerate with

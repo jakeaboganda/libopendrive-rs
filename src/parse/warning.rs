@@ -182,6 +182,22 @@ pub enum Warning {
         /// The road of the two the load has, or `low` if it has neither.
         road_id: String,
     },
+    /// A `<junctionReference>` naming a junction the file does not have. The
+    /// crate leaves it out of the group.
+    JunctionReferenceDropped {
+        /// The `<junctionGroup id>`.
+        group_id: String,
+        /// The `junction` it names, empty if it has none.
+        junction_id: String,
+    },
+    /// A `<junctionGroup>` whose `type` is none the spec allows. The crate
+    /// reads it as `unknown`.
+    UnknownJunctionGroupType {
+        /// The `<junctionGroup id>`.
+        group_id: String,
+        /// Its `type`.
+        kind: String,
+    },
     /// A `<crossPath>` whose `crossingRoad`, `roadAtStart` or `roadAtEnd`
     /// names no baked road, or whose lane links name a lane, or an `s`, those
     /// roads don't have. The crate drops it.
@@ -368,7 +384,9 @@ impl Warning {
                 incoming_road_id: road_id,
                 ..
             } => road_id,
-            Self::ElevationGridNotApplied { .. }
+            Self::JunctionReferenceDropped { .. }
+            | Self::UnknownJunctionGroupType { .. }
+            | Self::ElevationGridNotApplied { .. }
             | Self::ElevationGridDropped { .. }
             | Self::BoundaryNotClosed { .. }
             | Self::BoundaryClockwise { .. } => "",
@@ -472,6 +490,17 @@ impl fmt::Display for Warning {
             } => write!(
                 f,
                 "road {road_id:?}, lane section {section}: lane {lane} links to road {to_road_id:?}, lane section {to_section}, lane {to_lane}, {gap:.2} m away"
+            ),
+            Self::JunctionReferenceDropped {
+                group_id,
+                junction_id,
+            } => write!(
+                f,
+                "junction group {group_id:?}: <junctionReference> to junction {junction_id:?} dropped, the file has no such junction"
+            ),
+            Self::UnknownJunctionGroupType { group_id, kind } => write!(
+                f,
+                "junction group {group_id:?}: type {kind:?} read as unknown"
             ),
             Self::CrossSectionWithShape { road_id } => write!(
                 f,

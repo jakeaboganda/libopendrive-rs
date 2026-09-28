@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Junction groups
+
+- `RoadNetwork::junction_groups` gives each `<junctionGroup>` as a
+  `JunctionGroup`: its id, name, `JunctionGroupKind` and the junctions it
+  names. `RoadNetwork::junction_group_of` finds a road's, through the new
+  `Road::junction`. The router does not use them.
+- `Warning::JunctionReferenceDropped` names a reference to a junction the
+  file lacks, and `Warning::UnknownJunctionGroupType` a `type` the spec
+  does not allow, read as unknown.
+
 ### Cross-section surfaces
 
 - A road's `<crossSectionSurface>` shapes its surface as the spec gives

@@ -6,6 +6,35 @@ use crate::mesh::Mesh;
 use crate::network::LaneId;
 use crate::road::RoadId;
 
+/// Junctions that routing should see as one, such as the junctions round a
+/// roundabout, from an OpenDRIVE `<junctionGroup>`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct JunctionGroup {
+    /// Its `id`.
+    pub od_id: String,
+    /// Its `name`, empty if it has none.
+    pub name: String,
+    /// What the junctions together are.
+    pub kind: JunctionGroupKind,
+    /// The `<junction id>` of each junction in it, in file order.
+    pub junctions: Vec<String>,
+}
+
+/// What a [`JunctionGroup`]'s junctions together are, from its `type`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum JunctionGroupKind {
+    /// A roundabout.
+    Roundabout,
+    /// A junction built of several, such as one with slip lanes.
+    ComplexJunction,
+    /// Where two motorways meet.
+    HighwayInterchange,
+    /// The file says `unknown`, or names a type the crate doesn't know.
+    Unknown,
+}
+
 /// A path across a junction's roads for pedestrians, from an OpenDRIVE
 /// `<crossPath>`: a crossing road, and the lanes it joins at each end, part
 /// way along them.

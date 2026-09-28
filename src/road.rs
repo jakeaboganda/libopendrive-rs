@@ -110,6 +110,8 @@ pub struct RoadLane {
 pub struct Road {
     pub(crate) id: RoadId,
     pub(crate) od_id: String,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) junction: Option<String>,
     pub(crate) length: f64,
     pub(crate) rule: TrafficRule,
     pub(crate) geoms: Vec<GeomRec>,
@@ -129,6 +131,12 @@ impl Road {
     /// The `<road id>` it came from.
     pub fn od_id(&self) -> &str {
         &self.od_id
+    }
+
+    /// The `<junction id>` of the junction it is part of, from its
+    /// `junction`, or `None` for a road outside any junction (`-1`).
+    pub fn junction(&self) -> Option<&str> {
+        self.junction.as_deref()
     }
 
     /// How long its reference line is, in metres, from its `length`.

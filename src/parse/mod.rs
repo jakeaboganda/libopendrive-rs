@@ -444,6 +444,8 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     let (cross_paths, cross_path_provenance, cross_path_warnings) =
         junction_areas::cross_paths(root, &roads);
     warnings.extend(cross_path_warnings);
+    let (groups, group_warnings) = junction_areas::groups(root);
+    warnings.extend(group_warnings);
     // Resolve connectivity once all lanes exist and are registered.
     let (junctions, dropped) = links::junctions(root, &mut topo.roads);
     topo.junctions = junctions;
@@ -494,7 +496,8 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             .with_priorities(priorities)
             .with_road_neighbors(neighbors)
             .with_junction_areas(areas)
-            .with_cross_paths(cross_paths),
+            .with_cross_paths(cross_paths)
+            .with_junction_groups(groups),
         provenance,
     ))
 }
@@ -1157,6 +1160,10 @@ fn parse_road(
     let mut baked = BakedRoad {
         road: Road {
             id: RoadId(0),
+            junction: road
+                .attribute("junction")
+                .filter(|j| !j.is_empty() && *j != "-1")
+                .map(String::from),
             od_id: road_id,
             length,
             rule,
@@ -4946,6 +4953,7 @@ mod tests {
         let road = Road {
             id: RoadId(0),
             od_id: String::new(),
+            junction: None,
             length: 10.0,
             rule: TrafficRule::RightHand,
             geoms: vec![GeomRec::new(0.0, 0.0, 0.0, 0.4, 10.0, GeomShape::Line)],

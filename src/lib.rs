@@ -103,6 +103,8 @@
 //! | `<connection>` | `id`, `incomingRoad`, `connectingRoad`, `linkedRoad`, `contactPoint` |
 //! | `<laneLink>` | `from`, `to` |
 //! | `<junction><priority>` | `high`, `low` |
+//! | `<junctionGroup>` | `id`, `name`, `type` |
+//! | `<junctionGroup><junctionReference>` | `junction` |
 //! | `<junction><crossPath>` | `id`, `crossingRoad`, `roadAtStart`, `roadAtEnd` |
 //! | `<crossPath><startLaneLink>` | `s`, `from`, `to` |
 //! | `<crossPath><endLaneLink>` | `s`, `from`, `to` |
@@ -166,6 +168,17 @@
 //! through a direct junction links in both directions. A connection
 //! missing its `incomingRoad`, or the road it leads into, is dropped with a
 //! [`Warning::ConnectionDropped`].
+//!
+//! A `<junctionGroup>` groups junctions that routing should see as one, such
+//! as the junctions round a roundabout. Each is a [`JunctionGroup`] in
+//! [`RoadNetwork::junction_groups`], with the `<junction id>`s it names, and
+//! [`RoadNetwork::junction_group_of`] finds a road's through its
+//! [`Road::junction`]. The router does not use them. A reference to a
+//! junction the file lacks is left out, with a
+//! [`Warning::JunctionReferenceDropped`], and a `type` the spec does not
+//! allow reads as [`JunctionGroupKind::Unknown`], with a
+//! [`Warning::UnknownJunctionGroupType`]. No other reader to compare
+//! against reads them.
 //!
 //! A junction's `<crossPath>`s are paths for pedestrians across its roads,
 //! such as a crosswalk. Each is a [`CrossPath`] in
@@ -802,8 +815,7 @@
 //!
 //! # What the importer ignores
 //!
-//! Everything else in the file, silently. That includes `<junctionGroup>`,
-//! `<station>`, and an object's `<surface>`. Of signals, it ignores a
+//! Everything else in the file, silently. That includes `<station>`, and an object's `<surface>`. Of signals, it ignores a
 //! signal's `<userData>`, the boards `<staticBoard>` and `<vmsBoard>`, and
 //! `<semantics>`. Of road marks, it ignores `material`, and the `name` of a
 //! mark's type. Of road types, it ignores `country`.
@@ -1026,6 +1038,9 @@
 //!   roads it joins.
 //! - [`Warning::JunctionLinkMissing`] for an incoming road whose `<link>`
 //!   leaves out its junction.
+//! - [`Warning::JunctionReferenceDropped`] and
+//!   [`Warning::UnknownJunctionGroupType`] for a `<junctionGroup>` the
+//!   crate can't read whole.
 //! - [`Warning::CrossPathDropped`] for a `<crossPath>` whose roads or lanes
 //!   the load lacks.
 //! - [`Warning::ElevationGridNotApplied`], [`Warning::ElevationGridDropped`],
@@ -1107,7 +1122,9 @@ pub use crg::{
 pub use geo::{GeoOffset, GeoReference};
 pub use geometry::TooFewPoints;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
-pub use junction::{CrossPath, CrossPathEnd, ElevationGrid, GridRow, JunctionArea};
+pub use junction::{
+    CrossPath, CrossPathEnd, ElevationGrid, GridRow, JunctionArea, JunctionGroup, JunctionGroupKind,
+};
 pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};
 pub use network::{Direction, Lane, LaneId, LaneType, RoadNetwork};
 pub use object::{

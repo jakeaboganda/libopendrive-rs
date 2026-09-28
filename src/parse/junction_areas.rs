@@ -3,7 +3,9 @@
 
 use super::{attr_f64, child, BakedRoad, Warning};
 use crate::coords::Point;
-use crate::junction::{CrossPath, CrossPathEnd, ElevationGrid, GridRow, JunctionArea};
+use crate::junction::{
+    CrossPath, CrossPathEnd, ElevationGrid, GridRow, JunctionArea, JunctionGroup, JunctionGroupKind,
+};
 use crate::network::LaneId;
 use crate::road::{Road, RoadSection};
 
@@ -44,6 +46,57 @@ pub(super) fn place(
             od_id,
             boundary: ring,
             grid,
+        });
+    }
+    (out, warnings)
+}
+
+/// Every `<junctionGroup>`, in file order, with the junctions it names that
+/// the file has, and a warning for each it names that the file lacks, and
+/// for a `type` the spec does not allow.
+pub(super) fn groups(root: roxmltree::Node) -> (Vec<JunctionGroup>, Vec<Warning>) {
+    let junctions: Vec<&str> = root
+        .children()
+        .filter(|n| n.has_tag_name("junction"))
+        .filter_map(|n| n.attribute("id"))
+        .collect();
+    let (mut out, mut warnings) = (Vec::new(), Vec::new());
+    for node in root.children().filter(|n| n.has_tag_name("junctionGroup")) {
+        let text = |name| node.attribute(name).unwrap_or_default().to_string();
+        let od_id = text("id");
+        let kind = match node.attribute("type") {
+            Some("roundabout") => JunctionGroupKind::Roundabout,
+            Some("complexJunction") => JunctionGroupKind::ComplexJunction,
+            Some("highwayInterchange") => JunctionGroupKind::HighwayInterchange,
+            None | Some("unknown") => JunctionGroupKind::Unknown,
+            Some(other) => {
+                warnings.push(Warning::UnknownJunctionGroupType {
+                    group_id: od_id.clone(),
+                    kind: other.to_string(),
+                });
+                JunctionGroupKind::Unknown
+            }
+        };
+        let mut members = Vec::new();
+        for reference in node
+            .children()
+            .filter(|n| n.has_tag_name("junctionReference"))
+        {
+            let junction = reference.attribute("junction").unwrap_or_default();
+            if junctions.contains(&junction) {
+                members.push(junction.to_string());
+            } else {
+                warnings.push(Warning::JunctionReferenceDropped {
+                    group_id: od_id.clone(),
+                    junction_id: junction.to_string(),
+                });
+            }
+        }
+        out.push(JunctionGroup {
+            od_id,
+            name: text("name"),
+            kind,
+            junctions: members,
         });
     }
     (out, warnings)
