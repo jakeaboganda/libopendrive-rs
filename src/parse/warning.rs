@@ -113,6 +113,37 @@ pub enum Warning {
         /// The end of the road the junction was added to.
         end: RoadEnd,
     },
+    /// A `<road>` whose `length` differs from where its `<planView>` ends,
+    /// by more than a centimetre. The spec says they are the same. The crate
+    /// bakes the road to its `length`, as libOpenDRIVE does, so it stops
+    /// short of its geometry's end, or runs its last geometry on past it.
+    RoadLengthMismatch {
+        /// Its `<road id>`.
+        road_id: String,
+        /// Its `length`, in metres.
+        length: f64,
+        /// Where its last `<geometry>` ends: its `s` plus its `length`.
+        plan_view: f64,
+    },
+    /// A lane link between lanes that don't meet: the lane's exit and its
+    /// successor's entry are more than 10 cm apart, measured across both
+    /// lanes from border to border. The crate keeps the link.
+    LinkGap {
+        /// The `<road id>` of the lane the link leaves.
+        road_id: String,
+        /// Its zero-based lane-section index.
+        section: usize,
+        /// Its `<lane id>`.
+        lane: i32,
+        /// The `<road id>` of the lane it leads into.
+        to_road_id: String,
+        /// That lane's zero-based lane-section index.
+        to_section: usize,
+        /// That lane's `<lane id>`.
+        to_lane: i32,
+        /// How far apart they are, in metres.
+        gap: f64,
+    },
     /// A `<speed>` whose `max` or `unit` the crate can't read. The crate
     /// drops it, so the lane's limit there is its road's, or the lane's
     /// `<speed>` before it.
@@ -201,6 +232,8 @@ impl Warning {
             | Self::AccessDropped { road_id, .. }
             | Self::VisibilityDropped { road_id, .. }
             | Self::JunctionLinkMissing { road_id, .. }
+            | Self::RoadLengthMismatch { road_id, .. }
+            | Self::LinkGap { road_id, .. }
             | Self::LaneNotLevel { road_id, .. }
             | Self::ConnectionDropped {
                 incoming_road_id: road_id,
@@ -286,6 +319,26 @@ impl fmt::Display for Warning {
             } => write!(
                 f,
                 "road {road_id:?}: lane {lane}'s <access> at s {s:.2} m dropped, rule {rule:?} is neither allow nor deny"
+            ),
+            Self::RoadLengthMismatch {
+                road_id,
+                length,
+                plan_view,
+            } => write!(
+                f,
+                "road {road_id:?}: length {length:.3} m, but its <planView> ends at {plan_view:.3} m"
+            ),
+            Self::LinkGap {
+                road_id,
+                section,
+                lane,
+                to_road_id,
+                to_section,
+                to_lane,
+                gap,
+            } => write!(
+                f,
+                "road {road_id:?}, lane section {section}: lane {lane} links to road {to_road_id:?}, lane section {to_section}, lane {to_lane}, {gap:.2} m away"
             ),
             Self::JunctionLinkMissing {
                 road_id,

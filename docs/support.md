@@ -233,7 +233,10 @@ raises `Warning::RoadSkipped`. A lane with no `<width>` or `<border>` raises
 road raises `Warning::ShapeShortOfRoad`. A road `rule` other than `RHT` or
 `LHT` raises `Warning::UnknownTrafficRule`. A junction connection without
 the roads it joins raises `Warning::ConnectionDropped`, and an incoming road
-whose `<link>` leaves out its junction raises `Warning::JunctionLinkMissing`. A `<speed>` the
+whose `<link>` leaves out its junction raises `Warning::JunctionLinkMissing`.
+A road whose `length` isn't where its `<planView>` ends raises
+`Warning::RoadLengthMismatch`, and a lane link between lanes more than
+10 cm apart raises `Warning::LinkGap`. A `<speed>` the
 crate can't read raises `Warning::SpeedLimitDropped`, and an `<access>`
 whose `rule` is neither `allow` nor `deny` raises `Warning::AccessDropped`.
 A lane outside a level lane that isn't level raises `Warning::LaneNotLevel`,

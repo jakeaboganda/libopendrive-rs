@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Links across a gap
+
+- `Warning::RoadLengthMismatch` names a road whose `length` is more than
+  1 cm from where its `<planView>` ends. The crate still bakes the road to
+  its `length`. ASAM's `UC_T_Junction` road 6 is 80 m long with 111.6 m of
+  geometry.
+- `Warning::LinkGap` names a lane link whose lanes are more than 10 cm
+  apart where one leaves off and the next begins, measured across both
+  lanes from border to border. A lane that splits in two, or hands over to
+  one opening beside it, meets it and raises none. The crate keeps the
+  link. It catches the four ASAM examples that link lanes that don't meet,
+  and `UC_5Road_Junction`'s 1 m step.
+- The check measures the lanes as baked. In `Ex_CrossFall_LeftTurn` the
+  file switches lanes' `level` at a seam, and the crate stacks level lanes'
+  heights, so those lanes step 0.12 to 0.36 m there and warn too.
+
 ### Junctions
 
 - Fix: a road that a common junction's connection names as its incoming

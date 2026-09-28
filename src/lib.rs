@@ -860,6 +860,16 @@
 //!   roads it joins.
 //! - [`Warning::JunctionLinkMissing`] for an incoming road whose `<link>`
 //!   leaves out its junction.
+//! - [`Warning::RoadLengthMismatch`] for a road whose `length` is more than
+//!   1 cm from where its `<planView>` ends. The road bakes to its `length`.
+//! - [`Warning::LinkGap`] for a lane link whose lanes don't meet: more than
+//!   10 cm apart, measured across both lanes from border to border where one
+//!   leaves off and the next begins. So a lane that splits in two, or hands
+//!   over to one opening out of nothing beside it, meets it. The link is
+//!   kept. The check measures the lanes as baked, so where the file changes
+//!   `level` across a lane section seam, and the crate's reading stacks the
+//!   level lanes' heights, the lanes step there and warn too, as in ASAM's
+//!   `Ex_CrossFall_LeftTurn`.
 //! - [`Warning::AccessDropped`] for an `<access>` it can't read. See
 //!   [Lane rules, access and materials](#lane-rules-access-and-materials).
 //! - [`Warning::SpeedLimitDropped`] for a `<speed>` it can't read. See

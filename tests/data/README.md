@@ -82,6 +82,13 @@ and one whose connecting road doesn't name it either. Regenerate with
 
     python3 tests/data/junction_links.py
 
+`link_gaps.xodr` comes from `link_gaps.py`, which writes the XML itself.
+It has a lane that splits in two across a lane section seam, one that hands
+over to a lane opening out of nothing beside it, a link across a 2 m gap,
+and a road whose `length` is short of its `<planView>`. Regenerate with
+
+    python3 tests/data/link_gaps.py
+
 `lane_visibility.xodr` comes from `lane_visibility.py`, which writes the
 XML itself. It has lane visibilities out of order, one without `sOffset`,
 and two with a distance the crate can't read, across two lane sections.

@@ -25,6 +25,7 @@ use crate::{
     Structure, StructureId, StructureKind, UserData,
 };
 
+mod gaps;
 mod links;
 mod properties;
 mod road_marks;
@@ -387,6 +388,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
                     warnings.extend(baked.lane_warnings(section, def));
                 }
                 warnings.extend(baked.shape_warnings());
+                warnings.extend(gaps::road_length(&baked.road));
                 warnings.extend(baked.speed_warnings());
                 warnings.extend(baked.access_warnings());
                 warnings.extend(baked.visibility_warnings());
@@ -410,6 +412,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     topo.junctions = junctions;
     warnings.extend(dropped);
     links::resolve(&mut lanes, &topo);
+    warnings.extend(gaps::link_gaps(&lanes, &topo.metas));
     // The parser already recorded each lane's OpenDRIVE origin while baking;
     // surface it rather than reconstructing lane-id order downstream.
     let provenance = Provenance {
