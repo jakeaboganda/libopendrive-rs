@@ -32,7 +32,7 @@ mod signals;
 mod warning;
 use links::{LaneMeta, RoadInfo, Topology};
 use road_marks::MarkDef;
-pub use warning::{RoadSkipReason, Warning};
+pub use warning::{RoadEnd, RoadSkipReason, Warning};
 
 /// The furthest apart, in metres, a lane's centerline samples get, on
 /// straight or gently curving road.
@@ -406,7 +406,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     let road_marks = road_marks::place(&roads);
     let properties = properties::place(roads.iter().map(|(_, road)| road), &lanes);
     // Resolve connectivity once all lanes exist and are registered.
-    let (junctions, dropped) = links::junctions(root, &topo.roads);
+    let (junctions, dropped) = links::junctions(root, &mut topo.roads);
     topo.junctions = junctions;
     warnings.extend(dropped);
     links::resolve(&mut lanes, &topo);

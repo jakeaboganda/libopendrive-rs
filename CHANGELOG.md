@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Junctions
+
+- Fix: a road that a common junction's connection names as its incoming
+  road, but whose own `<link>` leaves the junction out, drives into it. The
+  crate finds the end that meets the junction from the connecting road's
+  link back to it, and raises `Warning::JunctionLinkMissing`, with the
+  `RoadEnd` it linked. In ASAM's `UC_X_Junction`, road 82's three driving
+  lanes into junction 1 no longer dead-end.
+
 ### Comparison
 
 - `docs/comparison.md` sets each of the 671 elements and attributes in the

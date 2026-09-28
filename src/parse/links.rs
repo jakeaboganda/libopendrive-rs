@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use super::Warning;
+use super::{RoadEnd, Warning};
 use crate::{Direction, Lane, LaneId};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -236,9 +236,11 @@ pub(crate) fn lane_link(lane: roxmltree::Node) -> (Option<i32>, Option<i32>) {
 /// Parse every `<junction>` in the document into `id -> connections`, and
 /// warn of each connection dropped for lacking a road. `roads` gives each
 /// road's links, to find where a direct junction's incoming road meets it.
+/// A common junction's incoming road whose `<link>` leaves the junction out
+/// gets it, with a warning. See [`missing_links`].
 pub(crate) fn junctions(
     root: roxmltree::Node,
-    roads: &HashMap<String, RoadInfo>,
+    roads: &mut HashMap<String, RoadInfo>,
 ) -> (HashMap<String, Vec<JunctionConn>>, Vec<Warning>) {
     let mut out = HashMap::new();
     let mut warnings = Vec::new();
@@ -283,10 +285,71 @@ pub(crate) fn junctions(
         if direct {
             let back = reversed(jid, &conns, roads);
             conns.extend(back);
+        } else {
+            warnings.extend(missing_links(jid, &conns, roads));
         }
         out.insert(jid.to_string(), conns);
     }
     (out, warnings)
+}
+
+/// Link each incoming road of common junction `jid` whose `<link>` names the
+/// junction at neither end into it, at the end the connecting road's own
+/// link names, and warn of each. That end is the `contactPoint` of the
+/// connecting road's `<predecessor>` or `<successor>`, whichever the
+/// connection's `contactPoint` picks, where it names the incoming road. An
+/// end that already links elsewhere is left as it is.
+fn missing_links(
+    jid: &str,
+    conns: &[JunctionConn],
+    roads: &mut HashMap<String, RoadInfo>,
+) -> Vec<Warning> {
+    let mut warnings = Vec::new();
+    for c in conns {
+        let Some(road) = roads.get(&c.incoming_road) else {
+            continue;
+        };
+        let names_junction = |t: &Option<LinkTarget>| {
+            t.as_ref()
+                .is_some_and(|t| t.elem == ElemType::Junction && t.id == jid)
+        };
+        if names_junction(&road.predecessor) || names_junction(&road.successor) {
+            continue;
+        }
+        let back = roads.get(&c.connecting_road).and_then(|r| match c.contact {
+            Contact::Start => r.predecessor.as_ref(),
+            Contact::End => r.successor.as_ref(),
+        });
+        let Some(back) = back.filter(|b| b.elem == ElemType::Road && b.id == c.incoming_road)
+        else {
+            continue;
+        };
+        let end = back.contact;
+        let Some(road) = roads.get_mut(&c.incoming_road) else {
+            continue;
+        };
+        let slot = match end {
+            Contact::Start => &mut road.predecessor,
+            Contact::End => &mut road.successor,
+        };
+        if slot.is_some() {
+            continue;
+        }
+        *slot = Some(LinkTarget {
+            elem: ElemType::Junction,
+            id: jid.to_string(),
+            contact: end,
+        });
+        warnings.push(Warning::JunctionLinkMissing {
+            road_id: c.incoming_road.clone(),
+            junction_id: jid.to_string(),
+            end: match end {
+                Contact::Start => RoadEnd::Start,
+                Contact::End => RoadEnd::End,
+            },
+        });
+    }
+    warnings
 }
 
 /// The connections of direct junction `jid` run the other way, from the

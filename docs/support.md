@@ -64,6 +64,9 @@ files declaring 1.4, 1.6 and 1.7.
 - Direct junctions, which join roads end to end through a `linkedRoad`.
   Each connection links both ways, as esmini reads it, unless the junction
   gives the way back itself.
+- An incoming road whose `<link>` leaves out its common junction, which the
+  spec forbids, links into it at the end its connecting road names, with a
+  warning.
 - Road types and speed limits, as stretches along each lane:
   `RoadNetwork::road_types` and `RoadNetwork::speed_limits`, in m/s. A
   lane's `<speed>` overrides its road's to the end of its lane section. A
@@ -229,7 +232,8 @@ raises `Warning::RoadSkipped`. A lane with no `<width>` or `<border>` raises
 `Warning::BorderCrossesInnerLane`. A lateral profile that doesn't cover the
 road raises `Warning::ShapeShortOfRoad`. A road `rule` other than `RHT` or
 `LHT` raises `Warning::UnknownTrafficRule`. A junction connection without
-the roads it joins raises `Warning::ConnectionDropped`. A `<speed>` the
+the roads it joins raises `Warning::ConnectionDropped`, and an incoming road
+whose `<link>` leaves out its junction raises `Warning::JunctionLinkMissing`. A `<speed>` the
 crate can't read raises `Warning::SpeedLimitDropped`, and an `<access>`
 whose `rule` is neither `allow` nor `deny` raises `Warning::AccessDropped`.
 A lane outside a level lane that isn't level raises `Warning::LaneNotLevel`,

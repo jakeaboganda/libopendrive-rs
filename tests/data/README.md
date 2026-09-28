@@ -76,6 +76,12 @@ across two lane sections. Regenerate with
 
     python3 tests/data/lane_rules.py
 
+`junction_links.xodr` comes from `junction_links.py`, which writes the
+XML itself. It has an incoming road whose `<link>` leaves out its junction,
+and one whose connecting road doesn't name it either. Regenerate with
+
+    python3 tests/data/junction_links.py
+
 `lane_visibility.xodr` comes from `lane_visibility.py`, which writes the
 XML itself. It has lane visibilities out of order, one without `sOffset`,
 and two with a distance the crate can't read, across two lane sections.

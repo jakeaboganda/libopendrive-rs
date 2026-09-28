@@ -100,6 +100,19 @@ pub enum Warning {
         /// Its `<connection id>`, empty if it has none.
         connection_id: String,
     },
+    /// A road that a common junction's `<connection>` names as its
+    /// `incomingRoad`, whose own `<link>` does not name the junction at the
+    /// end that meets it. The spec says it must. The crate finds that end
+    /// from the connecting road's link back to the road, and links the road
+    /// into the junction there, so its lanes drive on through it.
+    JunctionLinkMissing {
+        /// The incoming road's `<road id>`.
+        road_id: String,
+        /// The `<junction id>`.
+        junction_id: String,
+        /// The end of the road the junction was added to.
+        end: RoadEnd,
+    },
     /// A `<speed>` whose `max` or `unit` the crate can't read. The crate
     /// drops it, so the lane's limit there is its road's, or the lane's
     /// `<speed>` before it.
@@ -187,6 +200,7 @@ impl Warning {
             | Self::SpeedLimitDropped { road_id, .. }
             | Self::AccessDropped { road_id, .. }
             | Self::VisibilityDropped { road_id, .. }
+            | Self::JunctionLinkMissing { road_id, .. }
             | Self::LaneNotLevel { road_id, .. }
             | Self::ConnectionDropped {
                 incoming_road_id: road_id,
@@ -273,6 +287,14 @@ impl fmt::Display for Warning {
                 f,
                 "road {road_id:?}: lane {lane}'s <access> at s {s:.2} m dropped, rule {rule:?} is neither allow nor deny"
             ),
+            Self::JunctionLinkMissing {
+                road_id,
+                junction_id,
+                end,
+            } => write!(
+                f,
+                "road {road_id:?}: its <link> leaves out junction {junction_id:?} at its {end}, linked from the junction's connecting road"
+            ),
             Self::VisibilityDropped {
                 road_id,
                 s,
@@ -292,6 +314,26 @@ impl fmt::Display for Warning {
                 "road {road_id:?}, lane section {section}: lane {lane} is outside a level lane but not level, held level"
             ),
         }
+    }
+}
+
+/// One end of a road: where its `<predecessor>` or its `<successor>` joins
+/// it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum RoadEnd {
+    /// Where `s` is 0, and the `<predecessor>` joins.
+    Start,
+    /// Where `s` is the road's length, and the `<successor>` joins.
+    End,
+}
+
+impl fmt::Display for RoadEnd {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Start => "start",
+            Self::End => "end",
+        })
     }
 }
 

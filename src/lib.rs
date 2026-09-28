@@ -145,6 +145,17 @@
 //! missing its `incomingRoad`, or the road it leads into, is dropped with a
 //! [`Warning::ConnectionDropped`].
 //!
+//! A road's lanes drive into a common junction from the end whose road
+//! `<link>` names it. The spec requires every incoming road to name its
+//! junction so, but some files leave it out, as `UC_X_Junction` among
+//! ASAM's examples does. Then the crate finds that end from the connecting
+//! road's own link back to the incoming road, at the end of the connecting
+//! road the connection's `contactPoint` names, and raises
+//! [`Warning::JunctionLinkMissing`]. libOpenDRIVE links through every
+//! connection too, but takes the incoming road's last section only if its
+//! successor names the junction, and its first otherwise. An end that
+//! already links elsewhere is left as it is.
+//!
 //! Each `<object>` bakes to one or more [`Object`]s in world coordinates,
 //! sitting on the road surface. As in libOpenDRIVE, an object's own frame
 //! follows the road under it: `hdg`, `pitch` and `roll` turn it against the
@@ -847,6 +858,8 @@
 //!   `LHT`. See [Coordinate frame](#coordinate-frame).
 //! - [`Warning::ConnectionDropped`] for a junction connection without the
 //!   roads it joins.
+//! - [`Warning::JunctionLinkMissing`] for an incoming road whose `<link>`
+//!   leaves out its junction.
 //! - [`Warning::AccessDropped`] for an `<access>` it can't read. See
 //!   [Lane rules, access and materials](#lane-rules-access-and-materials).
 //! - [`Warning::SpeedLimitDropped`] for a `<speed>` it can't read. See
@@ -920,7 +933,7 @@ pub use opencrg;
 pub use parse::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, ControllerProvenance,
     ImportError, JunctionControllerProvenance, LaneHeight, LaneProvenance, ObjectProvenance,
-    Orientation, Provenance, RoadMarkProvenance, RoadSkipReason, SignalProvenance,
+    Orientation, Provenance, RoadEnd, RoadMarkProvenance, RoadSkipReason, SignalProvenance,
     SignalReferenceProvenance, StructureProvenance, Warning,
 };
 pub use road::{LanePosition, Road, RoadId, RoadLane, RoadPosition};
