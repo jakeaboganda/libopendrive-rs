@@ -59,6 +59,9 @@ viewer draws, so use it to try the features below.
 | `c` | toggle the CRG heat map |
 | pick in the `map` list | load another baked map |
 | click a sidebar entry | select it and move the camera to it, or clear it if selected |
+| click a lane | drop a marker there |
+| `f` / `b` | step the marker 5 m along the lanes, or back |
+| `Esc` | clear the marker |
 | type in the filter box | filter lanes by road id, lane id or lane type, objects by type, subtype, name or id, signals by name, country, type, subtype or id, tunnels and bridges by name, kind or road, and warnings by their text |
 
 The checkboxes along the top toggle centerlines (green), lane boundaries
@@ -126,6 +129,19 @@ left open. Here, in esmini's `fabriksgatan_traffic_lights.xodr`, the
 sidewalk is 0.12 m up and the traffic light stands on it.
 
 ![Hovering a sidewalk raised 0.12 m, with a traffic light standing on it](lane-heights.png)
+
+## Moving along the lanes
+
+Click a lane to drop a marker on it, and press `f` to step it 5 m along the
+lanes the way their traffic runs, or `b` to step it back. At a fork it
+splits, one blue square per branch, and a branch that runs out of lanes
+turns red at the lane's end. The box at the top right lists each branch:
+its road, lane, lane section and centerline `s`.
+
+The page steps the marker as `RoadNetwork::advance` does, along the lanes'
+centerlines and onto each successor or predecessor, from the lane lengths,
+directions and links the exporter writes. It keeps the marker's offset to
+the left of the traffic.
 
 ## Objects
 

@@ -16,6 +16,8 @@
   The caller gets them all and picks.
 - `RoadNetwork::left_of` and `right_of` step to the lane beside, left and
   right of the traffic, at the same `s`.
+- In the viewer, click a lane to drop a marker, and press `f` or `b` to
+  step it along the lanes. It splits at a fork and turns red at a dead end.
 
 ### Lane positions
 
