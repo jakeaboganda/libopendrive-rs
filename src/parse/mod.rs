@@ -1706,7 +1706,8 @@ fn emit_section(
                 heights: lane_heights(lane, s_start, &sample_s),
             });
             emitted.push((id, out.len(), kind));
-            let (width, widths) = width_profile(borders);
+            let tilted = !lane.heights.is_empty() || !shapes.is_empty();
+            let (width, widths) = width_profile(borders, tilted.then_some(&heights[..]));
             out.push(Lane {
                 id,
                 kind,
@@ -1775,12 +1776,11 @@ fn road_axes(
 /// across at every station, so a level road bakes as it did before lane
 /// heights.
 ///
-/// The tessellator turns the lane's cross axis by this angle, so a lane half
-/// `w / 2` wide reaches `w / 2 * sin(atan(d / w))` up rather than `d / 2`,
-/// and `w / 2 * (1 - cos(atan(d / w)))` less far across. For a 0.1 m rise
-/// over a 2 m lane that is under 0.1 mm up and 1.3 mm across. It turns
-/// about the level tangent, so on a grade `g` the edges also sit `d / 2 * g`
-/// along the road from where the road's normal puts them.
+/// The tessellator turns the lane's cross axis by this angle. The lane's
+/// width is the chord `sqrt(w² + d²)`, so each edge lands on its border at
+/// its height. It turns about the level tangent, so on a grade `g` the
+/// edges also sit `d / 2 * g` along the road from where the road's normal
+/// puts them.
 fn lane_bank(
     borders: &[LaneBorders],
     heights: &[(f64, f64)],
@@ -2005,6 +2005,12 @@ fn side_across(
 /// A lane's nominal width and its per-sample profile, from its `borders` at
 /// each station.
 ///
+/// For a lane whose border `heights` differ, the width is the chord across
+/// the tilted lane, `sqrt(w² + Δh²)`. The tessellator turns the lane's cross
+/// axis by its bank, so the chord puts each edge on its border. The plan
+/// width alone would leave each edge `w / 2 * (1 - cos α)` inside it, 7.4 cm
+/// on a 3.5 m lane at 30 %. `heights` is `None` for a lane nothing tilts.
+///
 /// The profile collapses to empty when the lane holds one width all the way
 /// along, which covers most lanes, so an ordinary lane bakes to exactly what
 /// it baked to before per-station widths existed.
@@ -2012,8 +2018,15 @@ fn side_across(
 /// The nominal width is the widest the lane gets, not the width where it
 /// starts. A lane that opens out of a point starts at 0 m, and reporting that
 /// as its width gave a gore area no surface at all.
-fn width_profile(borders: &[LaneBorders]) -> (f32, Vec<f32>) {
-    let widths: Vec<f32> = borders.iter().map(|b| b.width as f32).collect();
+fn width_profile(borders: &[LaneBorders], heights: Option<&[(f64, f64)]>) -> (f32, Vec<f32>) {
+    let widths: Vec<f32> = match heights {
+        None => borders.iter().map(|b| b.width as f32).collect(),
+        Some(heights) => borders
+            .iter()
+            .zip(heights)
+            .map(|(b, (inner, outer))| b.width.hypot(outer - inner) as f32)
+            .collect(),
+    };
     let nominal = widths.iter().copied().fold(0.0_f32, f32::max);
     let constant = widths.iter().all(|w| (w - nominal).abs() < 1e-6);
     (nominal, if constant { Vec::new() } else { widths })

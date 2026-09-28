@@ -11,7 +11,7 @@ use libopendrive::{
 const FIXTURE: &str = "tests/data/lateral_shapes.xodr";
 
 /// Where each road's reference line runs, as `y`.
-const ROAD_Y: [f64; 5] = [0.0, 30.0, 60.0, 90.0, 120.0];
+const ROAD_Y: [f64; 6] = [0.0, 30.0, 60.0, 90.0, 120.0, 150.0];
 
 /// The parabolic crown's `k`, in `h = -k t^2`.
 const K: f64 = 0.175 / 49.0;
@@ -151,11 +151,8 @@ fn a_sidewalk_on_a_crown_stands_its_height_off_the_crown() {
     assert!(lane(&net, &prov, 3, -1).1.heights.is_empty());
 }
 
-/// Neighbouring lanes share a border height. A tilted lane's edge falls
-/// `w / 2 * (1 - cos α)` short of its border in plan, 0.55 mm on a 3.5 m
-/// lane at 2.5 % and 1.23 mm at 3.75 %, so two edges part by the sum.
 #[test]
-fn neighbouring_lanes_meet_at_the_same_height() {
+fn the_mesh_stays_closed_at_every_lane_border() {
     let (net, prov) = fixture();
     let mesh = net.surface_mesh();
     for road in [0, 1, 2] {
@@ -165,11 +162,7 @@ fn neighbouring_lanes_meet_at_the_same_height() {
             assert_eq!(outer.len(), inner.len());
             for ((_, a), (b, _)) in outer.iter().zip(&inner) {
                 let what = format!("road {road}: lanes {} and {}", pair[0].0, pair[1].0);
-                assert!((a.z - b.z).abs() < 1e-4, "{what} part at {a:?} and {b:?}");
-                assert!(
-                    (*a - *b).length() < 1.5e-3,
-                    "{what} part at {a:?} and {b:?}"
-                );
+                assert!((*a - *b).length() < 1e-4, "{what} part at {a:?} and {b:?}");
             }
         }
     }
@@ -196,4 +189,30 @@ fn a_profile_short_of_the_road_holds_its_first_shape_and_warns() {
 fn a_shaped_map_tessellates_to_a_valid_mesh() {
     let (net, _) = fixture();
     net.surface_mesh().validate().expect("a valid mesh");
+}
+
+/// Each rib of the steep crossfall on road 5, as how far it is from its
+/// border across the road and up.
+fn crossfall_misses() -> Vec<(f64, f64)> {
+    let (net, prov) = fixture();
+    let mesh = net.surface_mesh();
+    let mut misses = Vec::new();
+    for (od_id, left_t, right_t) in [(1, 3.5, 0.0), (-1, 0.0, -3.5)] {
+        for (left, right) in ribs(&mesh, lane(&net, &prov, 5, od_id).0) {
+            for (rib, t) in [(left, left_t), (right, right_t)] {
+                let across = f64::from(rib.y) - ROAD_Y[5] - t;
+                let up = f64::from(rib.z) - 0.3 * (t + 3.5);
+                misses.push((across, up));
+            }
+        }
+    }
+    misses
+}
+
+#[test]
+fn a_steep_crossfall_s_edges_land_on_their_borders() {
+    for (across, up) in crossfall_misses() {
+        assert!(across.abs() < 1e-4, "{across} m off across");
+        assert!(up.abs() < 1e-4, "{up} m off up");
+    }
 }

@@ -23,6 +23,9 @@ Road 3, from (0, 90), has a 2 m sidewalk -2, raised 0.12 m, outside lane
 
 Road 4, from (0, 120), has one shape at t = -2 m, 0.1 m high and flat, so
 its profile starts inside the road's right edge at t = -3.5 m.
+
+Road 5, from (0, 150), has a crossfall of 30 %, rising from 0 at its right
+edge at t = -3.5 m to 2.1 m at its left edge.
 """
 
 from pathlib import Path
@@ -81,6 +84,7 @@ roads = [
     road(2, 60, *FOUR, ['<superelevation s="0" a="0.05" b="0" c="0" d="0"/>'] + crown(7)),
     road(3, 90, [lane(1, 3.5)], [lane(-1, 3.5), SIDEWALK], crown(5.5)),
     road(4, 120, [lane(1, 3.5)], [lane(-1, 3.5)], [shape(0, -2, 0.1)]),
+    road(5, 150, [lane(1, 3.5)], [lane(-1, 3.5)], [shape(0, -3.5, 0, 0.3)]),
 ]
 
 xml = (

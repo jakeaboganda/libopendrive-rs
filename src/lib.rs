@@ -345,10 +345,11 @@
 //! ramp 1 m long bakes 1 m long.
 //!
 //! The tessellator tilts a raised lane's cross axis by its slope, rather
-//! than moving each edge to its own height. On a 0.1 m rise across a 2 m
-//! lane, that leaves the edges under 0.1 mm off their heights and 1.3 mm
-//! inside their borders. On a grade they also sit 0.05 m times the grade
-//! along the road from where the road's normal puts them, 1.5 mm at 3 %.
+//! than moving each edge to its own height. The lane's width is the chord
+//! across its surface, so each edge lands on its border and at its height.
+//! On a grade the edges also sit half the rise times the grade along the
+//! road from where the road's normal puts them, 1.5 mm for a 0.1 m rise at
+//! 3 %.
 //! Where a lane's kerb and outer edge change height at different paces, as
 //! on a ramp, each quad of its mesh is twisted, and its two triangles cut
 //! the corner by up to a quarter of the rise across that quad. Halfway up

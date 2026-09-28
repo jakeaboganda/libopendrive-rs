@@ -196,6 +196,11 @@ pub struct Lane {
     /// a lane that tapers. This names the lane, a 3.5 m lane. It is not the
     /// width at a given station; [`Lane::width_at`] answers that, and the
     /// tessellator uses it.
+    ///
+    /// A lane whose borders stand at different heights, from its `<height>`s
+    /// or the road's `<shape>`s, is measured across its surface rather than
+    /// in plan: `sqrt(w² + Δh²)`. That is 1.1 mm more on a 3.5 m lane at
+    /// 2.5 %, and 15 cm more at 30 %.
     pub width: f32,
     /// Per-centerline-vertex width (metres), parallel to `center.points()`.
     ///
@@ -203,7 +208,7 @@ pub struct Lane {
     /// non-empty profile must have exactly `center.points().len()` entries.
     /// A gore area at an off-ramp is what this exists for. It is 0 m wide
     /// where it begins and 5 m wide further along, and a single width put it
-    /// at neither.
+    /// at neither. Each is measured across the surface, as `width` is.
     pub widths: Vec<f32>,
     /// Per-centerline-vertex cross-slope angle (radians, signed), parallel to
     /// `center.points()`: the road's superelevation, plus the slope of an

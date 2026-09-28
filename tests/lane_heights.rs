@@ -225,9 +225,10 @@ fn banked_surface(s: f64, t: f64) -> [f64; 3] {
 
 /// Each edge of a raised lane on a banked, climbing road stands off the
 /// road along its normal. The tessellator tilts the lane's cross axis rather
-/// than moving each edge to its own height. The crate docs bound that, for a
-/// 0.1 m rise over 2 m, at under 0.1 mm along the normal, 1.3 mm across,
-/// and 0.05 m times the grade along the road. This measures all three.
+/// than moving each edge to its own height, and the lane's width is the
+/// chord across it, so each edge lands on its border. The crate docs bound
+/// the rest at 0.05 m times the grade along the road. This measures all
+/// three.
 #[test]
 fn on_a_banked_climbing_road_a_height_stands_off_along_the_normal() {
     let (net, prov) = fixture();
@@ -262,11 +263,7 @@ fn on_a_banked_climbing_road_a_height_stands_off_along_the_normal() {
         "{worst_along} m off along the road"
     );
     assert!(worst_up < 1e-4, "{worst_up} m off along the normal");
-    assert!(worst_across < 1.3e-3, "{worst_across} m off across");
-    assert!(
-        worst_across > 1e-3,
-        "the sloped lane should show the tilt: {worst_across}"
-    );
+    assert!(worst_across < 1e-4, "{worst_across} m off across");
 }
 
 /// Section 1 of road 2 starts at s = 30. Its first height, at sOffset 5,
