@@ -539,12 +539,13 @@ impl Across {
 }
 
 impl RoadSection {
-    /// Whether any of its lanes has a `<height>`.
+    /// Whether any of its lanes stands off the road's cross-section: has a
+    /// `<height>`, or is level.
     pub fn raised(&self) -> bool {
         self.left
             .iter()
             .chain(&self.right)
-            .any(|l| !l.heights.is_empty())
+            .any(|l| !l.heights.is_empty() || l.level)
     }
 }
 

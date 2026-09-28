@@ -17,7 +17,7 @@ lane and lane -2 a 2 m level shoulder.
 
 Road 2, from (0, 60), has a superelevation of 0.05 rad. Lane -1 is a
 3.5 m level driving lane and lane -2 a 2 m shoulder that is not level,
-which the spec does not allow.
+which the spec does not allow. A pole stands on lane -1 at s = 25.
 """
 
 from pathlib import Path
@@ -57,7 +57,9 @@ roads = [
          '    <objects><object id="0" type="pole" s="25" t="-4.5" zOffset="0" '
          'radius="0.05" height="2"/></objects>\n'),
     road(1, 30, CROWN, [], [lane(-1, 3.5), lane(-2, 2, "shoulder", level=True)]),
-    road(2, 60, BANK, [], [lane(-1, 3.5, level=True), lane(-2, 2, "shoulder")]),
+    road(2, 60, BANK, [], [lane(-1, 3.5, level=True), lane(-2, 2, "shoulder")],
+         '    <objects><object id="1" type="pole" s="25" t="-1.75" zOffset="0" '
+         'radius="0.05" height="2"/></objects>\n'),
 ]
 
 xodr = (

@@ -102,6 +102,15 @@ fn an_object_on_a_level_lane_stands_on_it() {
 }
 
 #[test]
+fn an_object_on_a_level_lane_with_no_height_stands_on_it() {
+    let (net, _) = fixture();
+    let Shape::Solid { position, .. } = net.objects()[1].shape else {
+        panic!("a solid pole");
+    };
+    assert!(close(position.z, 0.0), "{} != 0", position.z);
+}
+
+#[test]
 fn level_lanes_leave_the_mesh_closed() {
     let (net, _) = fixture();
     net.surface_mesh().validate().expect("a valid mesh");

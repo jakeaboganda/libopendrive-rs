@@ -16,5 +16,6 @@
     <planView><geometry s="0" x="0" y="60" hdg="0" length="50"><line/></geometry></planView>
     <lateralProfile><superelevation s="0" a="0.05" b="0" c="0" d="0"/></lateralProfile>
     <lanes><laneSection s="0"><left></left><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving" level="true"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane><lane id="-2" type="shoulder" level="false"><width sOffset="0" a="2" b="0" c="0" d="0"/></lane></right></laneSection></lanes>
+    <objects><object id="1" type="pole" s="25" t="-1.75" zOffset="0" radius="0.05" height="2"/></objects>
   </road>
 </OpenDRIVE>

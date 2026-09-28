@@ -18,7 +18,8 @@
   lateral shape. It starts at its inner neighbour's outer border and runs
   level, with its own `<height>`s on top, so its `Lane::bank` is 0. The
   lanes outside it stack on it. Objects, signals and road marks stand on
-  it. The A9 Testfeld map has 16, beside banked roads.
+  it, also where no lane in its section has a `<height>`. The A9 Testfeld
+  map has 16, beside banked roads.
 - A level lane is `w / cos φ` wide in plan on a road superelevated by `φ`,
   as libOpenDRIVE builds it: 2.5 mm more on a 2 m lane at 5 %.
 - Where the crate departs from the spec:
