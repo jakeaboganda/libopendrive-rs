@@ -249,6 +249,7 @@ let priorities = [];         // the exported junction priorities, by road id
 let roadNeighbors = [];      // the exported road neighbors, by road id
 let junctionMeshes = [];     // each junction area's ground; userData is its exported record
 let junctionLines = [];      // each junction area's boundary
+let crossPaths = [];         // the exported cross paths, by lane id
 let walkers = [];            // the marker's branches: {lane, arc, side, dead}, as RoadNetwork::advance gives them
 let walkerMesh;              // a square at each branch of the marker
 
@@ -337,6 +338,7 @@ async function init() {
   buildCrg(data);
   buildWarnings(data);
   priorities = data.priorities ?? [];
+  crossPaths = data.crossPaths ?? [];
   roadNeighbors = data.roadNeighbors ?? [];
   buildSidebar();
   buildLegend();
@@ -1393,6 +1395,7 @@ function onHover(ev) {
       .filter(Boolean).join('   '));
   }
   rows.push(...priorityRows(lane));
+  rows.push(...crossPathRows(lane));
   for (const n of roadNeighbors.filter(n => n.road === lane.roadId)) {
     rows.push(`road ${escapeHtml(String(n.neighbor))} beside it on the ${n.side}, running ${n.sameDirection ? 'the same way' : 'the other way'}`);
   }
@@ -1715,6 +1718,25 @@ function materialText(m) {
     m.friction !== null && `friction ${m.friction.toFixed(2)}`,
     m.roughness !== null && `roughness ${m.roughness.toFixed(3)} m`,
   ].filter(Boolean).join('   ');
+}
+
+// The cross paths this lane carries, or that join it part way along.
+function crossPathRows(lane) {
+  const name = id => {
+    const l = laneById.get(id);
+    return l ? `road ${escapeHtml(String(l.roadId))} lane ${l.odLaneId}` : '?';
+  };
+  const rows = [];
+  for (const c of crossPaths) {
+    const label = `cross path ${escapeHtml(String(c.id))}`;
+    if (c.start.crossingLaneId === lane.laneId || c.end.crossingLaneId === lane.laneId) {
+      rows.push(`${label}: from ${name(c.start.laneId)} at s ${c.start.s.toFixed(2)} to ${name(c.end.laneId)} at s ${c.end.s.toFixed(2)}`);
+    }
+    for (const e of [c.start, c.end]) {
+      if (e.laneId === lane.laneId) rows.push(`${label} joins here at s ${e.s.toFixed(2)}, onto ${name(e.crossingLaneId)}`);
+    }
+  }
+  return rows;
 }
 
 // Which roads the lane's road gives way to in its junction, and which give

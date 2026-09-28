@@ -12,6 +12,8 @@
 - `Warning::CrossPathDropped` names one whose roads or lanes the load
   lacks. In ASAM's `UC_5Road_Junction`, three name an `s` past the end of
   their road or a lane it lacks.
+- The viewer's readout for a crossing road's lane, and for a lane a cross
+  path joins, names the other end.
 
 ### Junction areas
 

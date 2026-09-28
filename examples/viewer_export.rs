@@ -48,8 +48,8 @@ use std::process::ExitCode;
 use libopendrive::opencrg::CrgGrid;
 use libopendrive::{
     load_file_with_provenance, Access, Along, Controller, ControllerProvenance, Corner, CrgMode,
-    CrgPurpose, CrgSurface, Direction, Extent, JunctionArea, LaneId, LaneProvenance, LaneSpan,
-    LinePattern, Marking, Mesh, Object, ObjectProvenance, Orientation, Point, Provenance,
+    CrgPurpose, CrgSurface, CrossPathEnd, Direction, Extent, JunctionArea, LaneId, LaneProvenance,
+    LaneSpan, LinePattern, Marking, Mesh, Object, ObjectProvenance, Orientation, Point, Provenance,
     Referenced, RoadMark, RoadMarkProvenance, RoadNetwork, RoadSurface, Shape, Side, Signal,
     SignalProvenance, SpeedLimit, Structure, StructureKind, StructureProvenance, SurfaceHint,
     Warning,
@@ -272,6 +272,22 @@ fn build_scene(
         "priorities": priorities(net, provenance),
         "roadNeighbors": road_neighbors(net),
         "junctionAreas": net.junction_areas().iter().map(junction_area).collect::<Vec<_>>(),
+        "crossPaths": net
+            .cross_paths()
+            .iter()
+            .zip(&provenance.cross_paths)
+            .map(|(c, p)| {
+                let end = |e: &CrossPathEnd| {
+                    json!({ "laneId": e.lane.0, "s": e.s, "crossingLaneId": e.crossing_lane.0 })
+                };
+                json!({
+                    "junction": p.junction_id,
+                    "id": p.od_id,
+                    "start": end(&c.start),
+                    "end": end(&c.end),
+                })
+            })
+            .collect::<Vec<_>>(),
     })
 }
 
