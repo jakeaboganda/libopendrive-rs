@@ -121,5 +121,8 @@ fn the_banked_import_is_deterministic() {
         "two imports of the same banked file must be identical"
     );
     // And RoadNetwork's PartialEq actually compares the baked lanes.
-    assert_eq!(a, RoadNetwork::new(b.lanes().to_vec()));
+    assert_eq!(
+        a,
+        RoadNetwork::new(b.lanes().to_vec()).with_roads(b.roads().to_vec())
+    );
 }

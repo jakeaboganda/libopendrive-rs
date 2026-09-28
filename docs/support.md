@@ -72,6 +72,17 @@ files declaring 1.4, 1.6 and 1.7.
   names, in `<restriction>`s or the older `restriction` attribute. A deny
   of `none` lifts the restrictions before it.
 
+## Road coordinates
+
+- `RoadNetwork::roads` keeps each road's reference line, profiles and lane
+  sections. `road_point` turns a road `s` and `t` into the point on the
+  surface there, and `road_position` turns a point back. Both include lane
+  heights and the lateral shape. `road_lane` gives a lane's road, lane
+  section and `<lane id>`.
+- `road_position` takes the road whose surface is nearest in 3D, so a point
+  on a bridge finds the bridge. Where roads overlap in a junction, the
+  first road wins.
+
 ## Objects
 
 `RoadNetwork::objects` has every `<object>`, in world coordinates on the road

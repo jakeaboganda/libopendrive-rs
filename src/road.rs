@@ -2,24 +2,84 @@
 //! it, and the geometry of its lane sections, and what places a road station
 //! `(s, t)` in the world.
 
-use crate::coords::{Point, Vector};
+use crate::coords::Point;
 use crate::crg::RefPoint;
 use crate::{Direction, LaneId};
 
-/// One road as the import keeps it: its reference line, the profiles along
-/// it, and where its lanes lie across it.
+/// A road's identity: its position in
+/// [`RoadNetwork::roads`](crate::RoadNetwork::roads). Look a road up with
+/// [`RoadNetwork::road`](crate::RoadNetwork::road).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct RoadId(pub usize);
+
+/// A place on a road in its own coordinates, as OpenDRIVE gives them.
+///
+/// `s` runs along the road's reference line from its start, and `t` across
+/// it, positive to the left. Both are in metres. `t` is measured along the
+/// road's cross-section, which superelevation tilts, so a point at `t` stands
+/// `t cos φ` from the reference line in plan on a road banked by `φ`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct RoadPosition {
+    /// The road.
+    pub road: RoadId,
+    /// How far along its reference line.
+    pub s: f64,
+    /// How far across it, positive to the left.
+    pub t: f64,
+}
+
+/// Where a lane lies on its road: the road, the lane section, and its
+/// OpenDRIVE `<lane id>`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct RoadLane {
+    /// The road.
+    pub road: RoadId,
+    /// The zero-based lane-section index within the road, ordered by `s`, as
+    /// in [`LaneProvenance::section`](crate::LaneProvenance::section).
+    pub section: usize,
+    /// The lane's `<lane id>`: negative right of the reference line, positive
+    /// left.
+    pub od_id: i32,
+}
+
+/// One road: its reference line, the profiles along it, and where its lanes
+/// lie across it. What turns a [`RoadPosition`] into a point, and back.
+///
+/// Serializes as the records the file gives, and rebakes its spirals and
+/// cubic curves on the way back in.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub(crate) struct Road {
-    pub od_id: String,
-    pub length: f64,
-    pub rule: TrafficRule,
-    pub geoms: Vec<GeomRec>,
-    pub elevations: Vec<Cubic>,
-    pub superelevations: Vec<Cubic>,
-    pub shapes: Vec<ShapeProfile>,
-    pub lane_offsets: Vec<Cubic>,
-    pub sections: Vec<RoadSection>,
+pub struct Road {
+    pub(crate) id: RoadId,
+    pub(crate) od_id: String,
+    pub(crate) length: f64,
+    pub(crate) rule: TrafficRule,
+    pub(crate) geoms: Vec<GeomRec>,
+    pub(crate) elevations: Vec<Cubic>,
+    pub(crate) superelevations: Vec<Cubic>,
+    pub(crate) shapes: Vec<ShapeProfile>,
+    pub(crate) lane_offsets: Vec<Cubic>,
+    pub(crate) sections: Vec<RoadSection>,
+}
+
+impl Road {
+    /// Its identity on the network.
+    pub fn id(&self) -> RoadId {
+        self.id
+    }
+
+    /// The `<road id>` it came from.
+    pub fn od_id(&self) -> &str {
+        &self.od_id
+    }
+
+    /// How long its reference line is, in metres, from its `length`.
+    pub fn length(&self) -> f64 {
+        self.length
+    }
 }
 
 /// One lane section of a road: the stretch of road it covers, where its
@@ -551,9 +611,17 @@ impl RoadSection {
 
 // --- The road surface ---------------------------------------------------------
 
+/// How far `locate` steps, in metres, to measure how the surface moves.
+const LOCATE_STEP: f64 = 1e-4;
+
+/// When `locate` stops: after this many steps, or once a step moves `s` and
+/// `t` less than this, in metres.
+const LOCATE_STEPS: usize = 24;
+const LOCATE_TOLERANCE: f64 = 1e-9;
+
 impl Road {
     /// The reference line at `s`.
-    pub fn station(&self, s: f64) -> RefPoint {
+    pub(crate) fn station(&self, s: f64) -> RefPoint {
         let (x, y, heading) = geom_at(&self.geoms, s).pose(s);
         let elevation = active(&self.elevations, s);
         let bank = active(&self.superelevations, s);
@@ -570,7 +638,7 @@ impl Road {
     }
 
     /// The `t` of the center lane at `s`, from `<laneOffset>`.
-    pub fn base(&self, s: f64) -> f64 {
+    pub(crate) fn base(&self, s: f64) -> f64 {
         active(&self.lane_offsets, s).map_or(0.0, |o| o.eval(s))
     }
 
@@ -580,7 +648,13 @@ impl Road {
     /// belongs to it. A point past the outermost lane takes that lane's outer
     /// height. libOpenDRIVE carries the lane's slope on instead. A point on
     /// no lane takes the lateral shape under it.
-    pub fn surface(&self, s: f64, t: f64) -> (Point, f64) {
+    pub(crate) fn surface(&self, s: f64, t: f64) -> (Point, f64) {
+        let (p, hdg) = self.surface_xyz(s, t);
+        (to_point(p), hdg)
+    }
+
+    /// [`Self::surface`] in `f64`.
+    fn surface_xyz(&self, s: f64, t: f64) -> ([f64; 3], f64) {
         let height = self
             .section_at(s)
             .filter(|section| section.raised() || !self.shapes.is_empty())
@@ -593,14 +667,20 @@ impl Road {
                 || shape_at(&self.shapes, s, t),
                 |a| a.height(t.clamp(a.inner_t.min(a.outer_t), a.inner_t.max(a.outer_t))),
             );
-        self.raised(s, t, height)
+        self.raised_xyz(s, t, height)
     }
 
     /// The surface of the lane `od_id` of `section` at `(s, t)`, straight
     /// across the lane and on past its borders, so paint on its border lies
     /// in it. For the center lane, the lateral shape on the center line, held
     /// flat across, so its paint lies on a crown's ridge rather than under it.
-    pub fn lane_surface(&self, section: &RoadSection, od_id: i32, s: f64, t: f64) -> (Point, f64) {
+    pub(crate) fn lane_surface(
+        &self,
+        section: &RoadSection,
+        od_id: i32,
+        s: f64,
+        t: f64,
+    ) -> (Point, f64) {
         if !section.raised() && self.shapes.is_empty() {
             return self.raised(s, t, 0.0);
         }
@@ -613,40 +693,77 @@ impl Road {
 
     /// The road surface at `(s, t)`, stood off along the road's normal there
     /// by `height`, and the reference line's heading.
-    pub fn raised(&self, s: f64, t: f64, height: f64) -> (Point, f64) {
-        let (point, hdg) = self.surface_at(s, t);
+    pub(crate) fn raised(&self, s: f64, t: f64, height: f64) -> (Point, f64) {
+        let (p, hdg) = self.raised_xyz(s, t, height);
+        (to_point(p), hdg)
+    }
+
+    /// [`Self::raised`] in `f64`.
+    ///
+    /// Superelevation rolls the cross-section about the reference line by
+    /// `phi`, so a point at `t` rides up by `t sin phi` and reaches `t cos
+    /// phi` across in plan.
+    fn raised_xyz(&self, s: f64, t: f64, height: f64) -> ([f64; 3], f64) {
+        let (x, y, hdg) = geom_at(&self.geoms, s).pose(s);
+        let elev = active(&self.elevations, s).map_or(0.0, |e| e.eval(s));
+        let phi = active(&self.superelevations, s).map_or(0.0, |e| e.eval(s));
+        let (sin_phi, cos_phi) = phi.sin_cos();
+        let t_h = t * cos_phi;
+        let point = [x - t_h * hdg.sin(), y + t_h * hdg.cos(), elev + t * sin_phi];
         if height == 0.0 {
             return (point, hdg);
         }
         let up = self.axes(s)[2];
-        (
-            point + Vector::from_array(up.map(|c| (c * height) as f32)),
-            hdg,
-        )
+        ([0, 1, 2].map(|i| point[i] + up[i] * height), hdg)
     }
 
-    /// The road surface at station `s`, lateral offset `t` from the
-    /// reference line, and the reference line's heading there.
-    fn surface_at(&self, s: f64, t: f64) -> (Point, f64) {
-        let (x, y, hdg) = geom_at(&self.geoms, s).pose(s);
-        let elev = active(&self.elevations, s).map_or(0.0, |e| e.eval(s));
-        // Reference-line pivot: superelevation rolls the cross-section about
-        // the reference line by phi, so a point at lateral t rides up by
-        // t·sin phi (positive t = left edge, raised for phi > 0) and its
-        // horizontal reach shrinks to t·cos phi.
+    /// The station `(s, t)` whose surface lies over `(x, y)`, searched from
+    /// `s`, and held within the road's ends.
+    ///
+    /// It solves on the surface itself by Newton's method, so a lane height
+    /// or a lateral shape that stands the surface off along a tilted normal
+    /// moves the answer as it moves the point.
+    pub(crate) fn locate(&self, x: f64, y: f64, s: f64) -> (f64, f64) {
+        let miss = |s: f64, t: f64| {
+            let (p, _) = self.surface_xyz(s, t);
+            [p[0] - x, p[1] - y]
+        };
+        let mut s = s.clamp(0.0, self.length);
+        let (rx, ry, hdg) = geom_at(&self.geoms, s).pose(s);
         let phi = active(&self.superelevations, s).map_or(0.0, |e| e.eval(s));
-        let (sin_phi, cos_phi) = phi.sin_cos();
-        let t_h = t * cos_phi;
-        let point = Point::new(
-            (x - t_h * hdg.sin()) as f32,
-            (y + t_h * hdg.cos()) as f32,
-            (elev + t * sin_phi) as f32,
-        );
-        (point, hdg)
+        let mut t = ((y - ry) * hdg.cos() - (x - rx) * hdg.sin()) / phi.cos();
+        for _ in 0..LOCATE_STEPS {
+            let r = miss(s, t);
+            if r[0].hypot(r[1]) < LOCATE_TOLERANCE {
+                break;
+            }
+            let ahead = if s + LOCATE_STEP <= self.length {
+                LOCATE_STEP
+            } else {
+                -LOCATE_STEP
+            };
+            let a = miss(s + ahead, t);
+            let along = [0, 1].map(|i| (a[i] - r[i]) / ahead);
+            let a = miss(s, t + LOCATE_STEP);
+            let across = [0, 1].map(|i| (a[i] - r[i]) / LOCATE_STEP);
+            let det = along[0] * across[1] - along[1] * across[0];
+            if det.abs() < 1e-12 {
+                break;
+            }
+            let ds = (r[1] * across[0] - r[0] * across[1]) / det;
+            let dt = (r[0] * along[1] - r[1] * along[0]) / det;
+            let next = (s + ds).clamp(0.0, self.length);
+            let moved = (next - s).abs() + dt.abs();
+            (s, t) = (next, t + dt);
+            if moved < LOCATE_TOLERANCE {
+                break;
+            }
+        }
+        (s, t)
     }
 
     /// The lane section at `s`. On a boundary, the one starting there.
-    pub fn section_at(&self, s: f64) -> Option<&RoadSection> {
+    pub(crate) fn section_at(&self, s: f64) -> Option<&RoadSection> {
         self.sections
             .iter()
             .rev()
@@ -656,7 +773,7 @@ impl Road {
 
     /// Each lane of `section` across the road at `s`, from the center
     /// outward, the left side first.
-    pub fn across<'a>(
+    pub(crate) fn across<'a>(
         &'a self,
         section: &'a RoadSection,
         s: f64,
@@ -694,7 +811,7 @@ impl Road {
     /// the reference line up its grade, across it tilted by the
     /// superelevation, and square to both. Unit length and square to each
     /// other, right-handed.
-    pub fn axes(&self, s: f64) -> [[f64; 3]; 3] {
+    pub(crate) fn axes(&self, s: f64) -> [[f64; 3]; 3] {
         let (_, _, hdg) = geom_at(&self.geoms, s).pose(s);
         let grade = active(&self.elevations, s).map_or(0.0, |e| e.slope(s));
         let phi = active(&self.superelevations, s).map_or(0.0, |e| e.eval(s));
@@ -705,7 +822,7 @@ impl Road {
         [along, cross(up, along), up]
     }
 
-    pub fn on_road(&self, s: f64) -> bool {
+    pub(crate) fn on_road(&self, s: f64) -> bool {
         (0.0..=self.length).contains(&s)
     }
 
@@ -714,7 +831,7 @@ impl Road {
     /// A section starting exactly at `to` counts only if the stretch is a
     /// single station, so a station on a section boundary is in the section
     /// that starts there.
-    pub fn lanes(&self, (from, to): (f64, f64), validity: &[(i32, i32)]) -> Vec<LaneId> {
+    pub(crate) fn lanes(&self, (from, to): (f64, f64), validity: &[(i32, i32)]) -> Vec<LaneId> {
         let last = self.sections.len().saturating_sub(1);
         self.sections
             .iter()
@@ -736,6 +853,10 @@ pub(crate) fn is_valid(od_id: i32, validity: &[(i32, i32)]) -> bool {
         || validity
             .iter()
             .any(|&(a, b)| (a.min(b)..=a.max(b)).contains(&od_id))
+}
+
+fn to_point([x, y, z]: [f64; 3]) -> Point {
+    Point::new(x as f32, y as f32, z as f32)
 }
 
 fn cross([a, b, c]: [f64; 3], [x, y, z]: [f64; 3]) -> [f64; 3] {

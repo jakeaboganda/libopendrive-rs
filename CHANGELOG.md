@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Road coordinates
+
+- The network keeps its roads. `RoadNetwork::roads`, `road` and
+  `road_by_od_id` return a `Road`, with its `RoadId`, `<road id>` and
+  length. `RoadNetwork::road_lane` gives a lane's road, lane section and
+  `<lane id>` as a `RoadLane`.
+- `RoadNetwork::road_point` turns a `RoadPosition`, a road with `s` and
+  `t`, into the point on the road surface there, lane heights and lateral
+  shape included. `None` off the ends of the road. Signals, objects and
+  road marks stand on the road through the same call.
+- `RoadNetwork::road_position` turns a point back. Of the roads whose
+  lanes come near it, it takes the one whose surface is nearest in 3D, and
+  solves for the `(s, t)` straight under or over the point. A point on a
+  lane round-trips to within 0.2 mm on every map in the test corpus, or the
+  `f32` step of its coordinates where that is larger. A station on a lane
+  section seam is on the section that starts there. It takes about 5 us on
+  Town07.
+- Roads serialize with the network, as the records the file gives. They
+  add 22 % to Town07's JSON and 1 to 3 % to esmini's maps. A network
+  serialized before deserializes with none, and the road queries answer
+  `None`.
+- Import takes about 4 % longer, to index every lane's footprint.
+
 ### Geo reference
 
 - `RoadNetwork::geo_reference` returns a `GeoReference`: the

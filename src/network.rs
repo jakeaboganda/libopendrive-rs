@@ -1,6 +1,7 @@
 //! The baked road-network model: lanes, their connectivity graph, and the
 //! queries over both. Format-agnostic: nothing here knows OpenDRIVE.
 
+use std::collections::HashMap;
 use std::ops::Range;
 
 use crate::along::{self, Access, Along, RoadType, SpeedLimit};
@@ -10,6 +11,7 @@ use crate::geo::GeoReference;
 use crate::geometry::{Polyline, Projection, RoadSample};
 use crate::grid::{Aabb, Grid};
 use crate::object::{Material, Object, ObjectId};
+use crate::road::{Road, RoadId, RoadLane, RoadPosition};
 use crate::road_mark::{RoadMark, RoadMarkId};
 use crate::signal::{Controller, ControllerId, Signal, SignalId};
 use crate::structure::{Coverage, Structure, StructureId};
@@ -245,9 +247,9 @@ pub struct Lane {
 /// `nearest_lane` with a lane that is no longer there.
 ///
 /// Serializes as its lanes, objects, structures, signals, controllers, road
-/// marks, CRG surfaces, what holds along each lane and geo reference; the
-/// index is rebuilt on the way back in, so a network that crossed a process
-/// boundary is indistinguishable from one that was just imported.
+/// marks, CRG surfaces, what holds along each lane, geo reference and roads;
+/// the indexes are rebuilt on the way back in, so a network that crossed a
+/// process boundary is indistinguishable from one that was just imported.
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(
     feature = "serde",
@@ -268,15 +270,21 @@ pub struct RoadNetwork {
     lane_access: Vec<Along<Access>>,
     lane_materials: Vec<Along<Material>>,
     geo: GeoReference,
+    roads: Vec<Road>,
     /// Lanes of kind [`LaneType::Driving`] bucketed by their XY footprint, for
     /// [`Self::nearest_lane`]. Derived from `lanes`, so it takes no part in
     /// equality.
     index: LaneIndex,
+    /// Each lane's place on its road, from `roads`.
+    road_lanes: HashMap<LaneId, RoadLane>,
+    /// Every lane's surface bucketed by its XY footprint, for
+    /// [`Self::road_position`]. Empty without roads.
+    footprints: LaneIndex,
 }
 
 /// Two networks are equal when their lanes, objects, structures, signals,
-/// controllers, road marks, CRG surfaces, what holds along each lane and geo
-/// references are; the index is a function of the lanes.
+/// controllers, road marks, CRG surfaces, what holds along each lane, geo
+/// references and roads are; the indexes are functions of those.
 impl PartialEq for RoadNetwork {
     fn eq(&self, other: &Self) -> bool {
         self.lanes == other.lanes
@@ -292,6 +300,7 @@ impl PartialEq for RoadNetwork {
             && self.lane_access == other.lane_access
             && self.lane_materials == other.lane_materials
             && self.geo == other.geo
+            && self.roads == other.roads
     }
 }
 
@@ -316,6 +325,8 @@ struct NetworkData {
     lane_materials: Vec<Along<Material>>,
     #[serde(default)]
     geo: GeoReference,
+    #[serde(default)]
+    roads: Vec<Road>,
 }
 
 #[cfg(feature = "serde")]
@@ -334,6 +345,7 @@ impl From<NetworkData> for RoadNetwork {
             .with_lane_access(data.lane_access)
             .with_lane_materials(data.lane_materials)
             .with_geo_reference(data.geo)
+            .with_roads(data.roads)
     }
 }
 
@@ -354,6 +366,7 @@ impl From<RoadNetwork> for NetworkData {
             lane_access: net.lane_access,
             lane_materials: net.lane_materials,
             geo: net.geo,
+            roads: net.roads,
         }
     }
 }
@@ -369,15 +382,15 @@ impl From<Vec<Lane>> for RoadNetwork {
 /// near it is sampled, not how long the lanes there are.
 const SPAN_SEGMENTS: usize = 4;
 
-/// The driving lanes' centerlines, cut into spans of [`SPAN_SEGMENTS`]
-/// segments, with each span's XY footprint and a grid over them. Spans are in
-/// lane order, then along the lane, so the grid's lowest-index tie break
-/// picks what projecting onto each lane whole in turn would.
-///
-/// Only [`LaneType::Driving`] is indexed, not everything
-/// [`LaneType::is_drivable`] admits. Snapping a body to the road must land it
-/// on an ordinary traffic lane, so a bus lane or a slip lane beside it never
-/// wins on distance alone.
+/// How far past a lane's half width its footprint reaches, in metres. A
+/// lane's edge bows out between centerline points on a curve, and a raised
+/// lane on a tilted road leans off its centerline.
+const FOOTPRINT_MARGIN: f32 = 0.5;
+
+/// Lane centerlines, cut into spans of [`SPAN_SEGMENTS`] segments, with each
+/// span's XY footprint and a grid over them. Spans are in lane order, then
+/// along the lane, so the grid's lowest-index tie break picks what projecting
+/// onto each lane whole in turn would.
 #[derive(Debug, Clone, Default)]
 struct LaneIndex {
     bounds: Vec<Aabb>,
@@ -387,10 +400,42 @@ struct LaneIndex {
 }
 
 impl LaneIndex {
-    fn build(lanes: &[Lane]) -> Self {
+    /// The [`LaneType::Driving`] lanes' centerlines, for
+    /// [`RoadNetwork::nearest_lane`].
+    ///
+    /// Only [`LaneType::Driving`] is indexed, not everything
+    /// [`LaneType::is_drivable`] admits. Snapping a body to the road must land
+    /// it on an ordinary traffic lane, so a bus lane or a slip lane beside it
+    /// never wins on distance alone.
+    fn driving(lanes: &[Lane]) -> Self {
+        Self::build(lanes, |lane| lane.kind == LaneType::Driving, |_, _| 0.0)
+    }
+
+    /// Every lane's surface: its centerline, widened by half its width and
+    /// [`FOOTPRINT_MARGIN`].
+    fn footprints(lanes: &[Lane]) -> Self {
+        Self::build(
+            lanes,
+            |_| true,
+            |lane, span| {
+                let widest = match lane.widths.get(span.start..=span.end) {
+                    Some(widths) => widths.iter().copied().fold(0.0, f32::max),
+                    None => lane.width,
+                };
+                widest / 2.0 + FOOTPRINT_MARGIN
+            },
+        )
+    }
+
+    /// The spans of the lanes `keep` takes, each box grown by `pad`.
+    fn build(
+        lanes: &[Lane],
+        keep: impl Fn(&Lane) -> bool,
+        pad: impl Fn(&Lane, &Range<usize>) -> f32,
+    ) -> Self {
         let (mut bounds, mut spans) = (Vec::new(), Vec::new());
         for (i, lane) in lanes.iter().enumerate() {
-            if lane.kind != LaneType::Driving {
+            if !keep(lane) {
                 continue;
             }
             let points = lane.center.points();
@@ -401,7 +446,7 @@ impl LaneIndex {
                 if let Some(b) =
                     Aabb::around(points[span.start..=span.end].iter().map(|p| (p.x, p.y)))
                 {
-                    bounds.push(b);
+                    bounds.push(b.padded(pad(lane, &span)));
                     spans.push((i, span));
                 }
             }
@@ -413,6 +458,11 @@ impl LaneIndex {
             grid,
         }
     }
+}
+
+/// How far apart two points are in plan.
+fn horizontal_distance(a: Point, b: Point) -> f32 {
+    (a.x - b.x).hypot(a.y - b.y)
 }
 
 impl Lane {
@@ -461,7 +511,7 @@ impl RoadNetwork {
     /// Bake a lane list into a network, indexing the [`LaneType::Driving`]
     /// lanes by their ground footprint. Linear in the total number of centerline points.
     pub fn new(lanes: Vec<Lane>) -> Self {
-        let index = LaneIndex::build(&lanes);
+        let index = LaneIndex::driving(&lanes);
         Self {
             lanes,
             objects: Vec::new(),
@@ -476,8 +526,152 @@ impl RoadNetwork {
             lane_access: Vec::new(),
             lane_materials: Vec::new(),
             geo: GeoReference::default(),
+            roads: Vec::new(),
             index,
+            road_lanes: HashMap::new(),
+            footprints: LaneIndex::default(),
         }
+    }
+
+    /// This network with `roads` under its lanes, replacing any it had. Each
+    /// road's id must be its position in `roads`, and the lanes its sections
+    /// name must be on the network.
+    pub fn with_roads(mut self, roads: Vec<Road>) -> Self {
+        self.road_lanes = roads
+            .iter()
+            .flat_map(|road| {
+                road.sections.iter().flat_map(move |section| {
+                    section.lanes.iter().map(move |&(od_id, lane)| {
+                        let at = RoadLane {
+                            road: road.id,
+                            section: section.index,
+                            od_id,
+                        };
+                        (lane, at)
+                    })
+                })
+            })
+            .collect();
+        self.footprints = if roads.is_empty() {
+            LaneIndex::default()
+        } else {
+            LaneIndex::footprints(&self.lanes)
+        };
+        self.roads = roads;
+        self
+    }
+
+    /// Every road, in the order the importer emitted them, which is file
+    /// order less the roads it skipped. A network built with [`Self::new`],
+    /// or serialized before roads were kept, has none, so the road queries
+    /// answer `None`.
+    pub fn roads(&self) -> &[Road] {
+        &self.roads
+    }
+
+    /// The road with this id.
+    pub fn road(&self, id: RoadId) -> Option<&Road> {
+        self.roads.get(id.0).filter(|road| road.id == id)
+    }
+
+    /// The first road whose `<road id>` is `od_id`. A scan of the roads.
+    pub fn road_by_od_id(&self, od_id: &str) -> Option<&Road> {
+        self.roads.iter().find(|road| road.od_id == od_id)
+    }
+
+    /// Where `lane` lies on its road: the road, its lane section and its
+    /// `<lane id>`.
+    pub fn road_lane(&self, lane: LaneId) -> Option<RoadLane> {
+        self.road_lanes.get(&lane).copied()
+    }
+
+    /// The point on the road surface at `at`, or `None` if there is no such
+    /// road, or `s` is off its ends.
+    ///
+    /// The surface is the one the lanes are baked on: the reference line with
+    /// its elevation, superelevation and lateral shape, and the `<height>` of
+    /// the lane at `t`. A point on the border between two lanes stands on the
+    /// inner one, and one past the outermost lane at that lane's outer height.
+    /// Signals, objects and road marks stand on the road through this same
+    /// call.
+    pub fn road_point(&self, at: RoadPosition) -> Option<Point> {
+        let road = self.road(at.road)?;
+        road.on_road(at.s).then(|| road.surface(at.s, at.t).0)
+    }
+
+    /// The road position nearest `point`, or `None` on a network without
+    /// roads.
+    ///
+    /// Of the roads whose lanes come near `point` in plan, it takes the one
+    /// whose surface is nearest in 3D, so a point on a bridge finds the
+    /// bridge, not the road under it. On that road `s` and `t` put the
+    /// surface straight under or over `point`: [`Self::road_point`] gives
+    /// `point` back, less its height off the road. Where roads overlap, as in
+    /// a junction, the surfaces tie and the road first in [`Self::roads`]
+    /// wins. A point off every road gets the nearest road's `s` and `t`, with
+    /// `s` held within the road. A road with no lanes is never found.
+    pub fn road_position(&self, point: Point) -> Option<RoadPosition> {
+        let index = &self.footprints;
+        let seed = index.grid.nearest(point.x, point.y, |item, best| {
+            let (lane, segments) = &index.spans[item as usize];
+            let off = self.lane_reach(&self.lanes[*lane], segments, point).1;
+            Some((off.max(0.0).powi(2), item)).filter(|&(d2, _)| d2 <= best)
+        })?;
+        let seeded = self.footprint_position(seed, point);
+        let ceiling = seeded.map_or(f32::INFINITY, |(d2, _)| d2);
+        index.grid.nearest(point.x, point.y, |item, best| {
+            if item == seed {
+                return seeded;
+            }
+            let best = best.min(ceiling);
+            if index.bounds[item as usize].dist2(point.x, point.y) > best {
+                return None;
+            }
+            let (lane, segments) = &index.spans[item as usize];
+            let off = self.lane_reach(&self.lanes[*lane], segments, point).1;
+            if off > 0.0 && off * off > best {
+                return None;
+            }
+            self.footprint_position(item, point)
+        })
+    }
+
+    /// Where `point` projects onto `lane`'s centerline over `segments`, and
+    /// how far outside the lane's reach it is in plan: past half its width
+    /// and [`FOOTPRINT_MARGIN`]. A lower bound on its distance from the lane.
+    fn lane_reach(&self, lane: &Lane, segments: &Range<usize>, point: Point) -> (Projection, f32) {
+        let projection = lane.center.project_segments(point, segments.clone());
+        let reach = lane.width_at(projection.s) / 2.0 + FOOTPRINT_MARGIN;
+        let off = horizontal_distance(point, projection.point) - reach;
+        (projection, off)
+    }
+
+    /// The road position of `point` solved from the footprint span `item`,
+    /// and its squared distance from the span's lane.
+    fn footprint_position(&self, item: u32, point: Point) -> Option<(f32, RoadPosition)> {
+        let (lane, segments) = &self.footprints.spans[item as usize];
+        let lane = &self.lanes[*lane];
+        let at = self.road_lanes.get(&lane.id)?;
+        let road = &self.roads[at.road.0];
+        let section = road.sections.iter().find(|sec| sec.index == at.section)?;
+        let (projection, _) = self.lane_reach(lane, segments, point);
+        let (k, f) = lane.center.locate(projection.s);
+        let stations = &section.stations;
+        let guess = stations[k] + (stations[k + 1] - stations[k]) * f64::from(f);
+        let (s, t) = road.locate(f64::from(point.x), f64::from(point.y), guess);
+        let on = s.clamp(section.start, section.end);
+        let across = road.across(section, on).find(|a| a.od_id == at.od_id)?;
+        let (low, high) = (
+            across.inner_t.min(across.outer_t),
+            across.inner_t.max(across.outer_t),
+        );
+        let nearest = road.surface(on, t.clamp(low, high)).0;
+        let position = RoadPosition {
+            road: road.id,
+            s,
+            t,
+        };
+        Some(((point - nearest).length_squared(), position))
     }
 
     /// This network with `objects` placed on it, replacing any it had.

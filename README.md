@@ -16,6 +16,10 @@ let net = load_file("maps/town07.xodr")?;
 let sample = net.sample_near(Point::new(12.0, -30.0, 0.0)).expect("on the map");
 println!("{:?} banked {} rad", sample.point, sample.bank);
 
+// Where is that on its road, in OpenDRIVE's own s and t?
+let at = net.road_position(sample.point).expect("on a road");
+println!("road {} s {} t {}", net.road(at.road).unwrap().od_id(), at.s, at.t);
+
 // Drive somewhere.
 let waypoints = net.route(sample.point, Point::new(280.0, 95.0, 0.0));
 
@@ -39,6 +43,9 @@ mesh.validate()?;
 - Tunnels and bridges.
 - OpenCRG surfaces, for the height, normal and friction under a wheel.
 - The geo reference: the PROJ string and offset, kept unapplied.
+
+It keeps each road, so a caller can turn `(road, s, t)` into a point on
+the road surface and a point back into road coordinates.
 
 It loads a file whatever OpenDRIVE version it declares. Where it drops part
 of a bad file, it says so in `Provenance::warnings`.

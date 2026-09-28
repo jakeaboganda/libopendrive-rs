@@ -656,6 +656,52 @@
 //! `RHT`, the spec's default, and raises [`Warning::UnknownTrafficRule`].
 //! esmini also reads `lht` as left-hand traffic. The crate does not.
 //!
+//! # Road coordinates
+//!
+//! The network keeps each road it baked, in [`RoadNetwork::roads`]: its
+//! reference line, the profiles along it, and where its lanes lie across it.
+//! A [`RoadPosition`] names a place on one in OpenDRIVE's road coordinates:
+//! `s` along the reference line and `t` across it, positive to the left.
+//! [`RoadNetwork::road_point`] turns one into the point on the road surface
+//! there, and [`RoadNetwork::road_position`] turns a point back.
+//! [`RoadNetwork::road_lane`] says which road, lane section and `<lane id>`
+//! a lane is. A [`Road`] is found by its [`RoadId`], or by its `<road id>`
+//! with [`RoadNetwork::road_by_od_id`].
+//!
+//! ```no_run
+//! use libopendrive::{load_file, RoadPosition};
+//!
+//! let net = load_file("maps/town07.xodr")?;
+//! let road = net.road_by_od_id("5").expect("road 5").id();
+//! let point = net.road_point(RoadPosition { road, s: 10.0, t: -1.75 });
+//! let back = point.and_then(|p| net.road_position(p));
+//! # Ok::<(), libopendrive::ImportError>(())
+//! ```
+//!
+//! The surface is the one the lanes are baked on: the elevation, the
+//! superelevation, the lateral shape and the `<height>` of the lane at `t`.
+//! `t` runs along the tilted cross-section, so a point at `t` on a road
+//! banked by `φ` is `t cos φ` from the reference line in plan, as the spec
+//! has it. Signals, objects, road marks and `<positionRoad>` stand on the
+//! road through the same call. The forward call is exact, up to the `f32`
+//! of a [`Point`].
+//!
+//! The inverse finds the roads whose lanes come near the point, and on each
+//! solves for the `(s, t)` whose surface lies straight under or over it.
+//! It takes the road whose surface is nearest in 3D, so a point on a bridge
+//! finds the bridge. Where roads overlap in a junction, their surfaces tie,
+//! and the road first in [`RoadNetwork::roads`] wins. A point off every road
+//! gets the nearest road's `(s, t)`, with `s` held within the road. A road
+//! without lanes has no surface to find. On every map in the test corpus,
+//! a point on a lane comes back to within 0.2 mm, or within the `f32` step
+//! of its coordinates where that is larger: 0.5 m on a map in UTM
+//! coordinates. Where the surface steps at a lane section seam, as a lane's
+//! `<height>` can, a station on the seam is on the section that starts
+//! there, so the end of the lane before it comes back at the new height.
+//!
+//! A network built with [`RoadNetwork::new`], or serialized before roads were
+//! kept, has none, so the road queries answer `None`.
+//!
 //! # Geo reference
 //!
 //! [`RoadNetwork::geo_reference`] gives the `<geoReference>` PROJ string and
@@ -773,6 +819,7 @@ pub use parse::{
     Orientation, Provenance, RoadMarkProvenance, RoadSkipReason, SignalProvenance,
     SignalReferenceProvenance, StructureProvenance, Warning,
 };
+pub use road::{Road, RoadId, RoadLane, RoadPosition};
 pub use road_mark::{
     LaneChange, LinePattern, LineRule, RoadMark, RoadMarkId, RoadMarkLine, RoadMarkType,
     RoadMarkWeight,

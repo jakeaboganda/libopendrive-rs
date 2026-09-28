@@ -54,8 +54,10 @@ per object.
 The optional `serde` feature serializes the network and its mesh.
 `examples/viewer_export.rs` uses it to bake maps to the JSON the viewer reads.
 You can also use it to cache an import. A `RoadNetwork` serializes its lanes,
-objects, structures, signals, road marks and CRG records, and rebuilds its
-index when deserialized, so the result behaves like a freshly imported map.
+objects, structures, signals, road marks, CRG records and roads, and rebuilds
+its indexes when deserialized, so the result behaves like a freshly imported
+map. A road serializes as the records the file gives, and rebakes its
+spirals and cubic curves on the way in.
 
 ```toml
 libopendrive = { version = "0.3", features = ["serde"] }
@@ -95,6 +97,7 @@ lanes, 673 of them driving):
 | | per call |
 | --- | --- |
 | `nearest_lane` / `sample_near` | ~0.4 us |
+| `road_position` | ~5 us |
 | `route` (across the map) | ~29 us |
 | `MeshSampler::height_at` | ~0.2 us |
 

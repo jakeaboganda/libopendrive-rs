@@ -15,7 +15,7 @@ use crate::crg::Stretch;
 use crate::object::orient;
 use crate::road::{
     active, height_at, is_valid, side_borders, side_heights, Cubic, GeomRec, GeomShape, HeightDef,
-    LaneBorders, LaneExtent, LaneGeom, Road, RoadSection, ShapeProfile, TrafficRule,
+    LaneBorders, LaneExtent, LaneGeom, Road, RoadId, RoadSection, ShapeProfile, TrafficRule,
 };
 use crate::{
     Border, ControllerId, Corner, Coverage, CrgAlong, CrgMode, CrgPose, CrgPurpose, CrgSurface,
@@ -374,7 +374,8 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             &mut surfaces,
             &mut topo,
         ) {
-            Ok(baked) => {
+            Ok(mut baked) => {
+                baked.road.id = RoadId(roads.len());
                 if let Err(rule) = traffic_rule(road) {
                     warnings.push(Warning::UnknownTrafficRule {
                         road_id: baked.road.od_id.clone(),
@@ -441,7 +442,8 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
             .with_lane_rules(properties.lane_rules)
             .with_lane_access(properties.lane_access)
             .with_lane_materials(properties.lane_materials)
-            .with_geo_reference(geo_reference(root)),
+            .with_geo_reference(geo_reference(root))
+            .with_roads(roads.into_iter().map(|(_, baked)| baked.road).collect()),
         provenance,
     ))
 }
@@ -774,10 +776,11 @@ fn geo_reference(root: roxmltree::Node) -> GeoReference {
     }
 }
 
-/// Bakes one `<road>`'s lanes into `out`, places its objects in `objects`,
-/// looking up what its `<objectReference>`s name in `index`, and puts its
-/// tunnels and bridges over its lanes in `structures`. Returns the road, for
-/// placing what the file puts on it later.
+/// Bakes one `<road>`: its lanes into `out`, its objects into `objects`,
+/// looking up what its `<objectReference>`s name in `index`, and its tunnels
+/// and bridges over its lanes into `structures`. Returns the road, for
+/// placing what the file puts on it later. Its id is 0 until the caller
+/// sets it.
 ///
 /// A road the importer cannot interpret is *skipped*, not fatal, and the
 /// reason returned. That covers no length, no `<planView>` and no supported
@@ -882,6 +885,7 @@ fn parse_road(
         .unwrap_or_default();
     let mut baked = BakedRoad {
         road: Road {
+            id: RoadId(0),
             od_id: road_id,
             length,
             rule,
@@ -4666,6 +4670,7 @@ mod tests {
             d: 0.0,
         };
         let road = Road {
+            id: RoadId(0),
             od_id: String::new(),
             length: 10.0,
             rule: TrafficRule::RightHand,

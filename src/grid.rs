@@ -42,6 +42,16 @@ impl Aabb {
         })
     }
 
+    /// This box grown by `r` on every side.
+    pub fn padded(self, r: f32) -> Self {
+        Self {
+            min_x: self.min_x - r,
+            max_x: self.max_x + r,
+            min_y: self.min_y - r,
+            max_y: self.max_y + r,
+        }
+    }
+
     fn merge(self, other: Self) -> Self {
         Self {
             min_x: self.min_x.min(other.min_x),
