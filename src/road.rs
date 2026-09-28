@@ -892,6 +892,28 @@ pub(crate) fn along(points: &[Point], stations: &[f64], s: f64) -> f32 {
     before + points[i].distance_to(points[i + 1]) * f as f32
 }
 
+/// The road station `arc` metres along a lane from its first point, the
+/// inverse of [`along`]. `points` are the lane's centerline, sampled at the
+/// road `stations`, one each.
+pub(crate) fn station_at(points: &[Point], stations: &[f64], arc: f32) -> f64 {
+    debug_assert_eq!(points.len(), stations.len());
+    let last = points.len() - 2;
+    let mut before = 0.0;
+    for (i, w) in points.windows(2).enumerate() {
+        let step = w[0].distance_to(w[1]);
+        if before + step >= arc || i == last {
+            let f = if step > 0.0 {
+                ((arc - before) / step).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            return stations[i] + (stations[i + 1] - stations[i]) * f64::from(f);
+        }
+        before += step;
+    }
+    stations[0]
+}
+
 /// Whether the lane `od_id` is in one of the `validity` ranges, or there are
 /// none.
 pub(crate) fn is_valid(od_id: i32, validity: &[(i32, i32)]) -> bool {

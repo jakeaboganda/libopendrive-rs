@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Moving along the lanes
+
+- `RoadNetwork::advance` moves a `LanePosition` a distance along the lanes,
+  the way their traffic runs, or back for a negative distance. It gives
+  every place the distance reaches, one `Advance` per branch, as CARLA
+  does. A branch that runs out of lanes is an `Advance::DeadEnd` at the
+  lane's end, with the distance left.
+- The distance runs along the lanes' centerlines, so it is how far a
+  vehicle travels. esmini and CARLA step by road `s`. The offset keeps its
+  side of the traffic onto a road that runs the other way.
+- The crate doesn't pick a branch by a heading or a route, as esmini can.
+  The caller gets them all and picks.
+- `RoadNetwork::left_of` and `right_of` step to the lane beside, left and
+  right of the traffic, at the same `s`.
+
 ### Lane positions
 
 - `RoadNetwork::lane_point` turns a `LanePosition`, a lane with a road `s`

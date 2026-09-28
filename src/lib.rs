@@ -733,6 +733,37 @@
 //! median, 6 mm at the 95th percentile and 1.1 cm at the 99th.
 //! [`RoadNetwork::lane_position`] is exact, and costs about ten times as much.
 //!
+//! # Moving along the lanes
+//!
+//! [`RoadNetwork::advance`] moves a [`LanePosition`] a distance along the
+//! lanes, the way their traffic runs, or back against it for a negative
+//! distance. It gives every place the distance reaches, one [`Advance`] per
+//! branch, as CARLA's `Waypoint::GetNext` does, and leaves the choice to the
+//! caller. A branch that reaches a lane with nothing after it stops at the
+//! lane's end, as an [`Advance::DeadEnd`] with the distance left.
+//!
+//! ```no_run
+//! # let net = libopendrive::load_file("maps/town07.xodr")?;
+//! # let here = net.lane_position(libopendrive::Point::ORIGIN).expect("on a lane");
+//! for branch in net.advance(here, 25.0) {
+//!     let ahead = net.lane_point(branch.position());
+//! }
+//! # Ok::<(), libopendrive::ImportError>(())
+//! ```
+//!
+//! The distance runs along the lanes' centerlines, so it is how far a
+//! vehicle on them travels. esmini's `MoveAlongS` and CARLA step by road `s`,
+//! which the outside of a bend covers in fewer metres of road than of lane.
+//! The offset keeps its side of the traffic, so onto a road that runs the
+//! other way it changes sign. esmini picks one branch by a heading or a
+//! route. The crate gives them all: a caller with a heading or a route can
+//! pick, and one without can see every way on.
+//!
+//! [`RoadNetwork::left_of`] and [`RoadNetwork::right_of`] step to the lane
+//! beside, at the same `s`, left and right of the lane's traffic. That is
+//! the lane of any type, running either way. Whether traffic may cross into
+//! it is the caller's to decide.
+//!
 //! # Geo reference
 //!
 //! [`RoadNetwork::geo_reference`] gives the `<geoReference>` PROJ string and
@@ -807,6 +838,7 @@
 //! the inner rib so the surface strip stays fold-free; the outer edge keeps its
 //! full width and radius.
 
+mod advance;
 mod along;
 mod coords;
 mod crg;
@@ -827,6 +859,7 @@ mod structure;
 #[cfg(test)]
 mod fixtures;
 
+pub use advance::Advance;
 pub use along::{Access, Along, RoadType, SpeedLimit};
 pub use coords::{Point, Vector};
 pub use crg::{
