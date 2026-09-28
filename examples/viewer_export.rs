@@ -685,6 +685,10 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
         "materials".into(),
         json!(stretches(net.lane_materials(), span.lane, |m| json!(m))),
     );
+    entry.insert(
+        "visibility".into(),
+        json!(stretches(net.lane_visibility(), span.lane, |v| json!(v))),
+    );
     Value::Object(entry)
 }
 

@@ -115,6 +115,8 @@ lit as you hover others. The readout shows:
   and the road type, where the map gives them
 - the lane's rule, who may use it (`only` the users an allow names, or
   `all but` those a deny names) and its material, where the map gives them
+- how far a driver can see from the lane, forward, back, left and right,
+  where the map gives its `<visibility>`
 - its successors and predecessors, by road, lane section and OpenDRIVE
   lane id
 - the crate's internal `LaneId`

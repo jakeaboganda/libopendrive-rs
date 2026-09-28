@@ -13,6 +13,7 @@
 - `Warning::VisibilityDropped` names a `<visibility>` with a distance
   missing, not a number, or below 0. The crate drops it. CARLA reads a
   missing one as 0.
+- The viewer's lane readout shows the visibility at the hovered point.
 
 ### Moving along the lanes
 
