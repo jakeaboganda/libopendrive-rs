@@ -1287,6 +1287,12 @@ function onHover(ev) {
     rows.push([limit && `speed limit ${speedText(limit[2])}`, roadType && `road ${roadType[2]}`]
       .filter(Boolean).join('   '));
   }
+  const rule = alongAt(lane.rules, s);
+  if (rule) rows.push(`rule ${escapeHtml(rule[2])}`);
+  const access = alongAt(lane.access, s);
+  if (access) rows.push(`access ${accessText(access[2])}`);
+  const material = alongAt(lane.materials, s);
+  if (material) rows.push(`material ${materialText(material[2])}`);
   const raised = laneHeight(lane, i, u);
   if (raised) {
     rows.push(`height  inner ${raised[0].toFixed(3)} m   outer ${raised[1].toFixed(3)} m`);
@@ -1565,6 +1571,22 @@ function alongAt(list, s) {
 function speedText(mps) {
   if (mps === null) return 'none';
   return `${(mps * 3.6).toFixed(0)} km/h   ${(mps / 0.44704).toFixed(0)} mph`;
+}
+
+// Who may use a lane: `only` the users an allow names, or `all but` those a
+// deny names.
+function accessText(access) {
+  const users = escapeHtml(access.users.join(', ') || 'nobody');
+  return access.rule === 'allow' ? `only ${users}` : `all but ${users}`;
+}
+
+// A lane material: its surface, then its friction and roughness if it has them.
+function materialText(m) {
+  return [
+    escapeHtml(m.surface || 'unnamed'),
+    m.friction !== null && `friction ${m.friction.toFixed(2)}`,
+    m.roughness !== null && `roughness ${m.roughness.toFixed(3)} m`,
+  ].filter(Boolean).join('   ');
 }
 
 // The lane's cross slope at segment `i`, fraction `u` along it, as a percent

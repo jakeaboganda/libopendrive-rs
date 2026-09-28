@@ -46,7 +46,7 @@ use std::process::ExitCode;
 
 use libopendrive::opencrg::CrgGrid;
 use libopendrive::{
-    load_file_with_provenance, Along, Controller, ControllerProvenance, Corner, CrgMode,
+    load_file_with_provenance, Access, Along, Controller, ControllerProvenance, Corner, CrgMode,
     CrgPurpose, CrgSurface, Direction, Extent, LaneId, LaneProvenance, LaneSpan, LinePattern,
     Marking, Mesh, Object, ObjectProvenance, Orientation, Point, Provenance, Referenced, RoadMark,
     RoadMarkProvenance, RoadNetwork, RoadSurface, Shape, Signal, SignalProvenance, SpeedLimit,
@@ -652,6 +652,22 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
             span.lane,
             |t| json!(t.as_str())
         )),
+    );
+    entry.insert(
+        "rules".into(),
+        json!(stretches(net.lane_rules(), span.lane, |r| json!(r))),
+    );
+    let access = |a: &Access| match a {
+        Access::Allow(users) => json!({ "rule": "allow", "users": users }),
+        Access::Deny(users) => json!({ "rule": "deny", "users": users }),
+    };
+    entry.insert(
+        "access".into(),
+        json!(stretches(net.lane_access(), span.lane, access)),
+    );
+    entry.insert(
+        "materials".into(),
+        json!(stretches(net.lane_materials(), span.lane, |m| json!(m))),
     );
     Value::Object(entry)
 }
