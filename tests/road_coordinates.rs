@@ -283,3 +283,15 @@ fn a_point_where_roads_overlap_is_found_on_the_road_asked_for() {
     assert!(overlaps > 100, "only {overlaps} points where roads overlap");
     assert!(net.road_position_on(RoadId(9999), Point::ORIGIN).is_none());
 }
+
+#[test]
+fn roads_that_do_not_match_the_lanes_answer_none_instead_of_panicking() {
+    let net = map("town07");
+    let point = net.lanes()[5].center.points()[3];
+    let truncated = RoadNetwork::new(net.lanes().to_vec()).with_roads(net.roads()[1..].to_vec());
+    assert_eq!(truncated.road_position(point), None);
+    let mut reversed = net.roads().to_vec();
+    reversed.reverse();
+    let reordered = RoadNetwork::new(net.lanes().to_vec()).with_roads(reversed);
+    assert_eq!(reordered.road_position(point), None);
+}

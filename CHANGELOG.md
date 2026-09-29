@@ -23,7 +23,10 @@
 - Roads serialize with the network, as the records the file gives. They
   add 22 % to Town07's JSON and 1 to 3 % to esmini's maps. A network
   serialized before deserializes with none, and the road queries answer
-  `None`.
+  `None`. Network equality compares roads too, so such a network, or one
+  rebuilt from its lanes alone, no longer equals a fresh import.
+- Roads that don't match the network's lanes, from `with_roads` or a
+  hand-edited serialized network, give `None` from the road queries.
 - Import takes about 4 % longer, to index every lane's footprint.
 - The viewer's lane readout shows the road `s` and `t` under the mouse.
 

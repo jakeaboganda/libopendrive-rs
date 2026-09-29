@@ -607,8 +607,9 @@ impl RoadNetwork {
     /// bridge, not the road under it. On that road `s` and `t` put the
     /// surface straight under or over `point`: [`Self::road_point`] gives
     /// `point` back, less its height off the road. Where roads overlap, as in
-    /// a junction, the surfaces tie and the road first in [`Self::roads`]
-    /// wins. A point off every road gets the nearest road's `s` and `t`, with
+    /// a junction, their surfaces meet to within rounding, and which of them
+    /// comes back is not defined: [`Self::road_position_on`] picks one. A
+    /// point off every road gets the nearest road's `s` and `t`, with
     /// `s` held within the road. A road with no lanes is never found.
     pub fn road_position(&self, point: Point) -> Option<RoadPosition> {
         self.nearest_road_position(point, None)
@@ -674,12 +675,12 @@ impl RoadNetwork {
         let (lane, segments) = &self.footprints.spans[item as usize];
         let lane = &self.lanes[*lane];
         let at = self.road_lanes.get(&lane.id)?;
-        let road = &self.roads[at.road.0];
+        let road = self.road(at.road)?;
         let section = road.sections.iter().find(|sec| sec.index == at.section)?;
         let (projection, _) = self.lane_reach(lane, segments, point);
         let (k, f) = lane.center.locate(projection.s);
-        let stations = &section.stations;
-        let guess = stations[k] + (stations[k + 1] - stations[k]) * f64::from(f);
+        let (from, to) = (*section.stations.get(k)?, *section.stations.get(k + 1)?);
+        let guess = from + (to - from) * f64::from(f);
         let (s, t) = road.locate(f64::from(point.x), f64::from(point.y), guess);
         let on = s.clamp(section.start, section.end);
         let across = road.across(section, on).find(|a| a.od_id == at.od_id)?;

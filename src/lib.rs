@@ -689,8 +689,8 @@
 //! The inverse finds the roads whose lanes come near the point, and on each
 //! solves for the `(s, t)` whose surface lies straight under or over it.
 //! It takes the road whose surface is nearest in 3D, so a point on a bridge
-//! finds the bridge. Where roads overlap in a junction, their surfaces tie,
-//! and the road first in [`RoadNetwork::roads`] wins.
+//! finds the bridge. Where roads overlap in a junction, their surfaces meet
+//! to within rounding, and which road comes back is not defined.
 //! [`RoadNetwork::road_position_on`] keeps a caller that knows its road on
 //! it. A point off every road
 //! gets the nearest road's `(s, t)`, with `s` held within the road. A road

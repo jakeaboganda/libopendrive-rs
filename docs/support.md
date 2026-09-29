@@ -80,8 +80,8 @@ files declaring 1.4, 1.6 and 1.7.
   heights and the lateral shape. `road_lane` gives a lane's road, lane
   section and `<lane id>`.
 - `road_position` takes the road whose surface is nearest in 3D, so a point
-  on a bridge finds the bridge. Where roads overlap in a junction, the
-  first road wins.
+  on a bridge finds the bridge. Where roads overlap in a junction, which
+  road comes back is not defined; `road_position_on` picks one.
 
 ## Objects
 
