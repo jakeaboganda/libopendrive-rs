@@ -5,7 +5,8 @@ use std::collections::HashSet;
 
 use crate::coords::Point;
 use crate::network::{Direction, Lane, LaneId, RoadNetwork};
-use crate::road::{station_at, LanePosition};
+use crate::road::{station_at, LanePosition, RoadSection};
+use crate::LaneChange;
 
 /// Where one branch of [`RoadNetwork::advance`] ended.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -202,28 +203,81 @@ impl RoadNetwork {
         self.beside(at, -1.0)
     }
 
+    /// Whether the road mark between `at`'s lane and the lane on the left
+    /// of its traffic lets a vehicle cross into that lane, the lane
+    /// [`Self::left_of`] gives. `None` where there is no lane there, no
+    /// mark on that border at `at`'s `s`, or a mark whose `laneChange` the
+    /// crate does not recognise. Where two marks meet, the one starting
+    /// there answers.
+    ///
+    /// It reads only the mark's [`LaneChange`], whatever its type. Whether
+    /// the lane runs the other way, or is one traffic may use at all, is
+    /// the caller's to decide.
+    pub fn may_change_left(&self, at: LanePosition) -> Option<bool> {
+        self.may_change(at, 1.0)
+    }
+
+    /// Whether the road mark between `at`'s lane and the lane on the right
+    /// of its traffic lets a vehicle cross into that lane, as
+    /// [`Self::may_change_left`] reads the left.
+    pub fn may_change_right(&self, at: LanePosition) -> Option<bool> {
+        self.may_change(at, -1.0)
+    }
+
+    /// Whether the mark on the border to the lane on the `side` of `at`'s
+    /// traffic, 1.0 for the left, lets a vehicle cross it.
+    fn may_change(&self, at: LanePosition, side: f64) -> Option<bool> {
+        let (section, here, there) = self.across(at, side)?;
+        let border = if here.signum() != there.signum() {
+            0
+        } else if here.abs() < there.abs() {
+            here
+        } else {
+            there
+        };
+        let span = section
+            .marks
+            .iter()
+            .rfind(|m| m.od_lane_id == border && m.start <= at.s && at.s <= m.end)?;
+        let increase = there > here;
+        match self.road_mark(span.mark)?.lane_change {
+            LaneChange::Both => Some(true),
+            LaneChange::Increase => Some(increase),
+            LaneChange::Decrease => Some(!increase),
+            LaneChange::None => Some(false),
+            LaneChange::Unknown => None,
+        }
+    }
+
     /// The lane beside `at`'s on the `side` of its traffic, 1.0 for the left.
     fn beside(&self, at: LanePosition, side: f64) -> Option<LanePosition> {
+        let (section, _, there) = self.across(at, side)?;
+        let &(_, id) = section.lanes.iter().find(|&&(od_id, _)| od_id == there)?;
+        Some(LanePosition {
+            lane: id,
+            s: at.s,
+            offset: 0.0,
+        })
+    }
+
+    /// `at`'s lane section, and the `<lane id>`s of `at`'s lane and of the
+    /// baked lane beside it on the `side` of its traffic, 1.0 for the left.
+    fn across(&self, at: LanePosition, side: f64) -> Option<(&RoadSection, i32, i32)> {
         let lane = self.lane(at.lane)?;
         let on = self.road_lane(at.lane)?;
         let section = self.road(on.road)?.section(on.section)?;
         if !(section.start..=section.end).contains(&at.s) {
             return None;
         }
-        let mut across: Vec<(i32, LaneId)> = section.lanes.clone();
-        across.sort_by_key(|&(od_id, _)| std::cmp::Reverse(od_id));
-        let here = across.iter().position(|&(od_id, _)| od_id == on.od_id)?;
+        let mut across: Vec<i32> = section.lanes.iter().map(|&(od_id, _)| od_id).collect();
+        across.sort_by_key(|&od_id| std::cmp::Reverse(od_id));
+        let here = across.iter().position(|&od_id| od_id == on.od_id)?;
         let there = if side * travel(lane.direction) > 0.0 {
             here.checked_sub(1)?
         } else {
             here + 1
         };
-        let &(_, id) = across.get(there)?;
-        Some(LanePosition {
-            lane: id,
-            s: at.s,
-            offset: 0.0,
-        })
+        Some((section, on.od_id, *across.get(there)?))
     }
 
     /// The lane position `arc` metres along `lane`'s centerline, `offset`

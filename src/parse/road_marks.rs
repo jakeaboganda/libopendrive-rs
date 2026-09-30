@@ -5,7 +5,7 @@ use super::{
     SectionDef, MAX_REPEAT_INSTANCES,
 };
 use crate::coords::Point;
-use crate::road::{LaneGeom, Road, RoadSection};
+use crate::road::{LaneGeom, MarkSpan, Road, RoadSection};
 use crate::{
     LaneChange, LaneId, LinePattern, LineRule, RoadMark, RoadMarkId, RoadMarkLine, RoadMarkType,
     RoadMarkWeight,
@@ -160,11 +160,15 @@ pub(super) fn parse<'a>(lane: roxmltree::Node<'a, 'a>) -> Vec<MarkDef> {
 }
 
 /// Bake the road marks of every lane section of every road in `roads`.
-pub(super) fn place(roads: &[(roxmltree::Node, BakedRoad)]) -> RoadMarks {
+pub(super) fn place(roads: &mut [(roxmltree::Node, BakedRoad)]) -> RoadMarks {
     let mut out = RoadMarks::default();
-    for (_, road) in roads {
+    for (_, road) in roads.iter_mut() {
+        let mut spans = Vec::new();
         for (section, def) in road.sections() {
-            place_section(&road.road, section, def, &mut out);
+            spans.push(place_section(&road.road, section, def, &mut out));
+        }
+        for (section, marks) in road.road.sections.iter_mut().zip(spans) {
+            section.marks = marks;
         }
     }
     out
@@ -199,7 +203,15 @@ impl Border<'_> {
 
 /// Bake every mark along the borders of one section: the center lane's, then
 /// each left lane's outer border, then each right lane's.
-fn place_section(road: &Road, section: &RoadSection, def: &SectionDef, out: &mut RoadMarks) {
+/// Bake one section's marks into `out`, and return the stretch each runs
+/// along.
+fn place_section(
+    road: &Road,
+    section: &RoadSection,
+    def: &SectionDef,
+    out: &mut RoadMarks,
+) -> Vec<MarkSpan> {
+    let mut spans = Vec::new();
     let (left, right) = (&section.left, &section.right);
     let baked = |lane: Option<&LaneGeom>| {
         let lane = lane?;
@@ -262,8 +274,15 @@ fn place_section(road: &Road, section: &RoadSection, def: &SectionDef, out: &mut
                 s: start,
                 length: end - start,
             });
+            spans.push(MarkSpan {
+                od_lane_id: border.od_lane_id,
+                start,
+                end,
+                mark: id,
+            });
         }
     }
+    spans
 }
 
 /// One mark along `border` over the stretch `[start, end]` of road.

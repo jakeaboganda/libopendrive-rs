@@ -40,7 +40,7 @@ and a sample of rows checked by hand against it. A parser read that only
 logs that the element isn't supported counts as ignored.
 
 This crate aims to read more of OpenDRIVE than any other open-source
-library. That holds when no row has another library doing more. 30 rows do,
+library. That holds when no row has another library doing more. 29 rows do,
 and the next section lists them.
 
 ## Summary
@@ -50,7 +50,7 @@ its attributes is its own row.
 
 | | builds | stores | ignores |
 | --- | --- | --- | --- |
-| this crate | 353 | 134 | 184 |
+| this crate | 354 | 133 | 184 |
 | esmini | 176 | 54 | 441 |
 | libOpenDRIVE | 146 | 57 | 468 |
 | CARLA | 124 | 76 | 471 |
@@ -66,9 +66,6 @@ than this crate, grouped by what the other library does with them:
 - **Signal meaning.** esmini looks a signal's `country`, `type`, `subtype`
   and `value` up in a catalogue, and esmini and CARLA pick traffic lights by
   them. The crate keeps the codes and looks nothing up.
-- **Lane change.** CARLA lets a waypoint change lanes by the road mark's
-  `laneChange`. The crate keeps it on the road mark, and has no lane-change
-  query that uses it.
 - **Names and descriptive attributes.** A road's and a junction's `name`,
   the header's `revMajor` and `revMinor`, a road mark's `material` and its
   type's `name`, an outline's `fillType` and `laneType`, and the center
@@ -97,7 +94,6 @@ than this crate, grouped by what the other library does with them:
 | &lt;header&gt; &lt;offset&gt; `@hdg` | stores | esmini builds `RoadManager.cpp:3811` |
 | &lt;road&gt; `@name` | - | esmini stores `RoadManager.cpp:3829`; libOpenDRIVE stores `OpenDriveMap.cpp:164`; CARLA stores `RoadParser.cpp:124` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; `@material` | - | libOpenDRIVE stores `OpenDriveMap.cpp:433`; CARLA stores `LaneParser.cpp:68` |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; `@laneChange` | stores | CARLA builds `LaneParser.cpp:70` (lane change permission for waypoints) |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; &lt;type&gt; `@name` | - | esmini stores `RoadManager.cpp:4515`; libOpenDRIVE stores `OpenDriveMap.cpp:442`; CARLA stores `LaneParser.cpp:79` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;center&gt; &lt;lane&gt; `@id` | - | esmini builds `RoadManager.cpp:4288`; libOpenDRIVE builds `OpenDriveMap.cpp:383`; CARLA builds `RoadParser.cpp:206` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;center&gt; &lt;lane&gt; `@type` | - | esmini stores `RoadManager.cpp:4190`; libOpenDRIVE stores `OpenDriveMap.cpp:388`; CARLA stores `RoadParser.cpp:207` |
@@ -128,8 +124,9 @@ What each library answers about the map it built, beyond reading it.
 | A point to road `(s, t)` | `road_position`, `network.rs:799` | `Position::XYZ2TrackPos`, `RoadManager.cpp:9048` | reference line `s` only: `RefLine::match`, `RefLine.cpp:86` | - |
 | Lane, `s` and offset to a point | `lane_point`, `network.rs:854` | `Position::SetLanePos`, `RoadManager.cpp:10757` | - | lane center only: `Map::ComputeTransform`, `Map.cpp:273` |
 | A point to lane, `s` and offset | `lane_position`, `network.rs:880` | `Position::XYZ2TrackPos`, `RoadManager.cpp:9048` | lane from `(s, t)`: `LaneSection::get_lane`, `LaneSection.cpp:35` | snapped to a lane center: `Map::GetWaypoint`, `Map.cpp:212` |
-| Move a distance along the lanes | every branch: `advance`, `advance.rs:73` | one branch: `Position::MoveAlongS`, `RoadManager.cpp:10547` | - | every branch: `Map::GetNext`, `Map.cpp:554` |
-| Step to the lane beside | `left_of`, `right_of`, `advance.rs:195` | - (`SetLanePos` with another lane) | - | `Map::GetLeft`, `Map.cpp:636` |
+| Move a distance along the lanes | every branch: `advance`, `advance.rs:74` | one branch: `Position::MoveAlongS`, `RoadManager.cpp:10547` | - | every branch: `Map::GetNext`, `Map.cpp:554` |
+| Step to the lane beside | `left_of`, `right_of`, `advance.rs:196` | - (`SetLanePos` with another lane) | - | `Map::GetLeft`, `Map.cpp:636` |
+| May a vehicle cross into the lane beside | `may_change_left`, `may_change_right`, `advance.rs:216`, from the road mark's `laneChange` | - (stores `laneChange`) | - (stores `laneChange`) | the lane marking's `lane_change`, from `Map::GetMarkRecord`, `Map.cpp:307` |
 | Route between two points | `route`, `route.rs:32` | `RoadPath::Calculate`, `RoadManager.cpp:6199` | lane keys only: `RoutingGraph::shortest_path`, `RoutingGraph.cpp:40` | - (not in `LibCarla/road`) |
 | Road surface mesh | `surface_mesh`, `mesh.rs:276` | - (not in `RoadManager`) | `OpenDriveMap::get_road_network_mesh`, `OpenDriveMap.cpp:682` | `Map::GenerateMesh`, `Map.cpp:1005` |
 | Object mesh | `object_mesh`, `object_mesh.rs:58` | - (not in `RoadManager`) | `Road::get_road_object_mesh`, in the network mesh | - |
@@ -283,17 +280,17 @@ the files the first table lists for that library.
 | &lt;road&gt; &lt;elevationProfile&gt; | builds `mod.rs:1141` | builds `RoadManager.cpp:4088` | builds `OpenDriveMap.cpp:313` | builds `ProfilesParser.cpp:56` |
 | &lt;road&gt; &lt;elevationProfile&gt; &lt;elevation&gt; | builds `mod.rs:1142` | builds `RoadManager.cpp:4088` | builds `OpenDriveMap.cpp:325` | builds `ProfilesParser.cpp:60` |
 | &lt;road&gt; &lt;elevationProfile&gt; &lt;elevation&gt; `@s` | builds `mod.rs:1142` | builds `RoadManager.cpp:4090` | builds `OpenDriveMap.cpp:328` | builds `ProfilesParser.cpp:68` |
-| &lt;road&gt; &lt;elevationProfile&gt; &lt;elevation&gt; `@a` | builds `mod.rs:2000` | builds `RoadManager.cpp:4091` | builds `OpenDriveMap.cpp:329` | builds `ProfilesParser.cpp:69` |
-| &lt;road&gt; &lt;elevationProfile&gt; &lt;elevation&gt; `@b` | builds `mod.rs:2001` | builds `RoadManager.cpp:4092` | builds `OpenDriveMap.cpp:330` | builds `ProfilesParser.cpp:70` |
-| &lt;road&gt; &lt;elevationProfile&gt; &lt;elevation&gt; `@c` | builds `mod.rs:2002` | builds `RoadManager.cpp:4093` | builds `OpenDriveMap.cpp:331` | builds `ProfilesParser.cpp:71` |
-| &lt;road&gt; &lt;elevationProfile&gt; &lt;elevation&gt; `@d` | builds `mod.rs:2003` | builds `RoadManager.cpp:4094` | builds `OpenDriveMap.cpp:332` | builds `ProfilesParser.cpp:72` |
+| &lt;road&gt; &lt;elevationProfile&gt; &lt;elevation&gt; `@a` | builds `mod.rs:2001` | builds `RoadManager.cpp:4091` | builds `OpenDriveMap.cpp:329` | builds `ProfilesParser.cpp:69` |
+| &lt;road&gt; &lt;elevationProfile&gt; &lt;elevation&gt; `@b` | builds `mod.rs:2002` | builds `RoadManager.cpp:4092` | builds `OpenDriveMap.cpp:330` | builds `ProfilesParser.cpp:70` |
+| &lt;road&gt; &lt;elevationProfile&gt; &lt;elevation&gt; `@c` | builds `mod.rs:2003` | builds `RoadManager.cpp:4093` | builds `OpenDriveMap.cpp:331` | builds `ProfilesParser.cpp:71` |
+| &lt;road&gt; &lt;elevationProfile&gt; &lt;elevation&gt; `@d` | builds `mod.rs:2004` | builds `RoadManager.cpp:4094` | builds `OpenDriveMap.cpp:332` | builds `ProfilesParser.cpp:72` |
 | &lt;road&gt; &lt;lateralProfile&gt; | builds `mod.rs:1147` | builds `RoadManager.cpp:4108` | builds `OpenDriveMap.cpp:317` | - |
 | &lt;road&gt; &lt;lateralProfile&gt; &lt;superelevation&gt; | builds `mod.rs:1148` | builds `RoadManager.cpp:4111` | builds `OpenDriveMap.cpp:317` | - |
 | &lt;road&gt; &lt;lateralProfile&gt; &lt;superelevation&gt; `@s` | builds `mod.rs:1148` | builds `RoadManager.cpp:4114` | builds `OpenDriveMap.cpp:328` | - |
-| &lt;road&gt; &lt;lateralProfile&gt; &lt;superelevation&gt; `@a` | builds `mod.rs:2000` | builds `RoadManager.cpp:4115` | builds `OpenDriveMap.cpp:329` | - |
-| &lt;road&gt; &lt;lateralProfile&gt; &lt;superelevation&gt; `@b` | builds `mod.rs:2001` | builds `RoadManager.cpp:4116` | builds `OpenDriveMap.cpp:330` | - |
-| &lt;road&gt; &lt;lateralProfile&gt; &lt;superelevation&gt; `@c` | builds `mod.rs:2002` | builds `RoadManager.cpp:4117` | builds `OpenDriveMap.cpp:331` | - |
-| &lt;road&gt; &lt;lateralProfile&gt; &lt;superelevation&gt; `@d` | builds `mod.rs:2003` | builds `RoadManager.cpp:4118` | builds `OpenDriveMap.cpp:332` | - |
+| &lt;road&gt; &lt;lateralProfile&gt; &lt;superelevation&gt; `@a` | builds `mod.rs:2001` | builds `RoadManager.cpp:4115` | builds `OpenDriveMap.cpp:329` | - |
+| &lt;road&gt; &lt;lateralProfile&gt; &lt;superelevation&gt; `@b` | builds `mod.rs:2002` | builds `RoadManager.cpp:4116` | builds `OpenDriveMap.cpp:330` | - |
+| &lt;road&gt; &lt;lateralProfile&gt; &lt;superelevation&gt; `@c` | builds `mod.rs:2003` | builds `RoadManager.cpp:4117` | builds `OpenDriveMap.cpp:331` | - |
+| &lt;road&gt; &lt;lateralProfile&gt; &lt;superelevation&gt; `@d` | builds `mod.rs:2004` | builds `RoadManager.cpp:4118` | builds `OpenDriveMap.cpp:332` | - |
 | &lt;road&gt; &lt;lateralProfile&gt; &lt;shape&gt; | builds `mod.rs:709` | - | - | - |
 | &lt;road&gt; &lt;lateralProfile&gt; &lt;shape&gt; `@s` | builds `mod.rs:713` | - | - | - |
 | &lt;road&gt; &lt;lateralProfile&gt; &lt;shape&gt; `@t` | builds `mod.rs:715` | - | - | - |
@@ -327,10 +324,10 @@ the files the first table lists for that library.
 | &lt;road&gt; &lt;lanes&gt; `@layer` | - | - | - | - |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneOffset&gt; | builds `mod.rs:1168` | builds `RoadManager.cpp:4137` | builds `OpenDriveMap.cpp:314` | builds `RoadParser.cpp:158` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneOffset&gt; `@s` | builds `mod.rs:1168` | builds `RoadManager.cpp:4139` | builds `OpenDriveMap.cpp:328` | builds `RoadParser.cpp:160` |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneOffset&gt; `@a` | builds `mod.rs:2000` | builds `RoadManager.cpp:4140` | builds `OpenDriveMap.cpp:329` | builds `RoadParser.cpp:161` |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneOffset&gt; `@b` | builds `mod.rs:2001` | builds `RoadManager.cpp:4141` | builds `OpenDriveMap.cpp:330` | builds `RoadParser.cpp:162` |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneOffset&gt; `@c` | builds `mod.rs:2002` | builds `RoadManager.cpp:4142` | builds `OpenDriveMap.cpp:331` | builds `RoadParser.cpp:163` |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneOffset&gt; `@d` | builds `mod.rs:2003` | builds `RoadManager.cpp:4143` | builds `OpenDriveMap.cpp:332` | builds `RoadParser.cpp:164` |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneOffset&gt; `@a` | builds `mod.rs:2001` | builds `RoadManager.cpp:4140` | builds `OpenDriveMap.cpp:329` | builds `RoadParser.cpp:161` |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneOffset&gt; `@b` | builds `mod.rs:2002` | builds `RoadManager.cpp:4141` | builds `OpenDriveMap.cpp:330` | builds `RoadParser.cpp:162` |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneOffset&gt; `@c` | builds `mod.rs:2003` | builds `RoadManager.cpp:4142` | builds `OpenDriveMap.cpp:331` | builds `RoadParser.cpp:163` |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneOffset&gt; `@d` | builds `mod.rs:2004` | builds `RoadManager.cpp:4143` | builds `OpenDriveMap.cpp:332` | builds `RoadParser.cpp:164` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; | builds `mod.rs:1471` | builds `RoadManager.cpp:4148` | builds `OpenDriveMap.cpp:374` | builds `LaneParser.cpp:199` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; `@length` | - | - | - | - |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; `@s` | builds `mod.rs:1477` | builds `RoadManager.cpp:4148` | builds `OpenDriveMap.cpp:376` | builds `LaneParser.cpp:200` |
@@ -350,17 +347,17 @@ the files the first table lists for that library.
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;link&gt; &lt;predecessor\|successor&gt; `@id` | builds `links.rs:323` | builds `RoadManager.cpp:4311` | builds `OpenDriveMap.cpp:392` | builds `RoadParser.cpp:191` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;link&gt; &lt;predecessor\|successor&gt; `@layer` | - | - | - | - |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;border&gt; | builds `mod.rs:879` | - | - | stores `LaneParser.cpp:48` |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;border&gt; `@sOffset` | builds `mod.rs:2018` | - | - | stores `LaneParser.cpp:49` |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;border&gt; `@a` | builds `mod.rs:2019` | - | - | stores `LaneParser.cpp:50` |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;border&gt; `@b` | builds `mod.rs:2020` | - | - | stores `LaneParser.cpp:51` |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;border&gt; `@c` | builds `mod.rs:2021` | - | - | stores `LaneParser.cpp:52` |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;border&gt; `@d` | builds `mod.rs:2022` | - | - | stores `LaneParser.cpp:53` |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;border&gt; `@sOffset` | builds `mod.rs:2019` | - | - | stores `LaneParser.cpp:49` |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;border&gt; `@a` | builds `mod.rs:2020` | - | - | stores `LaneParser.cpp:50` |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;border&gt; `@b` | builds `mod.rs:2021` | - | - | stores `LaneParser.cpp:51` |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;border&gt; `@c` | builds `mod.rs:2022` | - | - | stores `LaneParser.cpp:52` |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;border&gt; `@d` | builds `mod.rs:2023` | - | - | stores `LaneParser.cpp:53` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;width&gt; | builds `mod.rs:878` | builds `RoadManager.cpp:4321` | builds `OpenDriveMap.cpp:397` | builds `LaneParser.cpp:30` |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;width&gt; `@sOffset` | builds `mod.rs:2018` | builds `RoadManager.cpp:4323` | builds `OpenDriveMap.cpp:399` | builds `LaneParser.cpp:31` |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;width&gt; `@a` | builds `mod.rs:2019` | builds `RoadManager.cpp:4324` | builds `OpenDriveMap.cpp:400` | builds `LaneParser.cpp:32` |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;width&gt; `@b` | builds `mod.rs:2020` | builds `RoadManager.cpp:4325` | builds `OpenDriveMap.cpp:401` | builds `LaneParser.cpp:33` |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;width&gt; `@c` | builds `mod.rs:2021` | builds `RoadManager.cpp:4326` | builds `OpenDriveMap.cpp:402` | builds `LaneParser.cpp:34` |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;width&gt; `@d` | builds `mod.rs:2022` | builds `RoadManager.cpp:4327` | builds `OpenDriveMap.cpp:403` | builds `LaneParser.cpp:35` |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;width&gt; `@sOffset` | builds `mod.rs:2019` | builds `RoadManager.cpp:4323` | builds `OpenDriveMap.cpp:399` | builds `LaneParser.cpp:31` |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;width&gt; `@a` | builds `mod.rs:2020` | builds `RoadManager.cpp:4324` | builds `OpenDriveMap.cpp:400` | builds `LaneParser.cpp:32` |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;width&gt; `@b` | builds `mod.rs:2021` | builds `RoadManager.cpp:4325` | builds `OpenDriveMap.cpp:401` | builds `LaneParser.cpp:33` |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;width&gt; `@c` | builds `mod.rs:2022` | builds `RoadManager.cpp:4326` | builds `OpenDriveMap.cpp:402` | builds `LaneParser.cpp:34` |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;width&gt; `@d` | builds `mod.rs:2023` | builds `RoadManager.cpp:4327` | builds `OpenDriveMap.cpp:403` | builds `LaneParser.cpp:35` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; | builds `road_marks.rs:128` | builds `RoadManager.cpp:4341` | builds `OpenDriveMap.cpp:422` | builds `LaneParser.cpp:61` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; `@sOffset` | builds `road_marks.rs:139` | builds `RoadManager.cpp:4344` | builds `OpenDriveMap.cpp:429` | stores `LaneParser.cpp:64` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; `@type` | builds `road_marks.rs:140` | builds `RoadManager.cpp:4360` | stores `OpenDriveMap.cpp:430` | stores `LaneParser.cpp:65` |
@@ -368,14 +365,14 @@ the files the first table lists for that library.
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; `@color` | stores `road_marks.rs:145` | stores `RoadManager.cpp:1543` | stores `OpenDriveMap.cpp:432` | stores `LaneParser.cpp:67` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; `@material` | - | - | stores `OpenDriveMap.cpp:433` | stores `LaneParser.cpp:68` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; `@width` | builds `road_marks.rs:131` | builds `RoadManager.cpp:4483` | builds `OpenDriveMap.cpp:427` | stores `LaneParser.cpp:69` |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; `@laneChange` | stores `road_marks.rs:148` | stores `RoadManager.cpp:4449` | stores `OpenDriveMap.cpp:434` | builds `LaneParser.cpp:70` |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; `@laneChange` | builds `road_marks.rs:148` | stores `RoadManager.cpp:4449` | stores `OpenDriveMap.cpp:434` | builds `LaneParser.cpp:70` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; `@height` | builds `road_marks.rs:147` | stores `RoadManager.cpp:4499` | stores `OpenDriveMap.cpp:428` | stores `LaneParser.cpp:71` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; &lt;sway&gt; | builds `road_marks.rs:154` | - | - | - |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; &lt;sway&gt; `@ds` | builds `road_marks.rs:154` | - | - | - |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; &lt;sway&gt; `@a` | builds `mod.rs:2000` | - | - | - |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; &lt;sway&gt; `@b` | builds `mod.rs:2001` | - | - | - |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; &lt;sway&gt; `@c` | builds `mod.rs:2002` | - | - | - |
-| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; &lt;sway&gt; `@d` | builds `mod.rs:2003` | - | - | - |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; &lt;sway&gt; `@a` | builds `mod.rs:2001` | - | - | - |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; &lt;sway&gt; `@b` | builds `mod.rs:2002` | - | - | - |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; &lt;sway&gt; `@c` | builds `mod.rs:2003` | - | - | - |
+| &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; &lt;sway&gt; `@d` | builds `mod.rs:2004` | - | - | - |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; &lt;type&gt; | builds `road_marks.rs:130` | builds `RoadManager.cpp:4511` | builds `OpenDriveMap.cpp:440` | stores `LaneParser.cpp:77` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; &lt;type&gt; `@name` | - | stores `RoadManager.cpp:4515` | stores `OpenDriveMap.cpp:442` | stores `LaneParser.cpp:79` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;left\|right&gt; &lt;lane&gt; &lt;roadMark&gt; &lt;type&gt; `@width` | builds `road_marks.rs:131` | stores `RoadManager.cpp:4516` | builds `OpenDriveMap.cpp:443` | stores `LaneParser.cpp:80` |
@@ -424,65 +421,65 @@ the files the first table lists for that library.
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;center&gt; &lt;lane&gt; &lt;link&gt; | - | builds `RoadManager.cpp:4305` | builds `OpenDriveMap.cpp:391` | stores `RoadParser.cpp:211` |
 | &lt;road&gt; &lt;lanes&gt; &lt;laneSection&gt; &lt;center&gt; &lt;lane&gt; &lt;roadMark&gt; | builds `road_marks.rs:128` | builds `RoadManager.cpp:4341` | builds `OpenDriveMap.cpp:422` | stores `LaneParser.cpp:61` |
 | &lt;road&gt; &lt;objects&gt; | builds `mod.rs:1192` | builds `RoadManager.cpp:5054` | builds `OpenDriveMap.cpp:523` | builds `ObjectParser.cpp:28` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; | builds `mod.rs:2180` | builds `RoadManager.cpp:5057` | builds `OpenDriveMap.cpp:523` | builds `ObjectParser.cpp:31` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@t` | builds `mod.rs:2219` | builds `RoadManager.cpp:5063` | builds `OpenDriveMap.cpp:536` | builds `ObjectParser.cpp:56` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@zOffset` | builds `mod.rs:2220` | builds `RoadManager.cpp:5111` | builds `OpenDriveMap.cpp:537` | builds `ObjectParser.cpp:57` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@type` | stores `mod.rs:2391` | stores `RoadManager.cpp:5088` | stores `OpenDriveMap.cpp:546` | builds `ObjectParser.cpp:34` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@validLength` | stores `mod.rs:2222` | - | stores `OpenDriveMap.cpp:539` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@orientation` | builds `mod.rs:2264` | builds `RoadManager.cpp:5069` | stores `OpenDriveMap.cpp:548` | builds `ObjectParser.cpp:61` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@subtype` | stores `mod.rs:2421` | stores `RoadManager.cpp:5090` | stores `OpenDriveMap.cpp:549` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@dynamic` | stores `mod.rs:2423` | - | stores `OpenDriveMap.cpp:530` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@hdg` | builds `mod.rs:2333` | builds `RoadManager.cpp:5113` | builds `OpenDriveMap.cpp:543` | builds `ObjectParser.cpp:58` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@name` | stores `mod.rs:2155` | stores `RoadManager.cpp:5065` | stores `OpenDriveMap.cpp:547` | builds `ObjectParser.cpp:35` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@pitch` | builds `mod.rs:2334` | builds `RoadManager.cpp:5114` | builds `OpenDriveMap.cpp:544` | builds `ObjectParser.cpp:59` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@id` | builds `mod.rs:2181` | stores `RoadManager.cpp:5064` | stores `OpenDriveMap.cpp:525` | builds `ObjectParser.cpp:78` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@roll` | builds `mod.rs:2335` | builds `RoadManager.cpp:5115` | builds `OpenDriveMap.cpp:545` | builds `ObjectParser.cpp:60` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@height` | builds `mod.rs:2330` | builds `RoadManager.cpp:5112` | builds `OpenDriveMap.cpp:542` | builds `ObjectParser.cpp:90` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@s` | builds `mod.rs:2218` | builds `RoadManager.cpp:5062` | builds `OpenDriveMap.cpp:535` | builds `ObjectParser.cpp:55` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@length` | builds `mod.rs:2328` | builds `RoadManager.cpp:5091` | builds `OpenDriveMap.cpp:538` | builds `ObjectParser.cpp:63` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@width` | builds `mod.rs:2329` | builds `RoadManager.cpp:5092` | builds `OpenDriveMap.cpp:540` | builds `ObjectParser.cpp:62` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@radius` | builds `mod.rs:2331` | builds `RoadManager.cpp:5093` | builds `OpenDriveMap.cpp:541` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; | builds `mod.rs:2181` | builds `RoadManager.cpp:5057` | builds `OpenDriveMap.cpp:523` | builds `ObjectParser.cpp:31` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@t` | builds `mod.rs:2220` | builds `RoadManager.cpp:5063` | builds `OpenDriveMap.cpp:536` | builds `ObjectParser.cpp:56` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@zOffset` | builds `mod.rs:2221` | builds `RoadManager.cpp:5111` | builds `OpenDriveMap.cpp:537` | builds `ObjectParser.cpp:57` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@type` | stores `mod.rs:2392` | stores `RoadManager.cpp:5088` | stores `OpenDriveMap.cpp:546` | builds `ObjectParser.cpp:34` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@validLength` | stores `mod.rs:2223` | - | stores `OpenDriveMap.cpp:539` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@orientation` | builds `mod.rs:2265` | builds `RoadManager.cpp:5069` | stores `OpenDriveMap.cpp:548` | builds `ObjectParser.cpp:61` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@subtype` | stores `mod.rs:2422` | stores `RoadManager.cpp:5090` | stores `OpenDriveMap.cpp:549` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@dynamic` | stores `mod.rs:2424` | - | stores `OpenDriveMap.cpp:530` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@hdg` | builds `mod.rs:2334` | builds `RoadManager.cpp:5113` | builds `OpenDriveMap.cpp:543` | builds `ObjectParser.cpp:58` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@name` | stores `mod.rs:2156` | stores `RoadManager.cpp:5065` | stores `OpenDriveMap.cpp:547` | builds `ObjectParser.cpp:35` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@pitch` | builds `mod.rs:2335` | builds `RoadManager.cpp:5114` | builds `OpenDriveMap.cpp:544` | builds `ObjectParser.cpp:59` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@id` | builds `mod.rs:2182` | stores `RoadManager.cpp:5064` | stores `OpenDriveMap.cpp:525` | builds `ObjectParser.cpp:78` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@roll` | builds `mod.rs:2336` | builds `RoadManager.cpp:5115` | builds `OpenDriveMap.cpp:545` | builds `ObjectParser.cpp:60` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@height` | builds `mod.rs:2331` | builds `RoadManager.cpp:5112` | builds `OpenDriveMap.cpp:542` | builds `ObjectParser.cpp:90` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@s` | builds `mod.rs:2219` | builds `RoadManager.cpp:5062` | builds `OpenDriveMap.cpp:535` | builds `ObjectParser.cpp:55` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@length` | builds `mod.rs:2329` | builds `RoadManager.cpp:5091` | builds `OpenDriveMap.cpp:538` | builds `ObjectParser.cpp:63` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@width` | builds `mod.rs:2330` | builds `RoadManager.cpp:5092` | builds `OpenDriveMap.cpp:540` | builds `ObjectParser.cpp:62` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@radius` | builds `mod.rs:2332` | builds `RoadManager.cpp:5093` | builds `OpenDriveMap.cpp:541` | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@perpToRoad` | - | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@invalidated` | - | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; `@temporary` | - | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; | builds `mod.rs:2361` | builds `RoadManager.cpp:5120` | builds `OpenDriveMap.cpp:560` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@s` | builds `mod.rs:2545` | builds `RoadManager.cpp:5123` | builds `OpenDriveMap.cpp:562` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@length` | builds `mod.rs:2546` | builds `RoadManager.cpp:5129` | builds `OpenDriveMap.cpp:563` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@distance` | builds `mod.rs:2547` | builds `RoadManager.cpp:5130` | builds `OpenDriveMap.cpp:564` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@tStart` | builds `mod.rs:2558` | builds `RoadManager.cpp:5131` | builds `OpenDriveMap.cpp:565` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@tEnd` | builds `mod.rs:2558` | builds `RoadManager.cpp:5132` | builds `OpenDriveMap.cpp:566` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@heightStart` | builds `mod.rs:2558` | builds `RoadManager.cpp:5133` | builds `OpenDriveMap.cpp:569` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@heightEnd` | builds `mod.rs:2558` | builds `RoadManager.cpp:5134` | builds `OpenDriveMap.cpp:570` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@zOffsetStart` | builds `mod.rs:2558` | builds `RoadManager.cpp:5135` | builds `OpenDriveMap.cpp:571` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@zOffsetEnd` | builds `mod.rs:2558` | builds `RoadManager.cpp:5136` | builds `OpenDriveMap.cpp:572` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@widthStart` | builds `mod.rs:2558` | builds `RoadManager.cpp:5138` | builds `OpenDriveMap.cpp:567` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@widthEnd` | builds `mod.rs:2558` | builds `RoadManager.cpp:5139` | builds `OpenDriveMap.cpp:568` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@lengthStart` | builds `mod.rs:2558` | builds `RoadManager.cpp:5140` | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@lengthEnd` | builds `mod.rs:2558` | builds `RoadManager.cpp:5141` | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@radiusStart` | builds `mod.rs:2558` | builds `RoadManager.cpp:5142` | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@radiusEnd` | builds `mod.rs:2558` | builds `RoadManager.cpp:5143` | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; | builds `mod.rs:2362` | builds `RoadManager.cpp:5120` | builds `OpenDriveMap.cpp:560` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@s` | builds `mod.rs:2546` | builds `RoadManager.cpp:5123` | builds `OpenDriveMap.cpp:562` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@length` | builds `mod.rs:2547` | builds `RoadManager.cpp:5129` | builds `OpenDriveMap.cpp:563` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@distance` | builds `mod.rs:2548` | builds `RoadManager.cpp:5130` | builds `OpenDriveMap.cpp:564` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@tStart` | builds `mod.rs:2559` | builds `RoadManager.cpp:5131` | builds `OpenDriveMap.cpp:565` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@tEnd` | builds `mod.rs:2559` | builds `RoadManager.cpp:5132` | builds `OpenDriveMap.cpp:566` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@heightStart` | builds `mod.rs:2559` | builds `RoadManager.cpp:5133` | builds `OpenDriveMap.cpp:569` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@heightEnd` | builds `mod.rs:2559` | builds `RoadManager.cpp:5134` | builds `OpenDriveMap.cpp:570` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@zOffsetStart` | builds `mod.rs:2559` | builds `RoadManager.cpp:5135` | builds `OpenDriveMap.cpp:571` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@zOffsetEnd` | builds `mod.rs:2559` | builds `RoadManager.cpp:5136` | builds `OpenDriveMap.cpp:572` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@widthStart` | builds `mod.rs:2559` | builds `RoadManager.cpp:5138` | builds `OpenDriveMap.cpp:567` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@widthEnd` | builds `mod.rs:2559` | builds `RoadManager.cpp:5139` | builds `OpenDriveMap.cpp:568` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@lengthStart` | builds `mod.rs:2559` | builds `RoadManager.cpp:5140` | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@lengthEnd` | builds `mod.rs:2559` | builds `RoadManager.cpp:5141` | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@radiusStart` | builds `mod.rs:2559` | builds `RoadManager.cpp:5142` | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@radiusEnd` | builds `mod.rs:2559` | builds `RoadManager.cpp:5143` | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@detachFromReferenceLine` | - | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@bT` | - | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@cT` | - | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;repeat&gt; `@dT` | - | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; | builds `mod.rs:2676` | - | builds `OpenDriveMap.cpp:591` | builds `ObjectParser.cpp:39` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; `@id` | builds `mod.rs:2897` | - | stores `OpenDriveMap.cpp:593` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; | builds `mod.rs:2677` | - | builds `OpenDriveMap.cpp:591` | builds `ObjectParser.cpp:39` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; `@id` | builds `mod.rs:2898` | - | stores `OpenDriveMap.cpp:593` | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; `@fillType` | - | - | stores `OpenDriveMap.cpp:594` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; `@outer` | builds `mod.rs:2464` | - | stores `OpenDriveMap.cpp:596` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; `@closed` | builds `mod.rs:2763` | - | stores `OpenDriveMap.cpp:597` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; `@outer` | builds `mod.rs:2465` | - | stores `OpenDriveMap.cpp:596` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; `@closed` | builds `mod.rs:2764` | - | stores `OpenDriveMap.cpp:597` | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; `@laneType` | - | - | stores `OpenDriveMap.cpp:595` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerRoad&gt; | builds `mod.rs:2726` | - | builds `OpenDriveMap.cpp:614` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerRoad&gt; `@id` | builds `mod.rs:2811` | - | stores `OpenDriveMap.cpp:620` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerRoad&gt; `@s` | builds `mod.rs:2727` | - | builds `OpenDriveMap.cpp:616` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerRoad&gt; `@t` | builds `mod.rs:2727` | - | builds `OpenDriveMap.cpp:617` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerRoad&gt; `@dz` | builds `mod.rs:2733` | - | builds `OpenDriveMap.cpp:618` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerRoad&gt; `@height` | builds `mod.rs:2725` | - | builds `OpenDriveMap.cpp:622` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerLocal&gt; | builds `mod.rs:2790` | - | builds `OpenDriveMap.cpp:600` | builds `ObjectParser.cpp:42` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerLocal&gt; `@id` | builds `mod.rs:2811` | - | stores `OpenDriveMap.cpp:606` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerLocal&gt; `@u` | builds `mod.rs:2742` | - | builds `OpenDriveMap.cpp:602` | builds `ObjectParser.cpp:43` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerLocal&gt; `@v` | builds `mod.rs:2742` | - | builds `OpenDriveMap.cpp:603` | builds `ObjectParser.cpp:44` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerLocal&gt; `@z` | builds `mod.rs:2743` | - | builds `OpenDriveMap.cpp:604` | builds `ObjectParser.cpp:45` |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerLocal&gt; `@height` | builds `mod.rs:2725` | - | builds `OpenDriveMap.cpp:608` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerRoad&gt; | builds `mod.rs:2727` | - | builds `OpenDriveMap.cpp:614` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerRoad&gt; `@id` | builds `mod.rs:2812` | - | stores `OpenDriveMap.cpp:620` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerRoad&gt; `@s` | builds `mod.rs:2728` | - | builds `OpenDriveMap.cpp:616` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerRoad&gt; `@t` | builds `mod.rs:2728` | - | builds `OpenDriveMap.cpp:617` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerRoad&gt; `@dz` | builds `mod.rs:2734` | - | builds `OpenDriveMap.cpp:618` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerRoad&gt; `@height` | builds `mod.rs:2726` | - | builds `OpenDriveMap.cpp:622` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerLocal&gt; | builds `mod.rs:2791` | - | builds `OpenDriveMap.cpp:600` | builds `ObjectParser.cpp:42` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerLocal&gt; `@id` | builds `mod.rs:2812` | - | stores `OpenDriveMap.cpp:606` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerLocal&gt; `@u` | builds `mod.rs:2743` | - | builds `OpenDriveMap.cpp:602` | builds `ObjectParser.cpp:43` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerLocal&gt; `@v` | builds `mod.rs:2743` | - | builds `OpenDriveMap.cpp:603` | builds `ObjectParser.cpp:44` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerLocal&gt; `@z` | builds `mod.rs:2744` | - | builds `OpenDriveMap.cpp:604` | builds `ObjectParser.cpp:45` |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;cornerLocal&gt; `@height` | builds `mod.rs:2726` | - | builds `OpenDriveMap.cpp:608` | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;curveLocal&gt; | - | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;curveLocal&gt; `@id` | - | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;curveLocal&gt; `@u` | - | - | - | - |
@@ -504,41 +501,41 @@ the files the first table lists for that library.
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;curveLocal&gt; &lt;paramPoly3&gt; `@cV` | - | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;curveLocal&gt; &lt;paramPoly3&gt; `@dV` | - | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;curveLocal&gt; &lt;paramPoly3&gt; `@pRange` | - | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; | builds `mod.rs:2797` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; | builds `mod.rs:2800` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@side` | builds `mod.rs:2834` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; | builds `mod.rs:2798` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; | builds `mod.rs:2801` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@side` | builds `mod.rs:2835` | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@weight` | - | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@width` | builds `mod.rs:2852` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@color` | builds `mod.rs:2860` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@zOffset` | builds `mod.rs:2853` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@spaceLength` | builds `mod.rs:2856` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@lineLength` | builds `mod.rs:2855` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@startOffset` | builds `mod.rs:2866` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@stopOffset` | builds `mod.rs:2867` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; &lt;cornerReference&gt; | builds `mod.rs:2832` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; &lt;cornerReference&gt; `@id` | builds `mod.rs:2932` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outlines&gt; | builds `mod.rs:2673` | builds `RoadManager.cpp:5248` | builds `OpenDriveMap.cpp:590` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outlines&gt; &lt;outline&gt; | builds `mod.rs:2676` | builds `RoadManager.cpp:5251` | builds `OpenDriveMap.cpp:591` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;material&gt; | stores `mod.rs:2402` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@width` | builds `mod.rs:2853` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@color` | builds `mod.rs:2861` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@zOffset` | builds `mod.rs:2854` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@spaceLength` | builds `mod.rs:2857` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@lineLength` | builds `mod.rs:2856` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@startOffset` | builds `mod.rs:2867` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; `@stopOffset` | builds `mod.rs:2868` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; &lt;cornerReference&gt; | builds `mod.rs:2833` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outline&gt; &lt;markings&gt; &lt;marking&gt; &lt;cornerReference&gt; `@id` | builds `mod.rs:2933` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outlines&gt; | builds `mod.rs:2674` | builds `RoadManager.cpp:5248` | builds `OpenDriveMap.cpp:590` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;outlines&gt; &lt;outline&gt; | builds `mod.rs:2677` | builds `RoadManager.cpp:5251` | builds `OpenDriveMap.cpp:591` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;material&gt; | stores `mod.rs:2403` | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;material&gt; `@surface` | stores `mod.rs:1021` | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;material&gt; `@friction` | stores `mod.rs:1022` | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;material&gt; `@roughness` | stores `mod.rs:1023` | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;material&gt; `@roadMarkColor` | - | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;validity&gt; | builds `mod.rs:2256` | stores `RoadManager.cpp:5389` | stores `OpenDriveMap.cpp:38` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;validity&gt; `@fromLane` | builds `mod.rs:2257` | stores `RoadManager.cpp:5392` | stores `OpenDriveMap.cpp:40` | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;validity&gt; `@toLane` | builds `mod.rs:2257` | stores `RoadManager.cpp:5393` | stores `OpenDriveMap.cpp:40` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;validity&gt; | builds `mod.rs:2257` | stores `RoadManager.cpp:5389` | stores `OpenDriveMap.cpp:38` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;validity&gt; `@fromLane` | builds `mod.rs:2258` | stores `RoadManager.cpp:5392` | stores `OpenDriveMap.cpp:40` | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;validity&gt; `@toLane` | builds `mod.rs:2258` | stores `RoadManager.cpp:5393` | stores `OpenDriveMap.cpp:40` | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;validity&gt; `@layer` | - | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;parkingSpace&gt; | stores `mod.rs:2393` | stores `RoadManager.cpp:5290` | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;parkingSpace&gt; `@access` | stores `mod.rs:2396` | stores `RoadManager.cpp:5295` | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;parkingSpace&gt; `@restrictions` | stores `mod.rs:2397` | stores `RoadManager.cpp:5334` | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;markings&gt; | builds `mod.rs:2797` | builds `RoadManager.cpp:5339` | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;borders&gt; | builds `mod.rs:2889` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;borders&gt; &lt;border&gt; | builds `mod.rs:2894` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;borders&gt; &lt;border&gt; `@width` | builds `mod.rs:2900` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;borders&gt; &lt;border&gt; `@type` | builds `mod.rs:2911` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;borders&gt; &lt;border&gt; `@outlineId` | builds `mod.rs:2896` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;borders&gt; &lt;border&gt; `@useCompleteOutline` | builds `mod.rs:2901` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;borders&gt; &lt;border&gt; &lt;cornerReference&gt; | builds `mod.rs:2930` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;parkingSpace&gt; | stores `mod.rs:2394` | stores `RoadManager.cpp:5290` | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;parkingSpace&gt; `@access` | stores `mod.rs:2397` | stores `RoadManager.cpp:5295` | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;parkingSpace&gt; `@restrictions` | stores `mod.rs:2398` | stores `RoadManager.cpp:5334` | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;markings&gt; | builds `mod.rs:2798` | builds `RoadManager.cpp:5339` | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;borders&gt; | builds `mod.rs:2890` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;borders&gt; &lt;border&gt; | builds `mod.rs:2895` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;borders&gt; &lt;border&gt; `@width` | builds `mod.rs:2901` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;borders&gt; &lt;border&gt; `@type` | builds `mod.rs:2912` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;borders&gt; &lt;border&gt; `@outlineId` | builds `mod.rs:2897` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;borders&gt; &lt;border&gt; `@useCompleteOutline` | builds `mod.rs:2902` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;borders&gt; &lt;border&gt; &lt;cornerReference&gt; | builds `mod.rs:2931` | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;surface&gt; | - | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;surface&gt; &lt;CRG&gt; | - | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;surface&gt; &lt;CRG&gt; `@file` | - | - | - | - |
@@ -561,30 +558,30 @@ the files the first table lists for that library.
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;skeleton&gt; &lt;polyline&gt; &lt;vertexLocal&gt; `@u` | - | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;skeleton&gt; &lt;polyline&gt; &lt;vertexLocal&gt; `@v` | - | - | - | - |
 | &lt;road&gt; &lt;objects&gt; &lt;object&gt; &lt;skeleton&gt; &lt;polyline&gt; &lt;vertexLocal&gt; `@z` | - | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;objectReference&gt; | builds `mod.rs:2285` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;objectReference&gt; `@s` | builds `mod.rs:2244` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;objectReference&gt; `@t` | builds `mod.rs:2244` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;objectReference&gt; `@id` | builds `mod.rs:2286` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;objectReference&gt; `@zOffset` | builds `mod.rs:2241` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;objectReference&gt; `@validLength` | stores `mod.rs:2243` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;objectReference&gt; `@orientation` | builds `mod.rs:2264` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;objectReference&gt; &lt;validity&gt; | builds `mod.rs:2256` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; | builds `mod.rs:2114` | builds `RoadManager.cpp:5439` | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; `@s` | builds `mod.rs:2125` | builds `RoadManager.cpp:5448` | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; `@length` | builds `mod.rs:2125` | builds `RoadManager.cpp:5445` | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; `@name` | stores `mod.rs:2155` | stores `RoadManager.cpp:5447` | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; `@id` | stores `mod.rs:2161` | stores `RoadManager.cpp:5444` | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; `@type` | stores `mod.rs:2116` | stores `RoadManager.cpp:5449` | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; `@lighting` | stores `mod.rs:2117` | stores `RoadManager.cpp:5446` | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; `@daylight` | stores `mod.rs:2118` | stores `RoadManager.cpp:5443` | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; &lt;validity&gt; | builds `mod.rs:2256` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; | builds `mod.rs:2120` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; `@s` | builds `mod.rs:2125` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; `@length` | builds `mod.rs:2125` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; `@name` | stores `mod.rs:2155` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; `@id` | stores `mod.rs:2161` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; `@type` | stores `mod.rs:2121` | - | - | - |
-| &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; &lt;validity&gt; | builds `mod.rs:2256` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;objectReference&gt; | builds `mod.rs:2286` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;objectReference&gt; `@s` | builds `mod.rs:2245` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;objectReference&gt; `@t` | builds `mod.rs:2245` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;objectReference&gt; `@id` | builds `mod.rs:2287` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;objectReference&gt; `@zOffset` | builds `mod.rs:2242` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;objectReference&gt; `@validLength` | stores `mod.rs:2244` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;objectReference&gt; `@orientation` | builds `mod.rs:2265` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;objectReference&gt; &lt;validity&gt; | builds `mod.rs:2257` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; | builds `mod.rs:2115` | builds `RoadManager.cpp:5439` | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; `@s` | builds `mod.rs:2126` | builds `RoadManager.cpp:5448` | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; `@length` | builds `mod.rs:2126` | builds `RoadManager.cpp:5445` | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; `@name` | stores `mod.rs:2156` | stores `RoadManager.cpp:5447` | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; `@id` | stores `mod.rs:2162` | stores `RoadManager.cpp:5444` | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; `@type` | stores `mod.rs:2117` | stores `RoadManager.cpp:5449` | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; `@lighting` | stores `mod.rs:2118` | stores `RoadManager.cpp:5446` | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; `@daylight` | stores `mod.rs:2119` | stores `RoadManager.cpp:5443` | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;tunnel&gt; &lt;validity&gt; | builds `mod.rs:2257` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; | builds `mod.rs:2121` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; `@s` | builds `mod.rs:2126` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; `@length` | builds `mod.rs:2126` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; `@name` | stores `mod.rs:2156` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; `@id` | stores `mod.rs:2162` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; `@type` | stores `mod.rs:2122` | - | - | - |
+| &lt;road&gt; &lt;objects&gt; &lt;bridge&gt; &lt;validity&gt; | builds `mod.rs:2257` | - | - | - |
 | &lt;road&gt; &lt;signals&gt; | builds `signals.rs:51` | builds `RoadManager.cpp:4839` | builds `OpenDriveMap.cpp:637` | builds `SignalParser.cpp:44` |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; | builds `signals.rs:59` | builds `RoadManager.cpp:4845` | builds `OpenDriveMap.cpp:637` | builds `SignalParser.cpp:46` |
 | &lt;road&gt; &lt;signals&gt; &lt;signal&gt; `@id` | builds `signals.rs:238` | builds `RoadManager.cpp:4851` | stores `OpenDriveMap.cpp:639` | builds `SignalParser.cpp:49` |
@@ -872,6 +869,6 @@ the files the first table lists for that library.
 
 | Element | This crate | esmini | libOpenDRIVE | CARLA |
 | --- | --- | --- | --- | --- |
-| &lt;userData&gt; | stores `mod.rs:2407` | builds `RoadManager.cpp:5397` | - | - |
-| &lt;userData&gt; `@code` | stores `mod.rs:2411` | builds `RoadManager.cpp:5399` | - | - |
-| &lt;userData&gt; `@value` | stores `mod.rs:2412` | builds `RoadManager.cpp:5402` | - | - |
+| &lt;userData&gt; | stores `mod.rs:2408` | builds `RoadManager.cpp:5397` | - | - |
+| &lt;userData&gt; `@code` | stores `mod.rs:2412` | builds `RoadManager.cpp:5399` | - | - |
+| &lt;userData&gt; `@value` | stores `mod.rs:2413` | builds `RoadManager.cpp:5402` | - | - |
