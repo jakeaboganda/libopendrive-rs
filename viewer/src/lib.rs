@@ -46,6 +46,9 @@ use libopendrive::{
 };
 use serde_json::{json, Map, Value};
 
+#[cfg(target_arch = "wasm32")]
+mod web;
+
 /// A baked map: the scene the page draws, and what the viewer noticed on
 /// the way that the crate's warnings don't cover.
 pub struct Scene {
