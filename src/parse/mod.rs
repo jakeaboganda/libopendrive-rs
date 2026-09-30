@@ -332,6 +332,7 @@ pub struct Provenance {
     pub priorities: Vec<PriorityProvenance>,
     /// One per cross path, in step with
     /// [`RoadNetwork::cross_paths`](crate::RoadNetwork::cross_paths).
+    #[cfg_attr(feature = "serde", serde(default))]
     pub cross_paths: Vec<CrossPathProvenance>,
     /// What the load dropped, or read against the spec, in file order.
     /// Empty for a clean file.

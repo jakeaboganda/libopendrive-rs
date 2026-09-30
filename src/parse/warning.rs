@@ -190,7 +190,9 @@ pub enum Warning {
         junction_id: String,
         /// Its `id`, empty if it has none.
         cross_path_id: String,
-        /// Its `crossingRoad`, empty if it has none.
+        /// The road it can't be placed on: its `crossingRoad`, or the
+        /// `roadAtStart` or `roadAtEnd` of the end that fails. Empty if the
+        /// file names none.
         road_id: String,
     },
     /// A junction's `<elevationGrid>`. The spec says it overrides the height
@@ -446,7 +448,7 @@ impl fmt::Display for Warning {
                 road_id,
             } => write!(
                 f,
-                "junction {junction_id:?}: <crossPath> {cross_path_id:?} on road {road_id:?} dropped"
+                "junction {junction_id:?}: <crossPath> {cross_path_id:?} dropped, it can't be placed on road {road_id:?}"
             ),
             Self::ElevationGridNotApplied { junction_id } => write!(
                 f,

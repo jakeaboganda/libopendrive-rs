@@ -69,12 +69,16 @@ pub(super) fn cross_paths(
     for junction in root.children().filter(|n| n.has_tag_name("junction")) {
         let junction_id = junction.attribute("id").unwrap_or_default();
         for node in junction.children().filter(|n| n.has_tag_name("crossPath")) {
-            let crossing = road(node.attribute("crossingRoad"));
+            let crossing_id = node.attribute("crossingRoad");
+            let crossing = road(crossing_id);
             let end = |at: &str, link: Option<roxmltree::Node>, last: bool| {
-                let crossing = crossing?;
-                let at = road(node.attribute(at))?;
-                let link = link?;
-                let s = attr_f64(link, "s").filter(|s| at.on_road(*s))?;
+                let at_id = node.attribute(at);
+                let crossing = crossing.ok_or(crossing_id.unwrap_or_default())?;
+                let at = road(at_id).ok_or(at_id.unwrap_or_default())?;
+                let link = link.ok_or(at_id.unwrap_or_default())?;
+                let s = attr_f64(link, "s")
+                    .filter(|s| at.on_road(*s))
+                    .ok_or(at_id.unwrap_or_default())?;
                 let lane = |section: &RoadSection, name: &str| -> Option<LaneId> {
                     let od_id = link.attribute(name)?.parse::<i32>().ok()?;
                     section
@@ -88,10 +92,15 @@ pub(super) fn cross_paths(
                 } else {
                     crossing.sections.first()
                 };
-                Some(CrossPathEnd {
-                    lane: lane(at.section_at(s)?, "from")?,
+                Ok::<_, &str>(CrossPathEnd {
+                    lane: at
+                        .section_at(s)
+                        .and_then(|section| lane(section, "from"))
+                        .ok_or(at_id.unwrap_or_default())?,
                     s,
-                    crossing_lane: lane(crossing_end?, "to")?,
+                    crossing_lane: crossing_end
+                        .and_then(|section| lane(section, "to"))
+                        .ok_or(crossing_id.unwrap_or_default())?,
                 })
             };
             let od_id = node.attribute("id").unwrap_or_default().to_string();
@@ -100,7 +109,7 @@ pub(super) fn cross_paths(
                 end("roadAtStart", child(node, "startLaneLink"), false),
                 end("roadAtEnd", child(node, "endLaneLink"), true),
             ) {
-                (Some(crossing), Some(start), Some(end)) => {
+                (Some(crossing), Ok(start), Ok(end)) => {
                     out.push(CrossPath {
                         crossing: crossing.id,
                         start,
@@ -111,13 +120,10 @@ pub(super) fn cross_paths(
                         od_id,
                     });
                 }
-                _ => warnings.push(Warning::CrossPathDropped {
+                (_, start, end) => warnings.push(Warning::CrossPathDropped {
                     junction_id: junction_id.to_string(),
                     cross_path_id: od_id,
-                    road_id: node
-                        .attribute("crossingRoad")
-                        .unwrap_or_default()
-                        .to_string(),
+                    road_id: start.err().or(end.err()).unwrap_or_default().to_string(),
                 }),
             }
         }

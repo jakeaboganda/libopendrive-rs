@@ -9,9 +9,12 @@
   lane's road, and the crossing road's lane. It joins lanes part way along
   them, so it stays beside the lane graph. `Provenance::cross_paths` names
   each one's junction and id.
+- Breaking: `Provenance` has a new `cross_paths` field, so a `Provenance`
+  literal needs it. Provenance serialized before loads with none.
 - `Warning::CrossPathDropped` names one whose roads or lanes the load
-  lacks. In ASAM's `UC_5Road_Junction`, three name an `s` past the end of
-  their road or a lane it lacks.
+  lacks, and the road it can't be placed on. In ASAM's
+  `UC_5Road_Junction`, three name an `s` past the end of their road or a
+  lane it lacks.
 - The viewer's readout for a crossing road's lane, and for a lane a cross
   path joins, names the other end.
 
