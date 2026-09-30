@@ -482,7 +482,9 @@
 //!
 //! The crate bakes it as it bakes shapes: each lane border stands at the
 //! surface's height under it plus the lane's `<height>`, and the lane goes
-//! straight across between them. Level lanes keep out of it. So what
+//! straight across between them. Level lanes keep out of it. Where the
+//! two sides meet at `dt` 0 and stand at different heights, a lane's inner
+//! border stands on its own side's strip. So what
 //! [Lateral shapes](#lateral-shapes) says of the lanes, objects, signals and
 //! marks on a shaped road holds on one with a cross-section surface too.
 //!
@@ -495,7 +497,13 @@
 //!   [`Warning::CrossSectionWithShape`].
 //! - The spec gives no default `mode` for an outer strip. The crate reads a
 //!   missing one as `independent`, and one it doesn't know too, with a
-//!   [`Warning::UnknownStripMode`].
+//!   [`Warning::UnknownStripMode`]. An inner strip's `mode` means nothing,
+//!   and is not read.
+//! - The spec allows strips 1, 2, -1 and -2, one of each, and needs an
+//!   inner strip's width to place the outer strip beside it. The crate
+//!   drops a strip with another `id`, one that repeats an `id`, and an outer
+//!   strip with no inner strip of a width beside it, each with a
+//!   [`Warning::StripDropped`].
 //! - The spec says what lies past an inner strip only where an outer strip
 //!   is beside it. Past an inner strip with a width and no outer strip, the
 //!   crate runs the inner strip on, as the last shape runs on to the road's
@@ -1008,8 +1016,8 @@
 //!   forbids. See [Lane borders](#lane-borders).
 //! - [`Warning::ShapeShortOfRoad`] for a lateral profile that does not
 //!   cover the road. See [Lateral shapes](#lateral-shapes).
-//! - [`Warning::CrossSectionWithShape`] and [`Warning::UnknownStripMode`]
-//!   for a cross-section surface the spec forbids. See
+//! - [`Warning::CrossSectionWithShape`], [`Warning::UnknownStripMode`] and
+//!   [`Warning::StripDropped`] for a cross-section surface the spec forbids. See
 //!   [Cross-section surfaces](#cross-section-surfaces).
 //! - [`Warning::UnknownTrafficRule`] for a road `rule` other than `RHT` or
 //!   `LHT`, and [`Warning::UnknownLaneDirection`] for a lane `direction`

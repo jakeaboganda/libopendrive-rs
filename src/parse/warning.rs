@@ -201,8 +201,20 @@ pub enum Warning {
         /// Its `<road id>`.
         road_id: String,
     },
-    /// A cross-section `<strip>` whose `mode` is neither `independent` nor
-    /// `relative`. The crate reads it as `independent`.
+    /// A cross-section `<strip>` the crate can't use: its `id` is not 1, 2,
+    /// -1 or -2, it repeats an `id` before it, or it is an outer strip with
+    /// no inner strip beside it, or one without a `<width>`. The spec needs
+    /// the inner strip's width to know where the outer one starts. The crate
+    /// drops it.
+    StripDropped {
+        /// The `<road id>` it is on.
+        road_id: String,
+        /// Its `id`, as the file writes it.
+        strip: String,
+    },
+    /// An outer cross-section `<strip>` whose `mode` is neither `independent`
+    /// nor `relative`. The crate reads it as `independent`. An inner strip's
+    /// `mode` means nothing, and is not read.
     UnknownStripMode {
         /// The `<road id>` it is on.
         road_id: String,
@@ -351,6 +363,7 @@ impl Warning {
             | Self::CrossPathDropped { road_id, .. }
             | Self::CrossSectionWithShape { road_id }
             | Self::UnknownStripMode { road_id, .. }
+            | Self::StripDropped { road_id, .. }
             | Self::ConnectionDropped {
                 incoming_road_id: road_id,
                 ..
@@ -463,6 +476,10 @@ impl fmt::Display for Warning {
             Self::CrossSectionWithShape { road_id } => write!(
                 f,
                 "road {road_id:?}: <crossSectionSurface> with <shape>s or a <superelevation>, heights added"
+            ),
+            Self::StripDropped { road_id, strip } => write!(
+                f,
+                "road {road_id:?}: <strip> {strip:?} dropped, its id is not 1, 2, -1 or -2, repeats one before it, or it is an outer strip with no inner strip of a width beside it"
             ),
             Self::UnknownStripMode {
                 road_id,

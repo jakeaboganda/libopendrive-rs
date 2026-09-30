@@ -743,6 +743,12 @@ fn cross_section(
         .into_iter()
         .flat_map(|n| n.children())
         .filter(|n| n.has_tag_name("strip"));
+    let dropped = |warnings: &mut Vec<Warning>, strip: String| {
+        warnings.push(Warning::StripDropped {
+            road_id: road_id.to_string(),
+            strip,
+        })
+    };
     for strip in strips {
         let id = strip.attribute("id").and_then(|v| v.parse::<i32>().ok());
         let slot = match id {
@@ -750,10 +756,22 @@ fn cross_section(
             Some(2) => &mut out.left[1],
             Some(-1) => &mut out.right[0],
             Some(-2) => &mut out.right[1],
-            _ => continue,
+            _ => {
+                dropped(
+                    warnings,
+                    strip.attribute("id").unwrap_or_default().to_string(),
+                );
+                continue;
+            }
         };
+        if slot.is_some() {
+            dropped(warnings, id.unwrap_or_default().to_string());
+            continue;
+        }
+        let outer = id.is_some_and(|id| id.abs() == 2);
         let relative = match strip.attribute("mode") {
-            Some("relative") => true,
+            Some("relative") if outer => true,
+            _ if !outer => false,
             None | Some("independent") => false,
             Some(other) => {
                 warnings.push(Warning::UnknownStripMode {
@@ -774,6 +792,15 @@ fn cross_section(
             ],
             relative,
         });
+    }
+    for (side, id) in [(&mut out.left, 2), (&mut out.right, -2)] {
+        let beside = side[0]
+            .as_ref()
+            .is_some_and(|inner| !inner.width.is_empty());
+        if side[1].is_some() && !beside {
+            side[1] = None;
+            dropped(warnings, id.to_string());
+        }
     }
     out
 }

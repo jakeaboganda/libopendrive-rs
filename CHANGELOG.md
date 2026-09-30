@@ -14,7 +14,9 @@
   and shapes or superelevation, which the spec forbids. The crate adds them.
   `Warning::UnknownStripMode` names an outer strip whose `mode` is neither
   `independent` nor `relative`, read as `independent`, the crate's reading
-  of a missing one.
+  of a missing one. `Warning::StripDropped` names a strip the crate can't
+  place: an unknown or repeated `id`, or an outer strip with no inner strip
+  of a width beside it.
 
 ### Cross paths
 

@@ -208,7 +208,18 @@ pub(crate) struct Lateral {
 impl Lateral {
     /// The height at `(s, t)`. 0 on a road with neither.
     pub fn height(&self, s: f64, t: f64) -> f64 {
-        shape_at(&self.profiles, s, t) + self.surface.as_ref().map_or(0.0, |c| c.height(s, t))
+        self.height_toward(s, t, -1.0)
+    }
+
+    /// [`Self::height`], but on a cross-section's ridge, where its two sides
+    /// meet, the height of the side `toward` points to: 1.0 for the left.
+    /// What a lane on that side stands on at its inner border.
+    pub fn height_toward(&self, s: f64, t: f64, toward: f64) -> f64 {
+        shape_at(&self.profiles, s, t)
+            + self
+                .surface
+                .as_ref()
+                .map_or(0.0, |c| c.height(s, t, toward))
     }
 
     /// Whether the road is flat across.
@@ -271,10 +282,16 @@ impl CrossSection {
     /// then the inner strip on that side up to its width, and the outer
     /// strip past it, `dt` from the inner strip's edge. Past an inner strip
     /// with no outer strip beside it, the inner strip runs on. 0 on a side
-    /// with no strip.
-    pub fn height(&self, s: f64, t: f64) -> f64 {
+    /// with no strip. On the ridge, within a nanometre of `dt` 0, the side
+    /// `toward` points to: 1.0 for the left.
+    pub fn height(&self, s: f64, t: f64, toward: f64) -> f64 {
         let t = t - active(&self.t_offset, s).map_or(0.0, |c| c.eval(s));
-        let (side, sign) = if t > 0.0 {
+        let left = if t.abs() < 1e-9 {
+            toward > 0.0
+        } else {
+            t > 0.0
+        };
+        let (side, sign) = if left {
             (&self.left, 1.0)
         } else {
             (&self.right, -1.0)
@@ -722,7 +739,7 @@ pub(crate) fn side_heights<'a>(
     phi: f64,
     borders: impl Iterator<Item = LaneBorders> + 'a,
 ) -> impl Iterator<Item = (f64, f64)> + 'a {
-    let start = (lateral.height(s, base), false);
+    let start = (lateral.height_toward(s, base, sign), false);
     side.iter()
         .zip(borders)
         .scan(start, move |(outer, level), (lane, b)| {
@@ -735,8 +752,8 @@ pub(crate) fn side_heights<'a>(
                 )
             } else {
                 (
-                    own_inner + lateral.height(s, b.inner),
-                    own_outer + lateral.height(s, b.outer),
+                    own_inner + lateral.height_toward(s, b.inner, sign),
+                    own_outer + lateral.height_toward(s, b.outer, sign),
                 )
             };
             *outer = heights.1;

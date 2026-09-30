@@ -34,10 +34,11 @@ fn each_lane_border_stands_on_the_strip_under_it() {
 #[test]
 fn a_lane_goes_straight_across_between_its_borders() {
     let (net, _) = load_file_with_provenance(FIXTURE).unwrap();
-    // Lane -1 runs from t = 0, on the right strip 0.5 m from the offset, to
-    // t = -3.
-    let (inner, outer) = (0.11 - 0.01, 0.11 - 0.07);
-    close(z(&net, 10.0, -1.5), (inner + outer) / 2.0);
+    // Lane 1 runs from t = 0, on the right strip 0.5 m from the offset, to
+    // t = 3 on the left one, across the ridge at t = 0.5. Its middle is
+    // halfway between its borders, not on the left strip under it, -0.02.
+    let (inner, outer) = (0.11 - 0.01, -0.05);
+    close(z(&net, 10.0, 1.5), (inner + outer) / 2.0);
 }
 
 #[test]
@@ -66,4 +67,78 @@ fn the_crate_warns_of_a_surface_with_superelevation_and_a_mode_it_does_not_know(
 fn the_surface_mesh_stays_closed() {
     let (net, _) = load_file_with_provenance(FIXTURE).unwrap();
     net.surface_mesh().validate().unwrap();
+}
+
+/// A 20 m straight with 3 m lanes 1 and -1. Strip 1 stands flat at 0.1 m and
+/// strip -1 flat at 0, so the surface steps at the reference line.
+const STEP: &str = r#"<OpenDRIVE>
+  <road id="0" length="20" junction="-1">
+    <planView><geometry s="0" x="0" y="0" hdg="0" length="20"><line/></geometry></planView>
+    <lateralProfile><crossSectionSurface><surfaceStrips>
+      <strip id="1"><constant><coefficients s="0" a="0.1"/></constant></strip>
+      <strip id="-1"><constant><coefficients s="0" a="0"/></constant></strip>
+    </surfaceStrips></crossSectionSurface></lateralProfile>
+    <lanes><laneSection s="0">
+      <left><lane id="1" type="driving"><width sOffset="0" a="3" b="0" c="0" d="0"/></lane></left>
+      <center><lane id="0" type="none"/></center>
+      <right><lane id="-1" type="driving"><width sOffset="0" a="3" b="0" c="0" d="0"/></lane></right>
+    </laneSection></lanes>
+  </road>
+</OpenDRIVE>"#;
+
+#[test]
+fn a_lane_whose_inner_border_is_on_the_ridge_stands_on_its_own_side() {
+    let net = libopendrive::load_str(STEP).unwrap();
+    close(z(&net, 10.0, 1.5), 0.1);
+    close(z(&net, 10.0, -1.5), 0.0);
+}
+
+/// [`STEP`] with its strips replaced by `strips`.
+fn with_strips(strips: &str) -> (RoadNetwork, Vec<Warning>) {
+    let start = STEP.find("<surfaceStrips>").unwrap() + "<surfaceStrips>".len();
+    let end = STEP.find("</surfaceStrips>").unwrap();
+    let xml = format!("{}{strips}{}", &STEP[..start], &STEP[end..]);
+    let (net, prov) = libopendrive::load_str_with_provenance(&xml).unwrap();
+    (net, prov.warnings)
+}
+
+fn dropped(warnings: &[Warning]) -> Vec<&str> {
+    warnings
+        .iter()
+        .filter_map(|w| match w {
+            Warning::StripDropped { strip, .. } => Some(strip.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_strip_the_crate_cannot_use_is_dropped_with_a_warning() {
+    let flat = |a: f64| format!(r#"<constant><coefficients s="0" a="{a}"/></constant>"#);
+    let width = r#"<width><coefficients s="0" a="3"/></width>"#;
+    let (net, warnings) = with_strips(&format!(r#"<strip id="2">{}</strip>"#, flat(0.5)));
+    assert_eq!(dropped(&warnings), ["2"]);
+    close(z(&net, 10.0, 6.0), 0.0);
+    let (_, warnings) = with_strips(&format!(
+        r#"<strip id="1">{}</strip><strip id="2">{}</strip>"#,
+        flat(0.1),
+        flat(0.5)
+    ));
+    assert_eq!(dropped(&warnings), ["2"]);
+    let (net, warnings) = with_strips(&format!(
+        r#"<strip id="-1">{width}{}</strip><strip id="-1">{}</strip><strip id="7">{}</strip>"#,
+        flat(0.1),
+        flat(0.5),
+        flat(0.5)
+    ));
+    assert_eq!(dropped(&warnings), ["-1", "7"]);
+    close(z(&net, 10.0, -1.5), 0.1);
+}
+
+#[test]
+fn an_inner_strip_s_mode_is_not_read() {
+    let (_, warnings) = with_strips(
+        r#"<strip id="1" mode="bogus"><constant><coefficients s="0" a="0.1"/></constant></strip>"#,
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
 }
