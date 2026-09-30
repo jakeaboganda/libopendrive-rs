@@ -60,7 +60,7 @@ map. A road serializes as the records the file gives, and rebakes its
 spirals and cubic curves on the way in.
 
 ```toml
-libopendrive = { version = "0.3", features = ["serde"] }
+libopendrive = { version = "0.4", features = ["serde"] }
 ```
 
 ## Untrusted input
