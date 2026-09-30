@@ -444,7 +444,8 @@
 //! kept beside the lane graph, and the router does not follow it. Each
 //! `<station>` is a [`Station`] in [`RoadNetwork::stations`], with its
 //! platforms and the stretches of track each runs beside. A switch or a
-//! platform segment naming a road the load lacks, an `s` off it, or a
+//! platform segment naming a road the load lacks, an `s` off it, an `sEnd`
+//! before its `sStart`, or a
 //! `position`, `dir` or `side` the spec does not allow is dropped, with a
 //! [`Warning::RailwayDropped`]. No other reader to compare against reads
 //! either.

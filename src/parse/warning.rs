@@ -183,8 +183,9 @@ pub enum Warning {
         road_id: String,
     },
     /// A railway `<switch>` or a platform `<segment>` the crate can't place:
-    /// one naming a road the load lacks, an `s` off that road, or a
-    /// `position`, `dir` or `side` the spec does not allow. The crate drops
+    /// one naming a road the load lacks, an `s` off that road, a segment
+    /// whose `sEnd` is before its `sStart`, or a `position`, `dir` or `side`
+    /// the spec does not allow. The crate drops
     /// it.
     RailwayDropped {
         /// `switch` or `platform segment`.

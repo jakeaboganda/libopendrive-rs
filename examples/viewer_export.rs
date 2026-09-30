@@ -476,8 +476,9 @@ fn board_entry(board: &SignalBoard) -> Value {
 const PLATFORM_WIDTH: f64 = 3.0;
 
 /// A platform segment as quads beside its track: pairs of points along the
-/// outer edge of the outermost lane on its side and [`PLATFORM_WIDTH`]
-/// beyond it, a metre or so apart.
+/// outer edge of the outermost lane on its side, or the reference line on a
+/// side with no lanes, and [`PLATFORM_WIDTH`] beyond it, a metre or so
+/// apart.
 fn platform_strip(net: &RoadNetwork, seg: &PlatformSegment) -> Vec<[[f32; 3]; 2]> {
     let sign = match seg.side {
         Side::Left => 1.0,
@@ -502,13 +503,19 @@ fn platform_strip(net: &RoadNetwork, seg: &PlatformSegment) -> Vec<[[f32; 3]; 2]
                     (at.od_id.signum() as f64 == sign)
                         .then(|| (at.od_id.abs(), on, f64::from(lane.width_at(along)) / 2.0))
                 })
-                .max_by_key(|(od, _, _)| *od)?;
-            let (_, on, half) = edge;
+                .max_by_key(|(od, _, _)| *od);
             let point = |beyond: f64| {
-                net.lane_point(LanePosition {
-                    offset: sign * (half + beyond),
-                    ..on
-                })
+                match edge {
+                    Some((_, on, half)) => net.lane_point(LanePosition {
+                        offset: sign * (half + beyond),
+                        ..on
+                    }),
+                    None => net.road_point(RoadPosition {
+                        road: seg.road,
+                        s,
+                        t: sign * beyond,
+                    }),
+                }
                 .map(|p| p.to_array())
             };
             Some([point(0.0)?, point(PLATFORM_WIDTH)?])

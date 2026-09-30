@@ -68,7 +68,8 @@ pub(super) fn switches(roads: &[(roxmltree::Node, BakedRoad)]) -> (Vec<Switch>, 
 
 /// Every `<station>`, in file order, with each platform segment on a baked
 /// road, and a warning for each segment dropped for naming a road the load
-/// lacks, a stretch off its ends, or a `side` the spec does not allow.
+/// lacks, a stretch off its ends or with `sEnd` before `sStart`, or a
+/// `side` the spec does not allow.
 pub(super) fn stations(
     root: roxmltree::Node,
     roads: &[(roxmltree::Node, BakedRoad)],
@@ -90,7 +91,8 @@ pub(super) fn stations(
                             let road = find(roads, segment.attribute("roadId")?)?;
                             let s_start =
                                 attr_f64(segment, "sStart").filter(|s| road.on_road(*s))?;
-                            let s_end = attr_f64(segment, "sEnd").filter(|s| road.on_road(*s))?;
+                            let s_end = attr_f64(segment, "sEnd")
+                                .filter(|s| road.on_road(*s) && *s >= s_start)?;
                             let side = match segment.attribute("side")? {
                                 "left" => Side::Left,
                                 "right" => Side::Right,
