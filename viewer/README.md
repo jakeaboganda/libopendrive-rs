@@ -14,26 +14,25 @@ ahead of time, for maps you want in the page's `map` list.
 
 ## Run it
 
-1. Build the WebAssembly baker into `viewer/web/pkg/`. The first run also
-   installs the `wasm32-unknown-unknown` target and the matching
-   `wasm-bindgen` CLI. Run it again after you change the crate.
+1. Launch it. This builds the WebAssembly baker into `viewer/web/pkg/`,
+   serves `viewer/web` on <http://localhost:8000> and opens it in your
+   browser. Ctrl-C stops it. Give another port as `sh viewer/run.sh 8080`.
 
    ```sh
-   sh viewer/build.sh
+   sh viewer/run.sh
    ```
 
-2. Serve the folder. Browsers load ES modules and WebAssembly only over
-   HTTP, so opening `index.html` as a file won't work. Any static file
-   server will do.
+   The first run also installs the `wasm32-unknown-unknown` target and the
+   matching `wasm-bindgen` CLI. Later runs rebuild only what changed.
 
-   ```sh
-   cd viewer/web && python3 -m http.server 8000
-   ```
+2. Click `open .xodr` in the toolbar and pick a map. Where the map lays
+   OpenCRG files on its roads, pick them in the same dialog. The page
+   matches them by file name, and lists any it lacks in the sidebar's
+   warnings.
 
-3. Open <http://localhost:8000>, click `open .xodr` in the toolbar and pick
-   a map. Where the map lays OpenCRG files on its roads, pick them in the
-   same dialog. The page matches them by file name, and lists any it lacks
-   in the sidebar's warnings.
+To host the page somewhere else, run `sh viewer/build.sh` and serve
+`viewer/web` with any static file server. Browsers load ES modules and
+WebAssembly only over HTTP, so opening `index.html` as a file won't work.
 
 The page keeps the files you opened in the browser's IndexedDB, so a reload
 draws the same map. The URL names it, as `?open=town07.xodr`, but only this

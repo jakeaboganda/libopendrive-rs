@@ -59,11 +59,11 @@ that runs the crate in the browser, compiled to WebAssembly. Open a `.xodr`
 and hover a lane, object or signal to read what the crate knows about it.
 
 ```sh
-sh viewer/build.sh
-cd viewer/web && python3 -m http.server 8000
+sh viewer/run.sh
 ```
 
-Then open <http://localhost:8000> and click `open .xodr`.
+It builds the page, serves it on <http://localhost:8000> and opens it in
+your browser. Click `open .xodr`.
 
 ![A traffic island's details in the viewer](viewer/objects.png)
 
