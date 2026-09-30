@@ -4,13 +4,15 @@
 
 ### Viewer
 
-- The viewer opens a `.xodr` itself. Click `open .xodr`, pick a map and any
-  `.crg` files it uses, and the page bakes it with the crate compiled to
-  WebAssembly. `sh viewer/run.sh` builds the page, serves it and opens it.
-  A reload keeps the map.
-- The exporter moved from `examples/viewer_export.rs` to the
-  `libopendrive-viewer` crate in `viewer/`, which the page's WebAssembly
-  build shares. Run it with `cargo run -p libopendrive-viewer -- map.xodr`.
+- The viewer opens a `.xodr` itself. Click `open .xodr` and pick a map and
+  any `.crg` files it uses. The page bakes the map with `libopendrive-viewer`
+  compiled to WebAssembly. A reload keeps the map.
+- `sh viewer/run.sh` builds the page, serves it on localhost and opens it in
+  your browser.
+- `viewer_export` moved from `examples/viewer_export.rs` to the
+  `libopendrive-viewer` crate in `viewer/`. The page's WebAssembly build
+  uses the same crate. Run it with
+  `cargo run -p libopendrive-viewer -- map.xodr`.
 - A CRG file that does not load, or a mesh that is not a valid trimesh, is
   now listed with the map's warnings in the sidebar.
 
