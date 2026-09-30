@@ -1397,8 +1397,8 @@ function onHover(ev) {
       .filter(Boolean).join('   '));
   }
   if (lane.junction != null) {
-    const group = junctionGroups.find(g => g.junctions.includes(lane.junction));
-    const label = group ? `, in ${group.kind} ${escapeHtml(group.name || group.id)}` : '';
+    const groups = junctionGroups.filter(g => g.junctions.includes(lane.junction));
+    const label = groups.map(g => `, in ${g.kind} ${escapeHtml(g.name || g.id)}`).join('');
     rows.push(`in junction ${escapeHtml(String(lane.junction))}${label}`);
   }
   rows.push(...priorityRows(lane));

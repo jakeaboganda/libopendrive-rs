@@ -682,13 +682,14 @@ impl RoadNetwork {
         &self.junction_groups
     }
 
-    /// The group `road`'s junction is in, if it is part of a junction in a
-    /// group.
-    pub fn junction_group_of(&self, road: RoadId) -> Option<&JunctionGroup> {
-        let junction = self.road(road)?.junction()?;
+    /// Every group `road`'s junction is in, in file order. None if the road
+    /// is in no junction, or its junction in no group. The spec does not
+    /// stop a junction from being in more than one.
+    pub fn junction_groups_of(&self, road: RoadId) -> impl Iterator<Item = &JunctionGroup> {
+        let junction = self.road(road).and_then(|r| r.junction());
         self.junction_groups
             .iter()
-            .find(|g| g.junctions.iter().any(|j| j == junction))
+            .filter(move |g| junction.is_some_and(|j| g.junctions.iter().any(|m| m == j)))
     }
 
     /// Every road, in the order the importer emitted them, which is file

@@ -172,11 +172,13 @@
 //! A `<junctionGroup>` groups junctions that routing should see as one, such
 //! as the junctions round a roundabout. Each is a [`JunctionGroup`] in
 //! [`RoadNetwork::junction_groups`], with the `<junction id>`s it names, and
-//! [`RoadNetwork::junction_group_of`] finds a road's through its
-//! [`Road::junction`]. The router does not use them. A reference to a
-//! junction the file lacks is left out, with a
-//! [`Warning::JunctionReferenceDropped`], and a `type` the spec does not
-//! allow reads as [`JunctionGroupKind::Unknown`], with a
+//! [`RoadNetwork::junction_groups_of`] finds a road's through its
+//! [`Road::junction`]: every group, since the spec lets a junction be in
+//! more than one. The router does not use them. A reference to a junction
+//! the file lacks is left out, with a [`Warning::JunctionReferenceDropped`],
+//! and one repeating a junction the group already names is left out too. A
+//! `type` the spec does not allow, or a missing one, reads as
+//! [`JunctionGroupKind::Unknown`], with a
 //! [`Warning::UnknownJunctionGroupType`]. No other reader to compare
 //! against reads them.
 //!

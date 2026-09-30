@@ -190,12 +190,12 @@ pub enum Warning {
         /// The `junction` it names, empty if it has none.
         junction_id: String,
     },
-    /// A `<junctionGroup>` whose `type` is none the spec allows. The crate
-    /// reads it as `unknown`.
+    /// A `<junctionGroup>` whose `type` is none the spec allows, or missing,
+    /// though the spec requires it. The crate reads it as `unknown`.
     UnknownJunctionGroupType {
         /// The `<junctionGroup id>`.
         group_id: String,
-        /// Its `type`.
+        /// Its `type`, empty if it has none.
         kind: String,
     },
     /// A `<crossPath>` whose `crossingRoad`, `roadAtStart` or `roadAtEnd`

@@ -68,11 +68,11 @@ pub(super) fn groups(root: roxmltree::Node) -> (Vec<JunctionGroup>, Vec<Warning>
             Some("roundabout") => JunctionGroupKind::Roundabout,
             Some("complexJunction") => JunctionGroupKind::ComplexJunction,
             Some("highwayInterchange") => JunctionGroupKind::HighwayInterchange,
-            None | Some("unknown") => JunctionGroupKind::Unknown,
-            Some(other) => {
+            Some("unknown") => JunctionGroupKind::Unknown,
+            other => {
                 warnings.push(Warning::UnknownJunctionGroupType {
                     group_id: od_id.clone(),
-                    kind: other.to_string(),
+                    kind: other.unwrap_or_default().to_string(),
                 });
                 JunctionGroupKind::Unknown
             }
@@ -83,6 +83,9 @@ pub(super) fn groups(root: roxmltree::Node) -> (Vec<JunctionGroup>, Vec<Warning>
             .filter(|n| n.has_tag_name("junctionReference"))
         {
             let junction = reference.attribute("junction").unwrap_or_default();
+            if members.iter().any(|m| m == junction) {
+                continue;
+            }
             if junctions.contains(&junction) {
                 members.push(junction.to_string());
             } else {
