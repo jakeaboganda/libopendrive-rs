@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Speed limits
+
+- Fixed: a `<speed>` whose limit is too large for an `f32`, such as
+  `max="1e39"`, became an infinite `SpeedLimit::Max`. It is now dropped
+  with a `Warning::SpeedLimitDropped`, as an unreadable one is.
+
 ### Viewer
 
 - The viewer opens a `.xodr` itself. Click `open .xodr` and pick a map and

@@ -789,7 +789,8 @@
 //!
 //! - The spec requires a `max` of at least 0 in `m/s`, `km/h` or `mph`, or
 //!   on a road `no limit` or `undefined`. The crate drops any other
-//!   `<speed>` and raises [`Warning::SpeedLimitDropped`]. The lane's limit
+//!   `<speed>`, and one whose limit is too large for an `f32`, and raises
+//!   [`Warning::SpeedLimitDropped`]. The lane's limit
 //!   there is then its road's, or the lane's `<speed>` before it.
 //! - The spec requires a `<type>`'s `s` and a lane `<speed>`'s `sOffset`.
 //!   A type without `s` is skipped. A missing or negative `sOffset` is 0, as

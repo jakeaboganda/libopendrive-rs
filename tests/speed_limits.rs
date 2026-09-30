@@ -157,8 +157,25 @@ fn a_speed_the_crate_cannot_read_is_dropped_with_a_warning() {
                 max: "fast".into(),
                 unit: String::new(),
             },
+            Warning::SpeedLimitDropped {
+                road_id: "3".into(),
+                s: 0.0,
+                lane: Some(-1),
+                max: "1e39".into(),
+                unit: String::new(),
+            },
         ]
     );
+}
+
+#[test]
+fn a_speed_too_large_for_an_f32_is_dropped_not_infinite() {
+    let (net, prov) = fixture();
+    assert!(on(net.speed_limits(), lane(&prov, "3", 0, -1)).is_empty());
+    assert!(net
+        .speed_limits()
+        .iter()
+        .all(|a| !matches!(a.value, SpeedLimit::Max(v) if !v.is_finite())));
 }
 
 #[cfg(feature = "serde")]

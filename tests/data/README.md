@@ -167,8 +167,8 @@ display areas, and a stop line's priority. Regenerate with
 `speed_limits.xodr` comes from `speed_limits.py`, which writes the XML
 itself. It has road types with speed limits in km/h, mph and none, lane
 speeds that override them, a road with two lane sections whose first type
-starts part way along, and a road with a type and speeds the crate can't
-read. Regenerate with
+starts part way along, a road with a type and speeds the crate can't
+read, and a lane speed too large for an `f32`. Regenerate with
 
     python3 tests/data/speed_limits.py
 

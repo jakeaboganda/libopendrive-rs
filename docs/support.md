@@ -291,7 +291,7 @@ junction or junction group.
 | `VirtualLinkDropped` | a virtual junction link the crate can't place |
 | `NeighborDropped` | a road `<neighbor>` the crate can't read |
 | `RailwayDropped` | a railway `<switch>` or platform `<segment>` the crate can't place |
-| `SpeedLimitDropped` | a `<speed>` whose `max` or `unit` the crate can't read |
+| `SpeedLimitDropped` | a `<speed>` whose `max` or `unit` the crate can't read, or whose limit is too large for an `f32` |
 | `AccessDropped` | an `<access>` whose `rule` is neither `allow` nor `deny` |
 | `VisibilityDropped` | a `<visibility>` with a distance the crate can't read |
 

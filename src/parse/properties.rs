@@ -19,8 +19,9 @@ impl SpeedDef {
     /// A `<speed>`'s `max` in its `unit`. `words` allows the road's `no
     /// limit` and `undefined`, which a lane's `max` may not be.
     ///
-    /// The spec says a missing unit is m/s. A `max` below 0, or a unit other
-    /// than `m/s`, `km/h` or `mph`, is unreadable.
+    /// The spec says a missing unit is m/s. A `max` below 0, a unit other
+    /// than `m/s`, `km/h` or `mph`, or a limit too large for an `f32` is
+    /// unreadable.
     fn parse(node: roxmltree::Node, words: bool) -> Self {
         let max = node.attribute("max").unwrap_or_default();
         match max {
@@ -34,10 +35,14 @@ impl SpeedDef {
             Some("mph") => Some(0.44704),
             Some(_) => None,
         };
-        let value = attr_f64(node, "max").filter(|v| *v >= 0.0);
-        match (value, scale) {
-            (Some(v), Some(k)) => Self::Limit(SpeedLimit::Max((v * k) as f32)),
-            _ => Self::Unreadable {
+        let limit = attr_f64(node, "max")
+            .filter(|v| *v >= 0.0)
+            .zip(scale)
+            .map(|(v, k)| (v * k) as f32)
+            .filter(|v| v.is_finite());
+        match limit {
+            Some(mps) => Self::Limit(SpeedLimit::Max(mps)),
+            None => Self::Unreadable {
                 max: max.to_string(),
                 unit: node.attribute("unit").unwrap_or_default().to_string(),
             },
