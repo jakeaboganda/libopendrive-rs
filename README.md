@@ -55,15 +55,15 @@ of a bad file, it says so in `Provenance::warnings`.
 ## Viewer
 
 The crate draws nothing. [`viewer/`](viewer/README.md) has a three.js page
-that draws a baked map. Hover a lane, object or signal to read what the crate
-knows about it.
+that runs the crate in the browser, compiled to WebAssembly. Open a `.xodr`
+and hover a lane, object or signal to read what the crate knows about it.
 
 ```sh
-cargo run --example viewer_export --features serde -- tests/data/*.xodr
+sh viewer/build.sh
 cd viewer/web && python3 -m http.server 8000
 ```
 
-Then open <http://localhost:8000> and pick a map from the `map` list.
+Then open <http://localhost:8000> and click `open .xodr`.
 
 ![A traffic island's details in the viewer](viewer/objects.png)
 
