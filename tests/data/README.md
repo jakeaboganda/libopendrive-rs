@@ -1,7 +1,7 @@
 # Test maps
 
-Fixtures for the integration tests. They are excluded from the published crate
-(see `exclude` in `Cargo.toml`), so run these tests from a git checkout.
+Fixtures for the integration tests. `exclude` in `Cargo.toml` leaves them out
+of the published crate, so run these tests from a git checkout.
 
 ## Third-party
 
@@ -36,10 +36,10 @@ the spec doesn't allow. Regenerate with
 
 `demo.xodr` is the OpenDRIVE twin of the `demo_road` fixture in `src`.
 `testtrack.xodr` is a purpose-built vehicle-tuning track: straight, crest, dip,
-and three banked curves of known radius. The rest are minimal files aimed at
-one behaviour each -- `spiral`, `banked_sweeper`, `right_banked_sweeper`,
-`climbing_banked`, `mid_road_super`, and the malformed set (`no_geometry`,
-`non_finite`, `zero_length`, `dangling_link`).
+and three banked curves of known radius. `spiral`, `banked_sweeper`,
+`right_banked_sweeper`, `climbing_banked` and `mid_road_super` are minimal
+files aimed at one behaviour each. So are the malformed ones: `no_geometry`,
+`non_finite`, `zero_length` and `dangling_link`.
 
 `crg.xodr` lays generated OpenCRG files on four roads, one per mode:
 `crg_bumps.crg`, a 40 m elevation grid with a speed bump, a washboard, two
@@ -179,7 +179,8 @@ outside a level lane that isn't level. Regenerate with
 
     python3 tests/data/level_lanes.py
 
-`lane_heights.xodr` comes from `lane_heights.py` the same way. It has
+`lane_heights.xodr` comes from `lane_heights.py`, which uses
+[scenariogeneration] like `objects.py`. It has
 raised sidewalks, one flat and one with a kerb ramp, on a flat road, a
 banked and climbing road, a road with two lane sections, and an arc. The
 flat road also has poles, a sign and road marks on and beside them.
