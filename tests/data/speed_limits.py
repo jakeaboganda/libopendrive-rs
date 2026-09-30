@@ -17,6 +17,9 @@ section only.
 Road 2, 20 m from (0, 40), has lane -1. Its type is `highway`, which the
 spec does not name, with a `<speed>` in `kmh`. Lane -1 has a `<speed>`
 with `max="fast"`.
+
+Road 3, 20 m from (0, 60), has lane -1, with a `<speed>` of 1e39 m/s, a
+number too large for an `f32`.
 """
 
 from pathlib import Path
@@ -74,6 +77,9 @@ roads = [
     road(2, 40, 20,
          [road_type(0, "highway", 80, "kmh")],
          [section(0, right=[lane(-1, [(0, "fast", None)])])]),
+    road(3, 60, 20,
+         [],
+         [section(0, right=[lane(-1, [(0, "1e39", None)])])]),
 ]
 
 xodr = (

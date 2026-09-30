@@ -313,8 +313,8 @@ pub enum Warning {
         /// The `<junction id>`.
         junction_id: String,
     },
-    /// A `<speed>` whose `max` or `unit` the crate can't read. The crate
-    /// drops it, so the lane's limit there is its road's, or the lane's
+    /// A `<speed>` whose `max` or `unit` the crate can't read, or whose
+    /// limit is too large for an `f32`. The crate drops it, so the lane's limit there is its road's, or the lane's
     /// `<speed>` before it.
     SpeedLimitDropped {
         /// The `<road id>` it is on.
