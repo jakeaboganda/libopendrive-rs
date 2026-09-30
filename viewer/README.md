@@ -4,42 +4,64 @@ A three.js page that draws maps baked by `libopendrive`. Hover a lane, an
 object, a signal, a road mark, a tunnel, a bridge or a CRG heat map to read
 what the crate knows about it.
 
-The viewer has two parts. `examples/viewer_export.rs` bakes `.xodr` maps
-into JSON in `web/`, and lists them in `web/scenes.json`. `web/index.html`
-draws the one you pick. The crate itself does no rendering.
+The crate itself does no rendering. The `libopendrive-viewer` crate in this
+folder bakes a `.xodr` map into JSON, and `web/index.html` draws that JSON.
+The page runs the crate in the browser, compiled to WebAssembly, so it opens
+a `.xodr` straight from disk. The `viewer_export` binary bakes the same JSON
+ahead of time, for maps you want in the page's `map` list.
 
 ![Hovering a lane in Town07, with its successor in green and its predecessor in orange](town07.png)
 
 ## Run it
 
-1. Bake maps to JSON. Each goes to `viewer/web/`, named after its map, so
-   this writes `viewer/web/town07.json`. Name as many maps as you like, such
-   as `tests/data/*.xodr`.
+1. Build the WebAssembly baker into `viewer/web/pkg/`. The first run also
+   installs the `wasm32-unknown-unknown` target and the matching
+   `wasm-bindgen` CLI. Run it again after you change the crate.
 
    ```sh
-   cargo run --example viewer_export --features serde -- tests/data/town07.xodr
+   sh viewer/build.sh
    ```
 
-2. Serve the folder. The page loads the JSON with `fetch()`, which needs
-   HTTP, so opening `index.html` as a file won't work.
+2. Serve the folder. Browsers load ES modules and WebAssembly only over
+   HTTP, so opening `index.html` as a file won't work. Any static file
+   server will do.
 
    ```sh
    cd viewer/web && python3 -m http.server 8000
    ```
 
-3. Open <http://localhost:8000> and pick a map from the `map` list in the
-   toolbar.
+3. Open <http://localhost:8000>, click `open .xodr` in the toolbar and pick
+   a map. Where the map lays OpenCRG files on its roads, pick them in the
+   same dialog. The page matches them by file name, and lists any it lacks
+   in the sidebar's warnings.
 
-The list holds every map baked into `viewer/web/`. The URL names the map on
-screen, as `?scene=town07.json`, so a link opens the same one. To bake to
-another path, give one map and the output:
+The page keeps the files you opened in the browser's IndexedDB, so a reload
+draws the same map. The URL names it, as `?open=town07.xodr`, but only this
+browser has the file, so the link won't work anywhere else.
+
+A map that fails to import shows the crate's error in place of the map.
+
+### Baked maps
+
+`viewer_export` bakes maps to JSON in `viewer/web/`, each named after its
+map, and lists them in `viewer/web/scenes.json`. The `map` list offers every
+one, and needs neither the WebAssembly build nor the original files. Name as
+many maps as you like, such as `tests/data/*.xodr`:
 
 ```sh
-cargo run --example viewer_export --features serde -- tests/data/objects.xodr /tmp/objects.json
+cargo run --release -p libopendrive-viewer -- tests/data/town07.xodr
 ```
 
-A map that fails to load is reported, the others still bake, and the
-exporter exits with an error.
+The URL names a baked map as `?scene=town07.json`, so a link opens the same
+one. To bake to another path, give one map and the output:
+
+```sh
+cargo run --release -p libopendrive-viewer -- tests/data/objects.xodr /tmp/objects.json
+```
+
+The exporter reads OpenCRG files from beside the `.xodr`. A map that fails
+to load is reported, the others still bake, and the exporter exits with an
+error.
 
 `tests/data/objects.xodr` is a small test map with one of everything the
 viewer draws, so use it to try the features below.
@@ -57,7 +79,8 @@ viewer draws, so use it to try the features below.
 | `s` | toggle signals |
 | `m` | toggle road marks |
 | `c` | toggle the CRG heat map |
-| pick in the `map` list | load another baked map |
+| `open .xodr` | open a map, with any `.crg` files it uses |
+| pick in the `map` list | load a baked map |
 | click a sidebar entry | select it and move the camera to it, or clear it if selected |
 | click a lane | drop a marker there |
 | `f` / `b` | step the marker 5 m along the lanes, or back |
@@ -151,7 +174,7 @@ its road, lane, lane section and centerline `s`.
 
 The page steps the marker as `RoadNetwork::advance` does, along the lanes'
 centerlines and onto each successor or predecessor, from the lane lengths,
-directions and links the exporter writes. It keeps the marker's offset to
+directions and links the baker writes. It keeps the marker's offset to
 the left of the traffic. On a lane whose `direction` is `both`, the marker
 splits and steps each way.
 
@@ -273,11 +296,7 @@ up with the rest, and another dashed line runs to it. The readout shows:
 ![Hovering a traffic light that also applies on another road](signals.png)
 
 `tests/data/signals.xodr` has signs and lights with every feature the viewer
-draws. Bake it and pick `signals`:
-
-```sh
-cargo run --example viewer_export --features serde -- tests/data/signals.xodr
-```
+draws. Open it to try them.
 
 ## Road marks
 
@@ -307,16 +326,13 @@ The readout shows:
 
 `tests/data/road_marks.xodr` has every road mark type on one road, a road
 of `<type><line>` marks, and a road with `<explicit>` lines and a sway.
-Bake it and pick `road_marks`:
-
-```sh
-cargo run --example viewer_export --features serde -- tests/data/road_marks.xodr
-```
+Open it to try them.
 
 ## OpenCRG surfaces
 
-Where the map lays OpenCRG files on its roads, the exporter loads them from
-beside the `.xodr`, and warns about any it cannot read. It samples
+Where the map lays OpenCRG files on its roads, the baker loads the ones you
+opened with it, or the exporter the ones beside the `.xodr`. The sidebar's
+warnings name any it could not read. It samples
 `RoadSurface` over every lane a CRG covers, and the viewer draws the result
 as a heat map over the road. The colour is the CRG grid's own height, times
 `zScale`, without the file's reference-line height or bank. White is the
@@ -333,11 +349,8 @@ The grid is as fine as the finest CRG file, or coarser to keep to about
 250,000 cells per file.
 
 `tests/data/crg.xodr` lays the same generated file on four roads, one per
-mode, and a friction file on the first. Bake it and pick `crg`:
-
-```sh
-cargo run --example viewer_export --features serde -- tests/data/crg.xodr
-```
+mode, and a friction file on the first. Open it with `crg_bumps.crg` and
+`crg_grip.crg`, which sit beside it.
 
 ![The CRG test map from above](crg.png)
 
@@ -367,7 +380,7 @@ value `Mesh::height_at` reports. It varies smoothly across facet edges
 instead of jumping at each one.
 
 The road `s` and `t` are OpenDRIVE's own: `s` along the road's reference
-line and `t` across it, positive to the left. The exporter gives each
+line and `t` across it, positive to the left. The baker gives each
 centerline vertex its road `s` and `t` from `RoadNetwork::road_position_on`,
 on the lane's own road. The page interpolates them along the lane, and adds
 the hovered point's offset from the centerline, tilted with the lane.
@@ -390,7 +403,7 @@ OpenDRIVE lane id for each `LaneId`.
 
 ## Where the lane boundaries come from
 
-The page builds them from the mesh it already has, not from the exporter. A
+The page builds them from the mesh it already has, not from the baker. A
 `LaneSpan`'s vertices alternate between the left and right edge, one pair per
 cross-section. The even vertices trace the left boundary and the odd ones
 the right. Exporting the same lines again would double the lane data for
