@@ -592,16 +592,16 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
     let heights: Vec<[f32; 2]> = prov
         .map(|p| p.heights.iter().map(|h| [h.inner, h.outer]).collect())
         .unwrap_or_default();
+
     // Parallel to `centerline`: each vertex's road `s` and `t`, on the
-    // lane's own road where roads overlap.
+    // lane's own road where roads overlap, or `null` where that fails.
     let road = net.road_lane(span.lane).map(|at| at.road);
-    let road_st: Vec<[f64; 2]> = match (lane, road) {
+    let road_st: Vec<Option<[f64; 2]>> = match (lane, road) {
         (Some(lane), Some(road)) => lane
             .center
             .points()
             .iter()
-            .filter_map(|&p| net.road_position_on(road, p))
-            .map(|at| [at.s, at.t])
+            .map(|&p| net.road_position_on(road, p).map(|at| [at.s, at.t]))
             .collect(),
         _ => Vec::new(),
     };
