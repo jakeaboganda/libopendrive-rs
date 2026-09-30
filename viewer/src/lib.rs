@@ -1,36 +1,42 @@
 //! Bake an OpenDRIVE map into the JSON the three.js viewer in `web/` reads.
 //!
-//! [`bake`] is the whole job. The `viewer_export` binary calls it on files
-//! and writes the JSON beside the page. The page calls it in the browser,
-//! compiled to WebAssembly, on a map the user opens.
+//! [`bake`] is the one entry point. The `viewer_export` binary calls it on
+//! files and writes the JSON beside the page. The page calls it in the
+//! browser, compiled to WebAssembly, on a map the user opens.
 //!
-//! The output is one object: a merged surface mesh (flat position/normal/index
-//! buffers, ready for a three.js `BufferGeometry`), a per-lane table, and an
-//! object table. Each
-//! lane entry names the OpenDRIVE road, section, and lane id it came from, what
-//! the lane is for, the lanes before and after it, the mesh slice it owns (so a
-//! picked triangle resolves to a lane), and its centerline with the heading at each point (so the viewer can
-//! project the cursor to `(s, t)` and read out the same heading the crate
-//! would), the road `s` and `t` at each point, and the speed limits and road
-//! types along it. Each object entry is its type, name, and shape: a pose and extent
-//! for a solid, or world-space corners for an outline or a sweep. The object
-//! mesh from [`RoadNetwork::object_mesh`] comes too, in the same flat buffers
-//! with each object's slice of it. A structure table lists the tunnels and
-//! bridges, each with the stretch of every lane it covers. A signal table
-//! gives each signal's meaning, the lanes it applies to, and its board's
-//! pose and size. A controller table lists the signals each controller
-//! switches together. A road mark table gives each mark's meaning, the lanes
-//! either side of it, and its lines as world-space quads. A warning table
-//! gives each [`Warning`]'s message and the road it names.
+//! The JSON is one object with these keys:
 //!
-//! Where the map lays OpenCRG files on its roads, [`bake`] asks for each one
-//! and samples [`RoadSurface`] over every lane they cover:
-//! a grid draped on the road mesh, with the CRG height, the surface height and
-//! the friction at each vertex.
+//! - `mesh`: the merged surface mesh, as flat position, normal and index
+//!   buffers that a three.js `BufferGeometry` takes directly.
+//! - `lanes`: one entry per [`LaneSpan`]. Each names the OpenDRIVE road,
+//!   section and lane id, the lane type and direction, the successors and
+//!   predecessors, and the mesh slice the lane owns, so a picked triangle
+//!   resolves to its lane. It carries the centerline with the heading and
+//!   the road `s` and `t` at each point, so the page can read out what the
+//!   crate would. It also carries the speed limits, road types, rules,
+//!   access, materials and visibility along the lane.
+//! - `objects` and `objectMesh`: each object's type, name and shape, and the
+//!   mesh from [`RoadNetwork::object_mesh`] with each object's slice of it.
+//! - `structures`: the tunnels and bridges, with the stretch of every lane
+//!   each one covers.
+//! - `signals` and `controllers`: each signal's meaning, lanes and board,
+//!   and the signals each controller switches together.
+//! - `roadMarks`: each mark's meaning, the lanes either side of it, and its
+//!   lines as world-space quads.
+//! - `warnings`: each [`Warning`]'s message and the road it names, then the
+//!   baker's own [`Scene::notes`].
+//! - `geoReference`, `priorities`, `roadNeighbors`, `junctionGroups` and
+//!   `crossPaths`: the map's records of each, by OpenDRIVE id.
+//! - `junctionAreas` and `virtualJunctions`: each junction's boundary and
+//!   ground mesh, and each virtual junction's stretch and links as points.
+//! - `switches` and `platforms`: each railway switch's points, and each
+//!   platform segment as a strip of quads beside its track.
+//! - `crg`: the OpenCRG files the map names, and [`RoadSurface`] sampled
+//!   over every lane they cover, on a grid draped on the road mesh.
 //!
-//! Lane boundaries are not exported. They are already in the mesh: a lane's
-//! vertex range alternates left and right rib, which is what the viewer draws
-//! them from. See [`LaneSpan`].
+//! Lane boundaries are not exported. The mesh already holds them: a lane's
+//! vertex range alternates left and right rib, and the page draws the
+//! boundaries from those. See [`LaneSpan`].
 
 use std::collections::{HashMap, HashSet};
 

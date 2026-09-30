@@ -1,29 +1,33 @@
 # OpenDRIVE viewer
 
-A three.js page that draws maps baked by `libopendrive`. Hover a lane, an
-object, a signal, a road mark, a tunnel, a bridge or a CRG heat map to read
-what the crate knows about it.
+A three.js page that draws maps baked by `libopendrive`. Hover anything it
+draws, such as a lane, an object, a signal or a junction, to read what
+`libopendrive` knows about it.
 
-The crate itself does no rendering. The `libopendrive-viewer` crate in this
-folder bakes a `.xodr` map into JSON, and `web/index.html` draws that JSON.
-The page runs the crate in the browser, compiled to WebAssembly, so it opens
-a `.xodr` straight from disk. The `viewer_export` binary bakes the same JSON
-ahead of time, for maps you want in the page's `map` list.
+`libopendrive` draws nothing itself. The `libopendrive-viewer` crate in this
+folder is the baker. It turns a `.xodr` map into JSON, and
+`web/index.html` draws that JSON.
+The page runs `libopendrive-viewer` in the browser, compiled to WebAssembly,
+so it opens a `.xodr` straight from disk. The `viewer_export` binary bakes
+the same JSON ahead of time, for maps you want in the page's `map` list.
 
 ![Hovering a lane in Town07, with its successor in green and its predecessor in orange](town07.png)
 
 ## Run it
 
-1. Launch it. This builds the WebAssembly baker into `viewer/web/pkg/`,
-   serves `viewer/web` on <http://localhost:8000> and opens it in your
-   browser. Ctrl-C stops it. Give another port as `sh viewer/run.sh 8080`.
+1. Start the viewer:
 
    ```sh
    sh viewer/run.sh
    ```
 
+   The script builds the WebAssembly baker into `viewer/web/pkg/`, serves
+   `viewer/web` on <http://localhost:8000> and opens that page in your
+   browser. To use another port, give it as `sh viewer/run.sh 8080`. Press
+   Ctrl-C to stop the server.
+
    The first run also installs the `wasm32-unknown-unknown` target and the
-   matching `wasm-bindgen` CLI. Later runs rebuild only what changed.
+   matching `wasm-bindgen` CLI.
 
 2. Click `open .xodr` in the toolbar and pick a map. Where the map lays
    OpenCRG files on its roads, pick them in the same dialog. The page
@@ -58,8 +62,8 @@ one. To bake to another path, give one map and the output:
 cargo run --release -p libopendrive-viewer -- tests/data/objects.xodr /tmp/objects.json
 ```
 
-The exporter reads OpenCRG files from beside the `.xodr`. A map that fails
-to load is reported, the others still bake, and the exporter exits with an
+`viewer_export` reads OpenCRG files from beside the `.xodr`. If a map fails
+to load, `viewer_export` reports it, bakes the others, and exits with an
 error.
 
 `tests/data/objects.xodr` is a small test map with one of everything the
@@ -86,9 +90,12 @@ viewer draws, so use it to try the features below.
 | `Esc` | clear the marker |
 | type in the filter box | filter lanes by road id, lane id or lane type, objects by type, subtype, name or id, signals by name, country, type, subtype or id, tunnels and bridges by name, kind or road, and warnings by their text |
 
-The checkboxes along the top toggle centerlines (green), lane boundaries
+The `view` list draws the road solid, as a wireframe, or both. The
+checkboxes along the top toggle centerlines (green), lane boundaries
 (cream), normals (a hair at every mesh vertex), objects, tunnels, bridges,
-signals, road marks, and the CRG heat map.
+junctions, signals, road marks and the CRG heat map. `flag bad tris` paints
+every inverted or near-zero-area triangle of the road mesh red, and counts
+them.
 
 ## Sidebar
 
@@ -97,11 +104,12 @@ tunnels and bridges above them. A group of 12 or fewer starts open. So on a
 small map everything is listed, and on town07 you see 234 closed roads.
 Filtering opens every group that matches.
 
-At the top, in amber, are the load's warnings: what the crate dropped from a
-bad file, such as a road with no geometry or a lane with no `<width>`. Click
-one to light the lanes of the road it names and frame them. A skipped road
-has no lanes, so the readout says so instead. A clean map has no warnings
-group.
+At the top, in amber, are the map's warnings. Most are what `libopendrive`
+dropped from a bad file, such as a road with no geometry or a lane with no
+`<width>`. The rest come from the baker: a CRG file it could not load, or a
+mesh that is not a valid trimesh. Click a warning to light the lanes of the
+road it names and frame them. A skipped road has no lanes, so the readout
+says so instead. A clean map has no warnings group.
 
 Click an object or a signal to select it. The camera frames it, and the
 readout opens beside it. It stays outlined, with its lanes lit and a
@@ -114,11 +122,12 @@ and `<offset>` as the file gives them. A map without either shows neither.
 ## Lanes
 
 Hover a lane to highlight its lane section. A white arrow on its centerline
-points the way traffic drives, so on a `backward` lane it runs against the
-heading below. On a lane whose `direction` is `both` it points both ways. On a left-hand-traffic road the left lanes are the
-`forward` ones. The lanes it leads to are green and the lanes that lead into
-it are orange. While a lane is selected in the sidebar, its own links stay
-lit as you hover others. The readout shows:
+points the way traffic drives, so on a `backward` lane the arrow runs
+against the heading below. On a lane whose `direction` is `both`, the arrow
+points both ways. On a left-hand-traffic road the left lanes are the
+`forward` ones. The hovered lane's successors are green and its
+predecessors orange. While a lane is selected in the sidebar, its own links
+stay lit as you hover others. The readout shows:
 
 - the road id, the OpenDRIVE lane id and the lane type
 - the surface point `x, y, z`
@@ -126,8 +135,8 @@ lit as you hover others. The readout shows:
 - the lane position: the offset from the lane's center toward `+t`, and how
   far along the lane's centerline the point is
 - the lane's width at that point, which grows along a lane that opens out
-  of nothing, whether its widths or its `<border>`s shape it. A tilted
-  lane's is measured across its surface.
+  of nothing, whether its widths or its `<border>`s shape it. On a tilted
+  lane, the page measures the width across the lane's surface.
 - the lane's heading
 - its cross slope at that point, in percent up or down toward +t, from
   superelevation, lateral shape and lane heights together
@@ -301,8 +310,8 @@ draws. Open it to try them.
 
 Each road mark's lines are painted on the road in their colour, cut into
 dashes where the crate dashes them, and moved sideways where the mark
-sways. A mark that isn't paint, such as a kerb,
-or a mark of type `none`, draws nothing. The legend lists the colours in
+sways. A mark that isn't paint, such as a kerb, or a mark of type `none`,
+draws nothing. The legend lists the colours in
 this map. A colour the page doesn't know is magenta.
 
 Hover a line to outline its mark and light up the lanes either side of it.
@@ -329,10 +338,10 @@ Open it to try them.
 
 ## OpenCRG surfaces
 
-Where the map lays OpenCRG files on its roads, the baker loads the ones you
-opened with it, or the exporter the ones beside the `.xodr`. The sidebar's
-warnings name any it could not read. It samples
-`RoadSurface` over every lane a CRG covers, and the viewer draws the result
+Where the map lays OpenCRG files on its roads, the page loads the ones you
+opened with the map, and `viewer_export` loads the ones beside the `.xodr`.
+The sidebar's warnings name any file that did not load. The baker samples
+`RoadSurface` over every lane a CRG covers, and the page draws the result
 as a heat map over the road. The colour is the CRG grid's own height, times
 `zScale`, without the file's reference-line height or bank. White is the
 median of those heights, blue is below it and red above. The scale saturates

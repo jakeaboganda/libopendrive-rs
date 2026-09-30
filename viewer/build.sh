@@ -1,6 +1,7 @@
 #!/bin/sh
 # Build the viewer's WebAssembly baker into viewer/web/pkg, so the page can
-# open .xodr files itself. Run from anywhere; rerun after changing the crate.
+# open .xodr files itself. Run it from any folder, and again after changing
+# the crate.
 #
 #     sh viewer/build.sh
 #
