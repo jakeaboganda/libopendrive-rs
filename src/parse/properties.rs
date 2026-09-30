@@ -215,13 +215,18 @@ impl VisibilityDef {
     /// A `<visibility>`. A distance missing, not a number, or below 0 is
     /// unreadable.
     fn parse(node: roxmltree::Node) -> Self {
-        let distance = |name: &'static str| attr_f64(node, name).filter(|v| *v >= 0.0).ok_or(name);
+        let distance = |name: &'static str| {
+            attr_f64(node, name)
+                .map(|v| v as f32)
+                .filter(|v| v.is_finite() && *v >= 0.0)
+                .ok_or(name)
+        };
         let read = || -> Result<Visibility, &'static str> {
             Ok(Visibility {
-                forward: distance("forward")? as f32,
-                back: distance("back")? as f32,
-                left: distance("left")? as f32,
-                right: distance("right")? as f32,
+                forward: distance("forward")?,
+                back: distance("back")?,
+                left: distance("left")?,
+                right: distance("right")?,
             })
         };
         match read() {

@@ -5,7 +5,9 @@
 //! Its road is a straight along +X, so a lane's distance along its
 //! centerline is the road's `s`, less the start of its lane section.
 
-use libopendrive::{load_file_with_provenance, LaneId, Provenance, Visibility, Warning};
+use libopendrive::{
+    load_file_with_provenance, load_str_with_provenance, LaneId, Provenance, Visibility, Warning,
+};
 
 const FIXTURE: &str = "tests/data/lane_visibility.xodr";
 
@@ -95,6 +97,22 @@ fn a_visibility_with_a_distance_it_cannot_read_is_dropped_with_a_warning() {
         dropped[1].to_string(),
         "road \"0\": lane 1's <visibility> at s 40.00 m dropped, back \"-5\" is not a distance"
     );
+}
+
+#[test]
+fn a_distance_too_large_for_f32_is_dropped_with_a_warning() {
+    let xml = std::fs::read_to_string(FIXTURE)
+        .unwrap()
+        .replace(r#"forward="300""#, r#"forward="1e39""#);
+    let (net, prov) = load_str_with_provenance(&xml).unwrap();
+    assert!(net
+        .lane_visibility()
+        .iter()
+        .all(|a| a.value.forward.is_finite()));
+    assert!(prov.warnings.iter().any(|w| matches!(
+        w,
+        Warning::VisibilityDropped { distance, value, .. } if distance == "forward" && value == "1e39"
+    )));
 }
 
 #[cfg(feature = "serde")]

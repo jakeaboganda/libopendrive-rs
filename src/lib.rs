@@ -600,9 +600,9 @@
 //! - Neither CARLA nor the attribute names say whether `forward` is the way
 //!   the lane's traffic runs or the road's `+s`. The crate keeps the four
 //!   distances as the file names them and turns none of them.
-//! - A `<visibility>` with a distance missing, not a number, or below 0 is
-//!   dropped, with a [`Warning::VisibilityDropped`]. CARLA reads a missing
-//!   one as 0. The lane then has no visibility up to the next `<visibility>`.
+//! - A `<visibility>` with a distance missing, not a number, below 0 or too
+//!   large for an `f32` is dropped, with a [`Warning::VisibilityDropped`].
+//!   CARLA reads a missing one as 0. The lane then has no visibility up to the next `<visibility>`.
 //! - A missing or negative `sOffset` is 0, and entries out of order are
 //!   sorted, as for a `<speed>`.
 //!

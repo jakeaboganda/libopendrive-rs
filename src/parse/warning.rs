@@ -129,8 +129,8 @@ pub enum Warning {
         /// Its `rule`, as the file writes it. Empty if it has none.
         rule: String,
     },
-    /// A lane `<visibility>` with a distance missing, not a number, or below
-    /// 0. The lane has no visibility from its `sOffset` to the next
+    /// A lane `<visibility>` with a distance missing, not a number, below 0,
+    /// or too large for an `f32`. The lane has no visibility from its `sOffset` to the next
     /// `<visibility>`.
     VisibilityDropped {
         /// The `<road id>` it is on.
