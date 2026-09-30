@@ -52,7 +52,7 @@ per object.
 ## Serialization
 
 The optional `serde` feature serializes the network and its mesh.
-`examples/viewer_export.rs` uses it to bake maps to the JSON the viewer reads.
+The `viewer/` crate uses it to bake maps to the JSON the viewer reads.
 You can also use it to cache an import. A `RoadNetwork` serializes its lanes,
 objects, structures, signals, road marks, CRG records and roads, and rebuilds
 its indexes when deserialized, so the result behaves like a freshly imported

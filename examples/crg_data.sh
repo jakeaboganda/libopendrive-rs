@@ -23,7 +23,7 @@ chrono=https://raw.githubusercontent.com/projectchrono/chrono/030e6aa85c3b5d8bfc
 
 mkdir -p "$dir" viewer/web
 cargo build -q --release --example crg_to_xodr
-cargo build -q --release --features serde --example viewer_export
+cargo build -q --release -p libopendrive-viewer
 
 for file in "$asam/country_road.crg" "$asam/belgian_block.crg" \
     "$chrono/halfround_6in.crg" "$chrono/detrended_rms_course_2in.crg" \
@@ -31,5 +31,5 @@ for file in "$asam/country_road.crg" "$asam/belgian_block.crg" \
     name=$(basename "$file" .crg)
     [ -f "$dir/$name.crg" ] || curl -fsSL -o "$dir/$name.crg" "$file"
     target/release/examples/crg_to_xodr "$dir/$name.crg"
-    target/release/examples/viewer_export "$dir/$name.xodr" "viewer/web/$name.json"
+    target/release/viewer_export "$dir/$name.xodr" "viewer/web/$name.json"
 done

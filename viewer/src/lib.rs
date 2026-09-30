@@ -1,15 +1,8 @@
-//! Bake OpenDRIVE maps and export each as the JSON the three.js viewer reads.
+//! Bake an OpenDRIVE map into the JSON the three.js viewer in `web/` reads.
 //!
-//! ```sh
-//! cargo run --example viewer_export --features serde -- tests/data/*.xodr
-//! cargo run --example viewer_export --features serde -- \
-//!     tests/data/testtrack.xodr /tmp/testtrack.json
-//! ```
-//!
-//! Each map goes to `viewer/web/<map name>.json`, unless there is one map and
-//! an output path after it. A map that fails to load is reported and the rest
-//! still export. It then lists every scene in `viewer/web/` in
-//! `scenes.json`, which the viewer's map picker reads.
+//! [`bake`] is the whole job. The `viewer_export` binary calls it on files
+//! and writes the JSON beside the page. The page calls it in the browser,
+//! compiled to WebAssembly, on a map the user opens.
 //!
 //! The output is one object: a merged surface mesh (flat position/normal/index
 //! buffers, ready for a three.js `BufferGeometry`), a per-lane table, and an
@@ -30,8 +23,8 @@
 //! either side of it, and its lines as world-space quads. A warning table
 //! gives each [`Warning`]'s message and the road it names.
 //!
-//! Where the map lays OpenCRG files on its roads, the exporter loads them from
-//! beside the `.xodr` and samples [`RoadSurface`] over every lane they cover:
+//! Where the map lays OpenCRG files on its roads, [`bake`] asks for each one
+//! and samples [`RoadSurface`] over every lane they cover:
 //! a grid draped on the road mesh, with the CRG height, the surface height and
 //! the friction at each vertex.
 //!
@@ -40,14 +33,10 @@
 //! them from. See [`LaneSpan`].
 
 use std::collections::{HashMap, HashSet};
-use std::env;
-use std::fs;
-use std::path::Path;
-use std::process::ExitCode;
 
 use libopendrive::opencrg::CrgGrid;
 use libopendrive::{
-    load_file_with_provenance, Access, Along, Controller, ControllerProvenance, Corner, CrgMode,
+    load_str_with_provenance, Access, Along, Controller, ControllerProvenance, Corner, CrgMode,
     CrgPurpose, CrgSurface, CrossPathEnd, Direction, Extent, JunctionArea, JunctionGroupKind,
     LaneId, LanePosition, LaneProvenance, LaneSpan, LinePattern, LinkPoint, Marking, Mesh, Object,
     ObjectProvenance, Orientation, PlatformSegment, Point, Provenance, Referenced, RoadEnd,
@@ -57,133 +46,59 @@ use libopendrive::{
 };
 use serde_json::{json, Map, Value};
 
-/// Where scenes go without an output path, and the folder the viewer serves.
-const SCENES: &str = "viewer/web";
-
-fn main() -> ExitCode {
-    let args: Vec<String> = env::args().skip(1).collect();
-    let jobs: Vec<(String, String)> = match args.as_slice() {
-        [input, output] if output.ends_with(".json") => vec![(input.clone(), output.clone())],
-        inputs if !inputs.is_empty() && !inputs.iter().any(|a| a.ends_with(".json")) => inputs
-            .iter()
-            .map(|input| {
-                let stem = Path::new(input).file_stem().unwrap_or_default();
-                let output = format!("{SCENES}/{}.json", stem.to_string_lossy());
-                (input.clone(), output)
-            })
-            .collect(),
-        _ => {
-            eprintln!("usage: viewer_export <input.xodr> [output.json]");
-            eprintln!("       viewer_export <input.xodr>...");
-            return ExitCode::FAILURE;
-        }
-    };
-
-    let mut failed = 0;
-    let mut written: HashMap<&str, &str> = HashMap::new();
-    for (input, output) in &jobs {
-        if let Some(first) = written.get(output.as_str()) {
-            eprintln!("skipping {input}: {first} already wrote {output}");
-            failed += 1;
-            continue;
-        }
-        match export(input, output) {
-            Ok(()) => {
-                written.insert(output, input);
-            }
-            Err(e) => {
-                eprintln!("{input}: {e}");
-                failed += 1;
-            }
-        }
-    }
-
-    let scenes = fs::canonicalize(SCENES).ok();
-    let in_scenes = |output: &&str| {
-        let folder = Path::new(output)
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty());
-        fs::canonicalize(folder.unwrap_or(Path::new("."))).ok() == scenes
-    };
-    if scenes.is_some() && written.keys().any(in_scenes) {
-        if let Err(e) = write_scene_list(Path::new(SCENES)) {
-            eprintln!("warning: listing scenes in {SCENES}: {e}");
-        }
-    }
-    if failed > 0 {
-        eprintln!("{failed} of {} maps not exported", jobs.len());
-        return ExitCode::FAILURE;
-    }
-    ExitCode::SUCCESS
+/// A baked map: the scene the page draws, and what the viewer noticed on
+/// the way that the crate's warnings don't cover.
+pub struct Scene {
+    /// The scene. Its `warnings` table ends with `notes`.
+    pub json: Value,
+    /// A mesh that is not a valid trimesh, or a CRG file that did not load.
+    pub notes: Vec<String>,
 }
 
-/// Bake one map and write its viewer scene to `output`.
-fn export(input: &str, output: &str) -> Result<(), String> {
+/// Bake an OpenDRIVE document into its viewer scene. `crg` reads the
+/// OpenCRG file a `<CRG file>` names, relative to the map.
+pub fn bake(
+    xodr: &str,
+    mut crg: impl FnMut(&str) -> Result<CrgGrid, String>,
+) -> Result<Scene, String> {
     let (net, provenance) =
-        load_file_with_provenance(input).map_err(|e| format!("import failed: {e}"))?;
+        load_str_with_provenance(xodr).map_err(|e| format!("import failed: {e}"))?;
+    let mut notes = Vec::new();
 
     let mesh = net.surface_mesh();
     if let Err(e) = mesh.validate() {
-        // A degenerate map still renders; warn but keep going.
-        eprintln!("warning: {input}: mesh is not a valid trimesh: {e}");
+        notes.push(format!("mesh is not a valid trimesh: {e}"));
     }
 
     let object_mesh = net.object_mesh();
     if !object_mesh.objects.is_empty() {
         if let Err(e) = object_mesh.validate() {
-            eprintln!("warning: {input}: object mesh is not a valid trimesh: {e}");
+            notes.push(format!("object mesh is not a valid trimesh: {e}"));
         }
     }
 
-    let dir = Path::new(input).parent().unwrap_or(Path::new("."));
     let mut loaded: HashMap<String, f64> = HashMap::new();
-    let surface = RoadSurface::new(&net, &mesh, |file| {
-        match CrgGrid::from_path(dir.join(file)) {
-            Ok(grid) => {
-                loaded.insert(file.to_string(), spacing(&grid));
-                Some(grid)
-            }
-            Err(e) => {
-                eprintln!("warning: CRG {file}: {e}");
-                None
-            }
+    let surface = RoadSurface::new(&net, &mesh, |file| match crg(file) {
+        Ok(grid) => {
+            loaded.insert(file.to_string(), spacing(&grid));
+            Some(grid)
+        }
+        Err(e) => {
+            notes.push(format!("CRG {file}: {e}"));
+            None
         }
     });
 
-    let mut scene = build_scene(&net, &mesh, &object_mesh, &provenance);
-    scene["crg"] = crg_overlay(&net, &mesh, &surface, &loaded);
-    let bytes = serde_json::to_vec(&scene).expect("scene serializes");
-    fs::write(output, &bytes).map_err(|e| format!("writing {output}: {e}"))?;
-
-    eprintln!(
-        "wrote {output}: {} lanes, {} objects, {} signals, {} road marks, {} vertices, {} triangles, {} CRG files ({} KiB)",
-        mesh.lanes.len(),
-        net.objects().len(),
-        net.signals().len(),
-        net.road_marks().len(),
-        mesh.vertices.len(),
-        mesh.indices.len() / 3,
-        loaded.len(),
-        bytes.len() / 1024,
-    );
-    Ok(())
-}
-
-/// Write `scenes.json` in `folder`: the sorted names of the other `.json`
-/// files there.
-fn write_scene_list(folder: &Path) -> std::io::Result<()> {
-    let mut names = Vec::new();
-    for entry in fs::read_dir(folder)? {
-        let name = entry?.file_name().to_string_lossy().into_owned();
-        if name.ends_with(".json") && name != "scenes.json" {
-            names.push(name);
-        }
+    let mut json = build_scene(&net, &mesh, &object_mesh, &provenance);
+    json["crg"] = crg_overlay(&net, &mesh, &surface, &loaded);
+    if let Some(warnings) = json["warnings"].as_array_mut() {
+        warnings.extend(
+            notes
+                .iter()
+                .map(|n| json!({ "message": n, "roadId": null })),
+        );
     }
-    names.sort_by_key(|n| n.to_lowercase());
-    fs::write(
-        folder.join("scenes.json"),
-        serde_json::to_vec(&names).expect("names serialize"),
-    )
+    Ok(Scene { json, notes })
 }
 
 /// Assemble the viewer scene: flat mesh buffers, the lane table, the object
