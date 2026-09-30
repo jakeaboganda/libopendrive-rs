@@ -5,8 +5,8 @@
 //! `signal_semantics.py`.
 
 use libopendrive::{
-    load_file, BoardSign, DisplayArea, MessageBoard, Point, RoadNetwork, RoadUser, Semantic,
-    Signal, SignalBoard, Unit,
+    load_file, load_str, BoardSign, DisplayArea, MessageBoard, Point, RoadNetwork, RoadUser,
+    Semantic, Signal, SignalBoard, Unit,
 };
 
 fn net() -> RoadNetwork {
@@ -105,4 +105,16 @@ fn a_message_board_keeps_its_display_and_its_areas() {
     } = &areas[1];
     assert_eq!(*index, Some(1));
     near(*position, [60.0, -6.0, 5.5]);
+}
+
+#[test]
+fn a_display_area_index_with_spaces_round_it_is_read() {
+    let xml = std::fs::read_to_string("tests/data/signal_semantics.xodr")
+        .unwrap()
+        .replace(r#"<displayArea index="1""#, r#"<displayArea index=" 1 ""#);
+    let net = load_str(&xml).unwrap();
+    let [SignalBoard::Message(MessageBoard { areas, .. })] = &signal(&net, 2).boards[..] else {
+        panic!("one message board");
+    };
+    assert_eq!(areas[1].index, Some(1));
 }

@@ -371,7 +371,7 @@ fn semantic_text(semantic: &Semantic) -> String {
         .collect::<Vec<_>>()
         .join(" ")
     };
-    match semantic {
+    let text = match semantic {
         Semantic::Speed { kind, value, unit } => format!("{kind} speed {}", amount(value, unit)),
         Semantic::Lane { kind } => format!("lane {kind}"),
         Semantic::Priority { kind } => format!("priority {kind}"),
@@ -391,7 +391,8 @@ fn semantic_text(semantic: &Semantic) -> String {
         }
         Semantic::SupplementaryEnvironment { kind } => format!("in {kind}"),
         Semantic::SupplementaryExplanatory => "explanation".into(),
-    }
+    };
+    text.trim().to_string()
 }
 
 /// A signal board's viewer record: its kind, and its signs or display

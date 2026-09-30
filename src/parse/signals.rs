@@ -428,7 +428,7 @@ fn boards(node: roxmltree::Node, board: &Board) -> Vec<SignalBoard> {
                         .children()
                         .filter(|n| n.has_tag_name("displayArea"))
                         .map(|area| DisplayArea {
-                            index: area.attribute("index").and_then(|v| v.parse().ok()),
+                            index: area.attribute("index").and_then(|v| v.trim().parse().ok()),
                             position: at(area),
                             width: size(area, "width"),
                             height: size(area, "height"),
