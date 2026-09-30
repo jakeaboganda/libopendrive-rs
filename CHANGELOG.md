@@ -11,7 +11,11 @@
 - A two-way lane's successors are the lanes off both of its ends, and its
   predecessors those that drive into it at either end. From one, only lanes
   whose traffic runs away from the joint count. In ASAM's
-  `Ex_Bidirectional_Junction`, road 2 now leads back into road 5.
+  `Ex_Bidirectional_Junction`, road 2 now leads back into roads 5 and 6.
+  Two two-way lanes that join lead into each other both ways, even where
+  only one names the other.
+- A lane of the deprecated `type="bidirectional"` with no `direction` runs
+  both ways, as the spec says `direction="both"` replaces it.
 - A lane change is only ever to a lane running the same way.
   `RoadNetwork::route` drives a two-way lane toward the next lane on the
   route, and `RoadNetwork::advance` goes each way from one.

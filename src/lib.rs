@@ -698,7 +698,10 @@
 //!
 //! A lane's `direction` overrides its side's. `reversed` runs it against
 //! its side, and `both` makes it a [`Direction::Both`] lane, which runs
-//! either way. A two-way lane's successors are the lanes off both of its
+//! either way. A lane of the deprecated `type="bidirectional"` with no
+//! `direction` runs both ways too, since the spec says `both` replaces it.
+//! Two two-way lanes that join lead into each other both ways, even where
+//! only one names the other. A two-way lane's successors are the lanes off both of its
 //! ends, and its predecessors those that drive into it at either end. From
 //! one, only lanes whose traffic runs away from the joint count. A lane
 //! change is only ever to a lane running the same way. [`RoadNetwork::route`]

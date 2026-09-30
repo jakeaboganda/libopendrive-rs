@@ -527,9 +527,12 @@ enum LaneDirection {
 }
 
 impl LaneDirection {
-    /// A lane's `direction`. A missing one is `standard`, as the spec says.
+    /// A lane's `direction`. A missing one is `standard`, as the spec says,
+    /// but `both` on a lane of the deprecated `type="bidirectional"`, which
+    /// the spec says `direction="both"` replaces.
     fn parse(lane: roxmltree::Node) -> Result<Self, String> {
         match lane.attribute("direction") {
+            None if lane.attribute("type") == Some("bidirectional") => Ok(Self::Both),
             None | Some("standard") => Ok(Self::Standard),
             Some("reversed") => Ok(Self::Reversed),
             Some("both") => Ok(Self::Both),

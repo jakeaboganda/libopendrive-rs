@@ -88,12 +88,37 @@ impl Topology {
 /// Fill each lane's `successors`/`predecessors` from the collected topology.
 /// Successors are computed per lane; predecessors are their inverse, so the two
 /// are always consistent.
+///
+/// Two two-way lanes that join run into each other both ways, even where
+/// only one of them finds the other through its links, as a connecting
+/// road does through its own road link.
 pub(crate) fn resolve(lanes: &mut [Lane], topo: &Topology) {
     let mut succ: HashMap<LaneId, Vec<LaneId>> = HashMap::new();
     for meta in &topo.metas {
         let s = successors_of(meta, topo);
         if !s.is_empty() {
             succ.insert(meta.id, s);
+        }
+    }
+    let two_way: std::collections::HashSet<LaneId> = topo
+        .metas
+        .iter()
+        .filter(|m| m.direction == Direction::Both)
+        .map(|m| m.id)
+        .collect();
+    let back: Vec<(LaneId, LaneId)> = succ
+        .iter()
+        .filter(|(from, _)| two_way.contains(from))
+        .flat_map(|(from, tos)| {
+            tos.iter()
+                .filter(|to| two_way.contains(to))
+                .map(|to| (*to, *from))
+        })
+        .collect();
+    for (from, to) in back {
+        let tos = succ.entry(from).or_default();
+        if !tos.contains(&to) {
+            tos.push(to);
         }
     }
     let mut pred: HashMap<LaneId, Vec<LaneId>> = HashMap::new();
