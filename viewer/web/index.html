@@ -1598,6 +1598,8 @@ function onHover(ev) {
   for (const n of roadNeighbors.filter(n => n.road === lane.roadId)) {
     rows.push(`road ${escapeHtml(String(n.neighbor))} beside it on the ${n.side}, running ${n.sameDirection ? 'the same way' : 'the other way'}`);
   }
+  const change = alongAt(lane.laneChanges, s);
+  if (change) rows.push(`lane change  left ${changeText(change[2][0])}   right ${changeText(change[2][1])}`);
   const rule = alongAt(lane.rules, s);
   if (rule) rows.push(`rule ${escapeHtml(rule[2])}`);
   const access = alongAt(lane.access, s);
@@ -1891,6 +1893,12 @@ function laneWidth(lane, i, u) {
 // The stretch of `list`, each `[from, to, value]` in lane order, under `s`
 // metres along the lane. Where two meet, the later one holds, as
 // `RoadNetwork::speed_limit_at` has it.
+// Whether a lane change is allowed, from the exported `laneChanges`: true,
+// false, or null where no mark or no lane says.
+function changeText(allowed) {
+  return allowed == null ? 'n/a' : allowed ? 'allowed' : 'not allowed';
+}
+
 function alongAt(list, s) {
   let found;
   for (const stretch of list || []) if (stretch[0] <= s && s <= stretch[1]) found = stretch;

@@ -44,7 +44,7 @@ use libopendrive::opencrg::CrgGrid;
 use libopendrive::{
     load_str_with_provenance, Access, Along, Controller, ControllerProvenance, Corner, CrgMode,
     CrgPurpose, CrgSurface, CrossPathEnd, Direction, Extent, JunctionArea, JunctionGroupKind,
-    LaneId, LanePosition, LaneProvenance, LaneSpan, LinePattern, LinkPoint, Marking, Mesh, Object,
+    LaneId, LanePosition, LaneSpan, LinePattern, LinkPoint, Marking, Mesh, Object,
     ObjectProvenance, Orientation, PlatformSegment, Point, Provenance, Referenced, RoadEnd,
     RoadMark, RoadMarkProvenance, RoadNetwork, RoadPosition, RoadSurface, RoadUser, Semantic,
     Shape, Side, Signal, SignalBoard, SignalProvenance, SpeedLimit, Structure, StructureKind,
@@ -122,7 +122,7 @@ fn build_scene(
     let lanes: Vec<Value> = mesh
         .lanes
         .iter()
-        .map(|span| lane_entry(net, &provenance.lanes, span))
+        .map(|span| lane_entry(net, provenance, span))
         .collect();
     let objects: Vec<Value> = net
         .objects()
@@ -822,8 +822,8 @@ fn pieces(quads: &[[Point; 4]]) -> Vec<[[f32; 3]; 4]> {
 /// One lane's viewer record: identity, OpenDRIVE provenance, its mesh slice,
 /// its centerline for cursor projection, and the `laneId`s it leads to and
 /// comes from in its travel direction.
-fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan) -> Value {
-    let prov = provenance.iter().find(|p| p.lane == span.lane);
+fn lane_entry(net: &RoadNetwork, provenance: &Provenance, span: &LaneSpan) -> Value {
+    let prov = provenance.lanes.iter().find(|p| p.lane == span.lane);
     let lane = net.lane(span.lane);
 
     let centerline: Vec<[f32; 3]> = lane
@@ -938,7 +938,52 @@ fn lane_entry(net: &RoadNetwork, provenance: &[LaneProvenance], span: &LaneSpan)
         "visibility".into(),
         json!(stretches(net.lane_visibility(), span.lane, |v| json!(v))),
     );
+    entry.insert(
+        "laneChanges".into(),
+        json!(lane_changes(net, provenance, span.lane)),
+    );
     Value::Object(entry)
+}
+
+/// Whether a vehicle may change out of `lane` to the left and to the right
+/// of its traffic, as stretches `[from, to, [left, right]]` in metres along
+/// its centerline. Each side is what [`RoadNetwork::may_change_left`] and
+/// [`RoadNetwork::may_change_right`] give in the middle of the stretch,
+/// between the ends of the road marks either side of the lane. A stretch
+/// where both are `None` is left out.
+fn lane_changes(net: &RoadNetwork, provenance: &Provenance, lane: LaneId) -> Vec<Value> {
+    let mut ends: Vec<f64> = provenance
+        .road_marks
+        .iter()
+        .filter(|p| {
+            net.road_mark(p.road_mark)
+                .is_some_and(|m| m.left == Some(lane) || m.right == Some(lane))
+        })
+        .flat_map(|p| [p.s, p.s + p.length])
+        .collect();
+    ends.sort_by(f64::total_cmp);
+    ends.dedup();
+    let along = |s| {
+        net.centerline_s(LanePosition {
+            lane,
+            s,
+            offset: 0.0,
+        })
+    };
+    ends.windows(2)
+        .filter_map(|w| {
+            let at = LanePosition {
+                lane,
+                s: (w[0] + w[1]) / 2.0,
+                offset: 0.0,
+            };
+            let sides = (net.may_change_left(at), net.may_change_right(at));
+            if sides == (None, None) {
+                return None;
+            }
+            Some(json!([along(w[0])?, along(w[1])?, [sides.0, sides.1]]))
+        })
+        .collect()
 }
 
 /// The stretches of `list` on `lane`, each `[from, to, value]`.
