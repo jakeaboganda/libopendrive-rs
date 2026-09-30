@@ -18,7 +18,9 @@ as do a link's predecessor and successor. `<dataQuality>`, `<include>` and
 each at the end. An element whose schema type repeats elsewhere is listed
 once, under the first element that has it: a signal's `<semantics>` kinds
 are under the header's `<defaultRegulations>`, and a board sign's attributes
-under `<staticBoard>`.
+under `<staticBoard>`. This crate ignores `<defaultRegulations>`, but reads
+every one of those `<semantics>` kinds under a `<signal>` and a board's
+`<sign>`. The `<semantics>` rows under `<signal>` give where.
 
 Each cell says what the library does with the row:
 
@@ -37,13 +39,14 @@ parser. The other three columns were read from each library's parser source,
 and a sample of rows checked by hand against it. A parser read that only
 logs that the element isn't supported counts as ignored.
 
-The claim this crate aims at, reading more of OpenDRIVE than any other
-open-source library, holds when no row has another library doing more. It
-does not hold yet: 30 rows do. They are listed below.
+This crate aims to read more of OpenDRIVE than any other open-source
+library. That holds when no row has another library doing more. 30 rows do,
+and the next section lists them.
 
 ## Summary
 
-Rows each library reads, of the 671 in the table. An element and each of its attributes is its own row.
+Rows each library reads, of the 671 in the table. An element and each of
+its attributes is its own row.
 
 | | builds | stores | ignores |
 | --- | --- | --- | --- |
@@ -55,8 +58,7 @@ Rows each library reads, of the 671 in the table. An element and each of its att
 ## Where another library does more
 
 These are the rows where at least one other library builds or stores more
-than this crate. Each is on the roadmap, or out of scope for a reason given
-here:
+than this crate, grouped by what the other library does with them:
 
 - **Header offset.** esmini applies `<offset>` to every point. The crate
   keeps it for the caller and applies nothing, since reprojecting is out of
@@ -65,17 +67,17 @@ here:
   and `value` up in a catalogue, and esmini and CARLA pick traffic lights by
   them. The crate keeps the codes and looks nothing up.
 - **Lane change.** CARLA lets a waypoint change lanes by the road mark's
-  `laneChange`. The crate keeps it on the road mark. The lane-change query
-  on the roadmap would build on it.
+  `laneChange`. The crate keeps it on the road mark, and has no lane-change
+  query that uses it.
 - **Names and descriptive attributes.** A road's and a junction's `name`,
   the header's `revMajor` and `revMinor`, a road mark's `material` and its
   type's `name`, an outline's `fillType` and `laneType`, and the center
   lane's `id`, `type`, `level` and `<link>`. Others keep them. The crate
-  doesn't yet.
+  doesn't.
 - **Object `type="crosswalk"`.** CARLA builds a crosswalk area from a
   crosswalk object's outline corners (`ObjectParser.cpp:36`). The crate
   keeps the type and the outline, and meshes the outline, but marks no
-  crosswalk area. It would fit beside the cross paths it reads.
+  crosswalk area.
 - **Object and signal `name`s.** CARLA turns RoadRunner objects named
   `Speed_*` or `Stencil_STOP` into signals, and treats a signal named
   `Stencil_STOP` or `STATIC` as a stop (`MapBuilder.cpp:1054`). That is one
@@ -144,7 +146,8 @@ row above:
 
 ## Every element and attribute
 
-`-` means the library ignores it. A cell cites the line that reads it, in the file the column heading names.
+`-` means the library ignores it. A cell cites the line that reads it, in
+the files the first table lists for that library.
 
 
 ### &lt;OpenDRIVE&gt;
