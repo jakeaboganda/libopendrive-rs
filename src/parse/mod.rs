@@ -437,7 +437,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     }
     surfaces.extend(junction_crgs(root, &topo));
     let signals = signals::place(root, &roads, &objects.provenance);
-    let road_marks = road_marks::place(&roads);
+    let road_marks = road_marks::place(&mut roads);
     let properties = properties::place(roads.iter().map(|(_, road)| road), &lanes);
     let (neighbors, dropped_neighbors) = road_neighbors(&roads);
     warnings.extend(dropped_neighbors);
@@ -1513,6 +1513,7 @@ fn bake_lanes(
             left,
             right,
             lanes: Vec::new(),
+            marks: Vec::new(),
         };
         geom.stations = emit_section(&baked.road, &geom, &def, out, topo);
         // emit_section records a lane's meta as it pushes the lane, so the

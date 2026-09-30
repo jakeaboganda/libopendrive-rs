@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Lane changes
+
+- `RoadNetwork::may_change_left` and `may_change_right` say whether the
+  road mark between a lane and the lane beside it lets a vehicle cross, from
+  the mark's `laneChange`. `None` where there is no lane beside, no mark, or
+  a `laneChange` the crate does not recognise. Where two marks meet, the one
+  starting there answers. The crate reads `laneChange` whatever the mark's
+  type, since the spec does not tie the two.
+- The viewer shows whether a hovered lane may change left and right.
+
 ### Speed limits
 
 - Fixed: a `<speed>` whose limit is too large for an `f32`, such as

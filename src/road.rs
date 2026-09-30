@@ -4,7 +4,7 @@
 
 use crate::coords::Point;
 use crate::crg::RefPoint;
-use crate::{Direction, LaneId};
+use crate::{Direction, LaneId, RoadMarkId};
 
 /// A road's identity: its position in
 /// [`RoadNetwork::roads`](crate::RoadNetwork::roads). Look a road up with
@@ -163,6 +163,21 @@ pub(crate) struct RoadSection {
     pub right: Vec<LaneGeom>,
     /// Each baked lane's `<lane id>` and [`LaneId`].
     pub lanes: Vec<(i32, LaneId)>,
+    /// The stretch of road each of its road marks runs along.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub marks: Vec<MarkSpan>,
+}
+
+/// The stretch of road one road mark runs along, in metres along the
+/// reference line, on the outer border of the lane `od_lane_id`, or on the
+/// center line for 0.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub(crate) struct MarkSpan {
+    pub od_lane_id: i32,
+    pub start: f64,
+    pub end: f64,
+    pub mark: RoadMarkId,
 }
 
 /// Where one lane lies across its road: its `<width>`s or `<border>`s, its

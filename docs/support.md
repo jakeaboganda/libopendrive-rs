@@ -128,6 +128,9 @@ files declaring 1.4, 1.6 and 1.7.
   one place per branch. On a map with loops the branches grow exponentially
   with the distance, so step a few metres at a time. `left_of` and
   `right_of` step to the lane beside.
+- `may_change_left` and `may_change_right` say whether the road mark on
+  that border lets a vehicle cross into the lane beside, from its
+  `laneChange`.
 
 ## Objects
 

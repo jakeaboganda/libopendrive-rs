@@ -1077,8 +1077,25 @@
 //!
 //! [`RoadNetwork::left_of`] and [`RoadNetwork::right_of`] step to the lane
 //! beside, at the same `s`, left and right of the lane's traffic. That is
-//! the lane of any type, running either way. Whether traffic may cross into
-//! it is the caller's to decide.
+//! the lane of any type, running either way.
+//!
+//! [`RoadNetwork::may_change_left`] and [`RoadNetwork::may_change_right`]
+//! say whether the road mark on that border lets a vehicle cross into the
+//! lane, from the mark's [`LaneChange`]. `increase` allows a crossing toward
+//! the higher `<lane id>` only, and `decrease` toward the lower. The answer
+//! is `None` where there is no lane beside, no mark on the border at the
+//! `s`, or a `laneChange` the crate does not recognise. Whether the lane
+//! runs the other way, or is one traffic may use, is the caller's to decide.
+//! CARLA reads `laneChange` the same way. esmini and libOpenDRIVE store it
+//! and answer nothing from it.
+//!
+//! The crate reads the mark this way:
+//!
+//! - The spec does not say which mark holds where one ends and the next
+//!   begins. The one starting there answers, as a lane section does.
+//! - The spec does not tie `laneChange` to the mark's type. The crate
+//!   reads it whatever the type, so a `curb` with the default `both`
+//!   allows a crossing.
 //!
 //! # Geo reference
 //!

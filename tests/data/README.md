@@ -172,6 +172,13 @@ read, and a lane speed too large for an `f32`. Regenerate with
 
     python3 tests/data/speed_limits.py
 
+`lane_change.xodr` comes from `lane_change.py`, which writes the XML
+itself. It has one road whose marks allow a lane change both ways, one way
+and neither way, a border without a mark for its first 20 m, and a
+`laneChange` the spec doesn't allow. Regenerate with
+
+    python3 tests/data/lane_change.py
+
 `level_lanes.xodr` comes from `level_lanes.py`, which writes the XML
 itself. It has level shoulders and a raised level sidewalk beside a
 superelevated road, a level shoulder beside a crowned road, and a lane
