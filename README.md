@@ -30,17 +30,23 @@ mesh.validate()?;
 
 ## What it reads
 
-- Road geometry, elevation, superelevation and lateral shape.
+- Road geometry, elevation, superelevation, lateral shape and cross-section
+  surfaces.
 - Lanes of every type, with their widths, borders, offsets, heights and
   sections.
 - Links and junctions, direct junctions included, as a lane graph, in
   right- or left-hand traffic, with reversed and two-way lanes.
+- Junction groups, priorities, boundaries, elevation grids and cross paths,
+  and virtual junctions.
+- Road neighbors.
 - Road types and speed limits along each lane.
 - Lane rules, access, materials and visibility along each lane.
 - Objects, with repeats, outlines, markings and borders.
-- Signals and the controllers that group them.
+- Signals, with their meaning and boards, and the controllers that group
+  them.
 - Road marks.
 - Tunnels and bridges.
+- Railway switches and stations.
 - OpenCRG surfaces, for the height, normal and friction under a wheel.
 - The geo reference: the PROJ string and offset, kept unapplied.
 
