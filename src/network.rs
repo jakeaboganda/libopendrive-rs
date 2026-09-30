@@ -675,7 +675,11 @@ impl RoadNetwork {
         }
         let lane = road.across(section, at.s).find(|a| a.od_id == on.od_id)?;
         let t = (lane.inner_t + lane.outer_t) / 2.0 + at.offset;
-        Some(road.lane_surface(section, on.od_id, at.s, t).0)
+        let (low, high) = (
+            lane.inner_t.min(lane.outer_t),
+            lane.inner_t.max(lane.outer_t),
+        );
+        Some(road.raised(at.s, t, lane.height(t.clamp(low, high))).0)
     }
 
     /// The lane position of `point`: the lane under or over it on the road
@@ -685,11 +689,15 @@ impl RoadNetwork {
     /// The lane is the one whose borders hold the road `t`. A point on the
     /// border between two lanes is on the inner one, and one past the
     /// outermost lane on that lane. A point on the center line is on the
-    /// first right lane, or the first left one where there is none.
+    /// first right lane, or the first left one where there is none. `None`
+    /// too at a road `s` no lane section covers, such as before a road's
+    /// first section, where there is no lane.
     pub fn lane_position(&self, point: Point) -> Option<LanePosition> {
         let at = self.road_position(point)?;
         let road = self.road(at.road)?;
-        let section = road.section_at(at.s)?;
+        let section = road
+            .section_at(at.s)
+            .filter(|section| (section.start..=section.end).contains(&at.s))?;
         let innermost = |od_id: i32| road.across(section, at.s).find(|a| a.od_id == od_id);
         let lane = road
             .lane_at(section, at.s, at.t)

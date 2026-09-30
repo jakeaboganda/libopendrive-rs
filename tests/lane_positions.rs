@@ -204,3 +204,49 @@ fn a_network_without_roads_has_no_lane_positions() {
     assert!(net.lane_point(at).is_none());
     assert!(net.centerline_s(at).is_none());
 }
+
+/// A 60 m straight heading +X with lane -1, 3.5 m, and lane -2, a 2 m
+/// sidewalk rising from 0 at its inner border to 0.3 m at its outer one. Its
+/// only lane section starts at `s` 10.
+const SLOPED: &str = r#"<OpenDRIVE>
+  <road id="1" length="60" junction="-1">
+    <planView><geometry s="0" x="0" y="0" hdg="0" length="60"><line/></geometry></planView>
+    <lanes>
+      <laneSection s="10">
+        <center><lane id="0" type="none"/></center>
+        <right>
+          <lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane>
+          <lane id="-2" type="sidewalk"><width sOffset="0" a="2" b="0" c="0" d="0"/>
+            <height sOffset="0" inner="0" outer="0.3"/></lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>"#;
+
+#[test]
+fn past_a_sloped_lane_s_outer_border_the_surface_holds_the_border_s_height() {
+    let net = load_str(SLOPED).expect("the road loads");
+    let road = net.roads()[0].id();
+    for t in [-7.0, -9.0] {
+        let point = net.road_point(RoadPosition { road, s: 30.0, t }).unwrap();
+        assert!((point.z - 0.3).abs() < 1e-5);
+        let at = net.lane_position(point).unwrap();
+        assert_eq!(at.lane, lane(&net, -2));
+        assert!(near(net.lane_point(at).unwrap(), point, 1e-3));
+    }
+}
+
+#[test]
+fn a_point_where_no_lane_section_runs_has_no_lane_position() {
+    let net = load_str(SLOPED).expect("the road loads");
+    let road = net.roads()[0].id();
+    let point = net
+        .road_point(RoadPosition {
+            road,
+            s: 2.0,
+            t: -1.0,
+        })
+        .unwrap();
+    assert_eq!(net.lane_position(point), None);
+}
