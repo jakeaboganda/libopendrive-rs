@@ -20,7 +20,15 @@ pub(super) fn place(
     for junction in root.children().filter(|n| n.has_tag_name("junction")) {
         let od_id = junction.attribute("id").unwrap_or_default().to_string();
         let boundary = child(junction, "boundary");
-        let grid = child(junction, "elevationGrid").and_then(|g| grid(junction, g));
+        let grid = child(junction, "elevationGrid").and_then(|g| {
+            let placed = grid(junction, g);
+            if placed.is_none() {
+                warnings.push(Warning::ElevationGridDropped {
+                    junction_id: od_id.clone(),
+                });
+            }
+            placed
+        });
         if boundary.is_none() && grid.is_none() {
             continue;
         }
@@ -40,13 +48,21 @@ pub(super) fn place(
 }
 
 /// A junction's `<elevationGrid>`, on the straight line its `<planView>`
-/// gives, or `None` without one, or without a `gridSpacing` above 0.
+/// gives, or `None` without one, with a line that is not one `<line>`
+/// geometry, or without a `gridSpacing` above 0.
 ///
 /// The spec requires `sStart`, and every row's `center`. A missing `sStart`
 /// is 0, and a row without a `center` is skipped, as are the heights in a
 /// list that are not numbers.
 fn grid(junction: roxmltree::Node, node: roxmltree::Node) -> Option<ElevationGrid> {
-    let line = child(junction, "planView").and_then(|p| child(p, "geometry"))?;
+    let geometries: Vec<_> = child(junction, "planView")?
+        .children()
+        .filter(|n| n.has_tag_name("geometry"))
+        .collect();
+    let [line] = geometries[..] else {
+        return None;
+    };
+    child(line, "line")?;
     let spacing = attr_f64(node, "gridSpacing").filter(|s| *s > 0.0)?;
     let at = |name| attr_f64(line, name).unwrap_or(0.0);
     let heading = at("hdg");
@@ -113,7 +129,7 @@ fn ring<'a>(
     let mut ring: Vec<Point> = Vec::new();
     let mut gap = 0.0_f32;
     let reach = |p: Point, q: Point| (p.x - q.x).hypot(p.y - q.y);
-    for (k, mut segment) in segments.clone().into_iter().enumerate() {
+    for mut segment in segments.clone() {
         let reverse = match ring.last() {
             Some(&end) => reach(end, segment[segment.len() - 1]) < reach(end, segment[0]),
             None => segments.get(1).is_some_and(|next| {
@@ -128,14 +144,14 @@ fn ring<'a>(
         if let Some(&end) = ring.last() {
             gap = gap.max(reach(end, segment[0]));
         }
-        if k + 1 == segments.len() && !ring.is_empty() {
-            gap = gap.max(reach(segment[segment.len() - 1], ring[0]));
-        }
         for p in segment {
             if ring.last().is_none_or(|&q| reach(p, q) > 1e-3) {
                 ring.push(p);
             }
         }
+    }
+    if let (Some(&first), Some(&last)) = (ring.first(), ring.last()) {
+        gap = gap.max(reach(last, first));
     }
     if ring.len() > 1 && reach(ring[0], ring[ring.len() - 1]) <= 1e-3 {
         ring.pop();
@@ -215,10 +231,11 @@ fn along(road: &Road, node: roxmltree::Node) -> Option<Vec<Point>> {
         .collect()
 }
 
-/// A `joint` segment: across the road at its `contactPoint`, from the outer
-/// border of `jointLaneStart` to that of `jointLaneEnd`, through the borders
-/// between, or from the outermost right lane to the outermost left one where
-/// either is missing.
+/// A `joint` segment: across the road at its `contactPoint`, over the whole
+/// of `jointLaneStart`, `jointLaneEnd` and the lanes between, through each
+/// border, or from the outermost right lane to the outermost left one where
+/// either is missing. Two lanes on one side end at the inner one's inner
+/// border.
 fn across(road: &Road, node: roxmltree::Node) -> Option<Vec<Point>> {
     let s = station(road, node.attribute("contactPoint"))?;
     let section = road.section_at(s)?;
@@ -232,16 +249,24 @@ fn across(road: &Road, node: roxmltree::Node) -> Option<Vec<Point>> {
         .chain(section.left.iter().map(|l| l.id))
         .collect();
     let index = |id| ids.iter().position(|&i| i == id);
-    let (from, to) = match (lane("jointLaneStart"), lane("jointLaneEnd")) {
-        (Some(a), Some(b)) => (index(a)?, index(b)?),
-        _ => (0, ids.len() - 1),
+    let borders = |id: i32| {
+        let at = index(id)?;
+        Some(match id.signum() {
+            -1 => (at, at + 1),
+            1 => (at - 1, at),
+            _ => (at, at),
+        })
     };
-    let (low, high) = (from.min(to), from.max(to));
+    let (from, to) = match (lane("jointLaneStart"), lane("jointLaneEnd")) {
+        (Some(a), Some(b)) => (borders(a)?, borders(b)?),
+        _ => ((0, 0), (ids.len() - 1, ids.len() - 1)),
+    };
+    let (low, high) = (from.0.min(to.0), from.1.max(to.1));
     let mut points: Vec<Point> = ids[low..=high]
         .iter()
         .map(|&id| border(road, id, s))
         .collect::<Option<_>>()?;
-    if from > to {
+    if from.0 > to.0 {
         points.reverse();
     }
     Some(points)

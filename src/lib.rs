@@ -320,8 +320,9 @@
 //! `lane` segment runs along the outer border of its `boundaryLane`, from
 //! `sStart` to `sEnd`, at each of its road's lane stations, and the center
 //! lane's is the line between the sides. A `joint` segment runs across its
-//! road at its `contactPoint`, from the outer border of `jointLaneStart` to
-//! that of `jointLaneEnd`, through each lane border between.
+//! road at its `contactPoint`, over the whole of `jointLaneStart`,
+//! `jointLaneEnd` and the lanes between, through each lane border. Two
+//! lanes on one side end at the inner one's inner border.
 //!
 //! Its [`JunctionArea::grid`] is the grid of heights along the junction's
 //! reference line, its `<planView>`, and square to it.
@@ -345,7 +346,7 @@
 //!   and grid disagree, the lanes and the junction mesh do too.
 //! - The spec requires the segments to close the boundary. The crate joins
 //!   them straight, and raises [`Warning::BoundaryNotClosed`] where two are
-//!   more than 10 cm apart in plan. A segment naming no baked road, or a
+//!   more than 10 cm apart in plan, as a boundary of one segment is. A segment naming no baked road, or a
 //!   lane its road lacks, is dropped with a
 //!   [`Warning::BoundarySegmentDropped`].
 //! - The spec orders the segments counter-clockwise. The crate turns a
@@ -355,6 +356,10 @@
 //!   it does a lane segment, so each runs on from the one before.
 //! - The spec requires `sStart` and every row's `center`. A missing `sStart`
 //!   is 0, and a row without a `center` is skipped.
+//! - The spec allows a junction's `<planView>` any number of geometries of
+//!   any shape. The crate reads a grid only along one straight `<line>`, and
+//!   drops one without it, or without a `gridSpacing` above 0, with a
+//!   [`Warning::ElevationGridDropped`].
 //! - The spec's formula for the height puts the grid's rows and columns the
 //!   other way round in its matrix of corners from its product of powers.
 //!   The crate follows the product, with `s` along the rows.
@@ -953,7 +958,8 @@
 //!   roads it joins.
 //! - [`Warning::JunctionLinkMissing`] for an incoming road whose `<link>`
 //!   leaves out its junction.
-//! - [`Warning::ElevationGridNotApplied`], [`Warning::BoundaryNotClosed`],
+//! - [`Warning::ElevationGridNotApplied`], [`Warning::ElevationGridDropped`],
+//!   [`Warning::BoundaryNotClosed`],
 //!   [`Warning::BoundarySegmentDropped`] and [`Warning::BoundaryClockwise`]
 //!   for a junction's area. See [Junction areas](#junction-areas).
 //! - [`Warning::PriorityDropped`] for a junction `<priority>` naming a road

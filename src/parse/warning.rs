@@ -200,9 +200,16 @@ pub enum Warning {
         /// The segment's `roadId`, empty if it has none.
         road_id: String,
     },
+    /// A junction `<elevationGrid>` the crate can't place: its junction has
+    /// no `<planView>`, one that is not a single straight `<line>`, or no
+    /// `gridSpacing` above 0. The crate drops it.
+    ElevationGridDropped {
+        /// The `<junction id>`.
+        junction_id: String,
+    },
     /// A junction `<boundary>` whose segments don't meet: one leaves off
-    /// more than 10 cm in plan from where the next begins, or the last from where the
-    /// first begins. The spec says they close the boundary. The crate joins
+    /// more than 10 cm in plan from where the next begins, or the last from
+    /// where the first begins, as when it has one segment. The spec says they close the boundary. The crate joins
     /// them straight.
     BoundaryNotClosed {
         /// The `<junction id>`.
@@ -317,6 +324,7 @@ impl Warning {
                 ..
             } => road_id,
             Self::ElevationGridNotApplied { .. }
+            | Self::ElevationGridDropped { .. }
             | Self::BoundaryNotClosed { .. }
             | Self::BoundaryClockwise { .. } => "",
         }
@@ -423,6 +431,10 @@ impl fmt::Display for Warning {
             Self::ElevationGridNotApplied { junction_id } => write!(
                 f,
                 "junction {junction_id:?}: <elevationGrid> read, but the junction's roads keep their own heights"
+            ),
+            Self::ElevationGridDropped { junction_id } => write!(
+                f,
+                "junction {junction_id:?}: <elevationGrid> dropped, it needs one straight <planView> <line> and a gridSpacing above 0"
             ),
             Self::BoundarySegmentDropped {
                 junction_id,

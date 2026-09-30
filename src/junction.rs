@@ -66,7 +66,8 @@ impl GridRow {
 
 impl ElevationGrid {
     /// The height at `(s, t)` on the junction's reference line, or `None`
-    /// outside the squares the grid covers whole.
+    /// outside the squares the grid covers whole, or for a coordinate that
+    /// is not finite.
     ///
     /// Inside a square the height is bicubic, as the spec gives it: the
     /// square's corners, and their slopes along and across the line and
@@ -88,6 +89,15 @@ impl ElevationGrid {
             snap((s - self.s_start) / self.spacing),
             snap(t / self.spacing),
         );
+        let last_row = self.rows.len().checked_sub(1)? as f64;
+        let widest = self
+            .rows
+            .iter()
+            .map(|row| row.left.len().max(row.right.len()))
+            .max()? as f64;
+        if !(0.0..=last_row).contains(&u) || !(-widest..=widest).contains(&v) {
+            return None;
+        }
         let z = |i: i64, j: i64| self.value(i, j);
         // A point on the far edge of the last square is in that square.
         let corner = |at: f64, other: bool| {
@@ -312,6 +322,27 @@ mod tests {
         assert!(g.height(4.1, 0.0).is_none());
         assert!(g.height(1.0, 2.1).is_none());
         assert!(g.height(-0.1, 0.0).is_none());
+    }
+
+    #[test]
+    fn a_coordinate_far_off_or_not_finite_has_no_height() {
+        let g = grid(vec![row(5.0, &[5.0], &[5.0]); 3]);
+        for (s, t) in [
+            (f64::NAN, 0.0),
+            (0.0, f64::NAN),
+            (f64::INFINITY, 0.0),
+            (0.0, f64::NEG_INFINITY),
+            (1e30, 0.0),
+            (2.0, -1e30),
+        ] {
+            assert!(g.height(s, t).is_none(), "({s}, {t})");
+        }
+        let fine = ElevationGrid {
+            spacing: 1e-300,
+            ..g.clone()
+        };
+        assert!(fine.height(1.0, 0.0).is_none());
+        assert!(grid(Vec::new()).height(0.0, 0.0).is_none());
     }
 
     #[test]

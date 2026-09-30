@@ -112,3 +112,58 @@ fn a_clockwise_boundary_with_a_segment_it_cannot_place_is_turned_and_warned_of()
         .unwrap();
     assert_eq!(dropped.road_id(), "99");
 }
+
+/// Road 1 runs 20 m along +X with right lanes -1 and -2, 3.5 m each.
+/// Junction 7's boundary is one joint across both, at road 1's end. Junction
+/// 8's grid has no `<planView>`, and junction 9's is on an arc.
+const ONE_SIDE: &str = r#"<OpenDRIVE>
+  <road id="1" length="20" junction="-1">
+    <planView><geometry s="0" x="0" y="0" hdg="0" length="20"><line/></geometry></planView>
+    <lanes><laneSection s="0"><center><lane id="0" type="none"/></center><right>
+      <lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane>
+      <lane id="-2" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane>
+    </right></laneSection></lanes>
+  </road>
+  <junction id="7">
+    <boundary><segment type="joint" roadId="1" contactPoint="end" jointLaneStart="-2" jointLaneEnd="-1"/></boundary>
+  </junction>
+  <junction id="8">
+    <elevationGrid sStart="0" gridSpacing="2"><elevation center="0"/><elevation center="0"/></elevationGrid>
+  </junction>
+  <junction id="9">
+    <planView><geometry s="0" x="0" y="0" hdg="0" length="10"><arc curvature="0.2"/></geometry></planView>
+    <elevationGrid sStart="0" gridSpacing="2"><elevation center="0"/><elevation center="0"/></elevationGrid>
+  </junction>
+</OpenDRIVE>"#;
+
+#[test]
+fn a_joint_across_two_lanes_on_one_side_crosses_both_whole() {
+    let (net, _) = libopendrive::load_str_with_provenance(ONE_SIDE).unwrap();
+    let area = net
+        .junction_areas()
+        .iter()
+        .find(|a| a.od_id == "7")
+        .unwrap();
+    let ys: Vec<f32> = area.boundary.iter().map(|p| p.y).collect();
+    assert_eq!(ys, [-7.0, -3.5, 0.0]);
+}
+
+#[test]
+fn a_boundary_of_one_segment_is_not_closed() {
+    let (_, prov) = libopendrive::load_str_with_provenance(ONE_SIDE).unwrap();
+    assert!(prov.warnings.iter().any(|w| matches!(
+        w,
+        Warning::BoundaryNotClosed { junction_id, gap } if junction_id == "7" && (gap - 7.0).abs() < 1e-3
+    )));
+}
+
+#[test]
+fn a_grid_without_one_straight_reference_line_is_dropped_with_a_warning() {
+    let (net, prov) = libopendrive::load_str_with_provenance(ONE_SIDE).unwrap();
+    assert!(net.junction_areas().iter().all(|a| a.od_id == "7"));
+    for id in ["8", "9"] {
+        assert!(prov.warnings.contains(&Warning::ElevationGridDropped {
+            junction_id: id.into()
+        }));
+    }
+}
