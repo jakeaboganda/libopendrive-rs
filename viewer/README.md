@@ -21,7 +21,8 @@ the same JSON ahead of time, for maps you want in the page's `map` list.
    sh viewer/run.sh
    ```
 
-   The script builds the WebAssembly baker into `viewer/web/pkg/`, serves
+   The script builds the WebAssembly baker into `viewer/web/pkg/`, bakes
+   again every map in the `map` list that an older viewer wrote, serves
    `viewer/web` on <http://localhost:8000> and opens that page in your
    browser. To use another port, give it as `sh viewer/run.sh 8080`. Press
    Ctrl-C to stop the server.
@@ -46,10 +47,11 @@ A map that fails to import shows the crate's error in place of the map.
 
 ### Baked maps
 
-`viewer_export` bakes maps to JSON in `viewer/web/`, each named after its
-map, and lists them in `viewer/web/scenes.json`. The `map` list offers every
-one, and needs neither the WebAssembly build nor the original files. Name as
-many maps as you like, such as `tests/data/*.xodr`:
+To bake a map is to turn its `.xodr` into the JSON the page draws, a scene.
+The page bakes a map you open. `viewer_export` bakes maps ahead of time, to
+`viewer/web/`, each named after its map, and lists them in
+`viewer/web/scenes.json`. The `map` list offers every one. Name as many
+maps as you like, such as `tests/data/*.xodr`:
 
 ```sh
 cargo run --release -p libopendrive-viewer -- tests/data/town07.xodr
@@ -65,6 +67,15 @@ cargo run --release -p libopendrive-viewer -- tests/data/objects.xodr /tmp/objec
 `viewer_export` reads OpenCRG files from beside the `.xodr`. If a map fails
 to load, `viewer_export` reports it, bakes the others, and exits with an
 error.
+
+A scene holds what the viewer that baked it knew, so it goes out of date
+when the crate or the viewer changes. `viewer_export` records the `.xodr`
+each scene came from in `viewer/web/sources.json`. `sh viewer/build.sh`,
+which `run.sh` runs, then calls `viewer_export --refresh`. That bakes again
+every scene older than its `.xodr` or than `viewer_export` itself. A scene
+with no recorded source is looked for as `tests/data/<name>.xodr`. The
+refresh names any scene it can't find a source for and leaves it as it is.
+Export it once by hand, and later refreshes find it.
 
 `tests/data/objects.xodr` is a small test map with one of everything the
 viewer draws, so use it to try the features below.
@@ -155,7 +166,8 @@ stay lit as you hover others. The readout shows:
   they run, where the map gives `<neighbor>`s
 - whether the road mark on each side lets a vehicle change into the lane
   beside, left and right of the traffic, or `n/a` where there is no mark or
-  no lane. A scene baked before this readout says to bake it again.
+  no lane. A scene an older viewer baked says to run `viewer/run.sh`,
+  which bakes it again.
 - the lane's rule, who may use it (`only` the users an allow names, or
   `all but` those a deny names) and its material, where the map gives them
 - how far a driver can see from the lane, forward, back, left and right,
