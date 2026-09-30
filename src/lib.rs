@@ -44,8 +44,8 @@
 //! read here. A lane's `<visibility>` is not in 1.9 at all. The crate reads
 //! it from the older files that write it, as CARLA does. See
 //! [Lane visibility](#lane-visibility). A road's `<neighbor>`, from 1.4, is
-//! not in 1.9 either. The crate reads it as libOpenDRIVE does: each is a
-//! [`RoadNeighbor`] in [`RoadNetwork::road_neighbors`], the road beside a
+//! not in 1.9 either. libOpenDRIVE reads it too, as raw strings. The crate
+//! resolves and checks it: each is a [`RoadNeighbor`] in [`RoadNetwork::road_neighbors`], the road beside a
 //! road, on its left or right, running the same way or the other. The crate
 //! derives no lane changes from it. One naming no baked road, or with a
 //! `side` or `direction` 1.4 doesn't allow, is dropped, with a

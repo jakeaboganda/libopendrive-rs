@@ -16,8 +16,8 @@ loads depends only on whether it uses the elements listed below.
 
 Every one of those elements but a lane's `<visibility>` and a road's
 `<neighbor>` is in ASAM OpenDRIVE 1.9.0, the current revision. 1.9 defines
-neither, and the importer reads them from the older files that write them,
-as CARLA and libOpenDRIVE do.
+neither, and the importer reads them from the older files that write them:
+`<visibility>` as CARLA does, and `<neighbor>` as libOpenDRIVE does.
 1.9.0 deprecates `poly3` in favour of `paramPoly3`, and 1.8 deprecated a
 signal's `<positionRoad>` and `<positionInertial>`. The importer reads them
 like any other element and raises no warning. The test suite imports real
