@@ -9,8 +9,10 @@
   `RoadNetwork::yields_to` reads them for one road, and
   `Provenance::priorities` names each one's junction. They serialize with
   the network.
+- Breaking: `Provenance` has a new `priorities` field, so a `Provenance`
+  literal needs it. Provenance serialized before loads with none.
 - `Warning::PriorityDropped` names a `<priority>` whose `high` or `low` is
-  no road the load baked.
+  no road the load baked, and its `road_id` is the one the load has.
 - The viewer's lane readout says which roads the lane's road gives way to,
   and which give way to it.
 

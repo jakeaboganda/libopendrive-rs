@@ -327,6 +327,7 @@ pub struct Provenance {
     pub road_marks: Vec<RoadMarkProvenance>,
     /// One per junction priority, in step with
     /// [`RoadNetwork::priorities`](crate::RoadNetwork::priorities).
+    #[cfg_attr(feature = "serde", serde(default))]
     pub priorities: Vec<PriorityProvenance>,
     /// What the load dropped, or read against the spec, in file order.
     /// Empty for a clean file.
@@ -419,12 +420,12 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     let signals = signals::place(root, &roads, &objects.provenance);
     let road_marks = road_marks::place(&roads);
     let properties = properties::place(roads.iter().map(|(_, road)| road), &lanes);
-    let (priorities, priority_provenance, dropped_priorities) = priorities(root, &roads);
-    warnings.extend(dropped_priorities);
     // Resolve connectivity once all lanes exist and are registered.
     let (junctions, dropped) = links::junctions(root, &mut topo.roads);
     topo.junctions = junctions;
     warnings.extend(dropped);
+    let (priorities, priority_provenance, dropped_priorities) = priorities(root, &roads);
+    warnings.extend(dropped_priorities);
     links::resolve(&mut lanes, &topo);
     warnings.extend(gaps::link_gaps(&lanes, &topo.metas));
     // The parser already recorded each lane's OpenDRIVE origin while baking;
@@ -495,10 +496,13 @@ fn priorities(
                         junction_id: junction_id.clone(),
                     });
                 }
-                _ => warnings.push(Warning::PriorityDropped {
+                (found_high, _) => warnings.push(Warning::PriorityDropped {
                     junction_id: junction_id.clone(),
                     high: high.unwrap_or_default().to_string(),
                     low: low.unwrap_or_default().to_string(),
+                    road_id: if found_high.is_some() { high } else { low }
+                        .unwrap_or_default()
+                        .to_string(),
                 }),
             }
         }

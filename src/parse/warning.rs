@@ -166,6 +166,8 @@ pub enum Warning {
         high: String,
         /// Its `low`, empty if it has none.
         low: String,
+        /// The road of the two the load has, or `low` if it has neither.
+        road_id: String,
     },
     /// A `<speed>` whose `max` or `unit` the crate can't read. The crate
     /// drops it, so the lane's limit there is its road's, or the lane's
@@ -259,7 +261,7 @@ impl Warning {
             | Self::RoadLengthMismatch { road_id, .. }
             | Self::LinkGap { road_id, .. }
             | Self::LaneNotLevel { road_id, .. }
-            | Self::PriorityDropped { low: road_id, .. }
+            | Self::PriorityDropped { road_id, .. }
             | Self::ConnectionDropped {
                 incoming_road_id: road_id,
                 ..
@@ -369,6 +371,7 @@ impl fmt::Display for Warning {
                 junction_id,
                 high,
                 low,
+                ..
             } => write!(
                 f,
                 "junction {junction_id:?}: <priority> of road {high:?} over road {low:?} dropped, the load has no such road"

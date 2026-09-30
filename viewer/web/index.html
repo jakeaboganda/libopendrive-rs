@@ -1335,11 +1335,11 @@ function onHover(ev) {
     rows.push([limit && `speed limit ${speedText(limit[2])}`, roadType && `road ${roadType[2]}`]
       .filter(Boolean).join('   '));
   }
+  rows.push(...priorityRows(lane));
   const rule = alongAt(lane.rules, s);
   if (rule) rows.push(`rule ${escapeHtml(rule[2])}`);
   const access = alongAt(lane.access, s);
   if (access) rows.push(`access ${accessText(access[2])}`);
-  rows.push(...priorityRows(lane));
   const material = alongAt(lane.materials, s);
   if (material) rows.push(`material ${materialText(material[2])}`);
   const seen = alongAt(lane.visibility, s);
