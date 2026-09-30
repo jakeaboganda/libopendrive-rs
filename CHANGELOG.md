@@ -7,16 +7,18 @@
 - Fixed: a road in a `type="virtual"` junction whose `<predecessor>` or
   `<successor>` gives an `elementS` meets that road part way along it. It
   was joined to the road's start instead. Its lanes now get no lane-graph
-  link there, the main road is no longer linked into the junction with a
-  `JunctionLinkMissing`, and deprecated `type="virtual"` connections are
-  not reported as dropped.
+  link there, nor does the main road's, whether or not it names the
+  junction, and the main road is no longer linked into the junction with a
+  `JunctionLinkMissing`. Deprecated `type="virtual"` connections are not
+  reported as dropped.
 - `RoadNetwork::virtual_junctions` gives each `<junction type="virtual">`
-  as a `VirtualJunction`: its main road, the stretch of it it spans, its
+  as a `VirtualJunction`: its `MainRoad` and the stretch of it it spans, its
   orientation, and each `VirtualLink` where a road meets another part way
   along, with the lanes it joins. Each side is a `LinkPoint`. The router
   does not follow them.
-- `Warning::VirtualJunctionDropped` and `Warning::VirtualLinkDropped` name a
-  virtual junction or link the crate can't place.
+- `Warning::VirtualJunctionWithoutMainRoad` names a virtual junction
+  without the main road and stretch the spec requires. It keeps its links.
+  `Warning::VirtualLinkDropped` names a link the crate can't place.
 - The viewer draws each virtual junction's stretch and links, and names them
   on hover.
 

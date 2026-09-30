@@ -3,13 +3,14 @@
 
 use super::links::Topology;
 use super::{attr_f64, child, orientation, BakedRoad, RoadEnd, Warning};
-use crate::junction::{LinkPoint, VirtualJunction, VirtualLink};
+use crate::junction::{LinkPoint, MainRoad, VirtualJunction, VirtualLink};
 use crate::network::LaneId;
 use crate::road::Road;
 
-/// Every `<junction type="virtual">` whose main road the load has, in file
-/// order, with its links, and a warning for each junction or link the crate
-/// drops.
+/// Every `<junction type="virtual">`, in file order, with its main road if
+/// the load has it and the file places the junction on it, and its links,
+/// and a warning for each junction without its main road and each link the
+/// crate drops.
 ///
 /// A link is a road of the junction whose `<predecessor>` or `<successor>`
 /// gives an `elementS`, with the lanes its lane `<link>`s and the
@@ -31,11 +32,18 @@ pub(super) fn place(
             .attribute("mainRoad")
             .and_then(|id| find(roads, id));
         let s = |name| attr_f64(junction, name).filter(|s| main.is_some_and(|r| r.on_road(*s)));
-        let (Some(main), Some(s_start), Some(s_end)) = (main, s("sStart"), s("sEnd")) else {
-            warnings.push(Warning::VirtualJunctionDropped {
-                junction_id: jid.to_string(),
-            });
-            continue;
+        let main = match (main, s("sStart"), s("sEnd")) {
+            (Some(road), Some(s_start), Some(s_end)) => Some(MainRoad {
+                road: road.id,
+                s_start,
+                s_end,
+            }),
+            _ => {
+                warnings.push(Warning::VirtualJunctionWithoutMainRoad {
+                    junction_id: jid.to_string(),
+                });
+                None
+            }
         };
         let mut links = Vec::new();
         let mut dropped = |road_id: &str, connection_id: &str| {
@@ -146,9 +154,7 @@ pub(super) fn place(
         out.push(VirtualJunction {
             od_id: jid.to_string(),
             name: junction.attribute("name").unwrap_or_default().to_string(),
-            main_road: main.id,
-            s_start,
-            s_end,
+            main,
             orientation: orientation(junction),
             links,
         });

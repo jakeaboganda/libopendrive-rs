@@ -505,21 +505,29 @@ fn virtual_junction(net: &RoadNetwork, j: &VirtualJunction) -> Value {
         net.road_lane(id)
             .map(|at| format!("{}:{}", od(at.road).unwrap_or_default(), at.od_id))
     };
-    let steps = ((j.s_end - j.s_start).abs().ceil() as usize).max(1);
+    let stretch: Vec<[f32; 3]> = j.main.map_or_else(Vec::new, |m| {
+        let steps = ((m.s_end - m.s_start).abs().ceil() as usize).max(1);
+        (0..=steps)
+            .filter_map(|k| {
+                at(
+                    m.road,
+                    m.s_start + (m.s_end - m.s_start) * k as f64 / steps as f64,
+                )
+            })
+            .collect()
+    });
     json!({
         "id": j.od_id,
         "name": j.name,
-        "mainRoad": od(j.main_road),
-        "sStart": j.s_start,
-        "sEnd": j.s_end,
+        "mainRoad": j.main.and_then(|m| od(m.road)),
+        "sStart": j.main.map(|m| m.s_start),
+        "sEnd": j.main.map(|m| m.s_end),
         "orientation": match j.orientation {
             Orientation::Positive => "+",
             Orientation::Negative => "-",
             Orientation::Both => "none",
         },
-        "stretch": (0..=steps)
-            .filter_map(|k| at(j.main_road, j.s_start + (j.s_end - j.s_start) * k as f64 / steps as f64))
-            .collect::<Vec<_>>(),
+        "stretch": stretch,
         "links": j
             .links
             .iter()

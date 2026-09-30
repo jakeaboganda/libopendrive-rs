@@ -195,10 +195,11 @@ pub enum Warning {
         /// The road it is on, or names.
         road_id: String,
     },
-    /// A `<junction type="virtual">` whose `mainRoad` names a road the load
-    /// lacks, or whose `sStart` or `sEnd` is missing or off that road. The
-    /// crate drops it.
-    VirtualJunctionDropped {
+    /// A `<junction type="virtual">` with no `mainRoad`, one naming a road
+    /// the load lacks, or an `sStart` or `sEnd` missing or off that road. The
+    /// spec requires them. The crate keeps the junction's links, without a
+    /// main road.
+    VirtualJunctionWithoutMainRoad {
         /// The `<junction id>`.
         junction_id: String,
     },
@@ -419,7 +420,7 @@ impl Warning {
                 ..
             } => road_id,
             Self::JunctionReferenceDropped { .. }
-            | Self::VirtualJunctionDropped { .. }
+            | Self::VirtualJunctionWithoutMainRoad { .. }
             | Self::UnknownJunctionGroupType { .. }
             | Self::ElevationGridNotApplied { .. }
             | Self::ElevationGridDropped { .. }
@@ -531,9 +532,9 @@ impl fmt::Display for Warning {
                 id,
                 road_id,
             } => write!(f, "road {road_id:?}: {element} {id:?} dropped"),
-            Self::VirtualJunctionDropped { junction_id } => write!(
+            Self::VirtualJunctionWithoutMainRoad { junction_id } => write!(
                 f,
-                "junction {junction_id:?}: virtual junction dropped, it lacks its main road or where along it it runs"
+                "junction {junction_id:?}: virtual junction read without its main road, it lacks the road or where along it it runs"
             ),
             Self::VirtualLinkDropped {
                 junction_id,

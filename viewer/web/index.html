@@ -931,8 +931,10 @@ function showVirtualTip(ev, rect, hit) {
   const { junction: j, link } = hit.object.userData.virtual;
   const side = p => `road ${escapeHtml(String(p.road))} ` + (p.end ? `at its ${p.end}` : `at s ${p.s.toFixed(2)} m, heading ${p.dir}`);
   const rows = [
-    `<b>virtual junction</b> ${escapeHtml(j.name || j.id)}   main road ${escapeHtml(String(j.mainRoad))}`,
-    `s ${j.sStart.toFixed(2)} to ${j.sEnd.toFixed(2)} m   orientation ${j.orientation}   ${j.links.length} link${j.links.length === 1 ? '' : 's'}`,
+    `<b>virtual junction</b> ${escapeHtml(j.name || j.id)}   ` +
+      (j.mainRoad != null ? `main road ${escapeHtml(String(j.mainRoad))}` : 'no main road'),
+    (j.sStart != null ? `s ${j.sStart.toFixed(2)} to ${j.sEnd.toFixed(2)} m   ` : '') +
+      `orientation ${j.orientation}   ${j.links.length} link${j.links.length === 1 ? '' : 's'}`,
   ];
   if (link) {
     rows.push(`<b>link</b> from ${side(link.from)}`, `to ${side(link.to)}`);

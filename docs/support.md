@@ -264,7 +264,8 @@ the roads it joins raises `Warning::ConnectionDropped`, and an incoming road
 whose `<link>` leaves out its junction raises `Warning::JunctionLinkMissing`.
 A junction `<priority>` naming a road the load didn't bake raises
 `Warning::PriorityDropped`. A virtual junction or link the crate can't place
-raises `Warning::VirtualJunctionDropped` or `Warning::VirtualLinkDropped`, and a road `<neighbor>` the crate can't read
+raises `Warning::VirtualJunctionWithoutMainRoad` or
+`Warning::VirtualLinkDropped`, and a road `<neighbor>` the crate can't read
 raises `Warning::NeighborDropped`. A road whose `length` isn't where its `<planView>` ends raises
 `Warning::RoadLengthMismatch`, and a lane link between lanes more than
 10 cm apart raises `Warning::LinkGap`. A `<speed>` the

@@ -334,8 +334,9 @@ pub(crate) fn lane_link(lane: roxmltree::Node) -> (Option<i32>, Option<i32>) {
 ///
 /// A virtual junction's roads meet its main road part way along it, which
 /// the lane graph can't, so their links with an `elementS` are dropped from
-/// it, as are its deprecated `type="virtual"` connections, and its incoming
-/// roads are not linked into it.
+/// it, as are its connections from the main road and its deprecated
+/// `type="virtual"` connections, and its incoming roads are not linked into
+/// it.
 pub(crate) fn junctions(
     root: roxmltree::Node,
     roads: &mut HashMap<String, RoadInfo>,
@@ -373,7 +374,9 @@ pub(crate) fn junctions(
         };
         let mut conns = Vec::new();
         for c in j.children().filter(|n| n.has_tag_name("connection")) {
-            if is_virtual && c.attribute("type") == Some("virtual") {
+            let from_main = c.attribute("incomingRoad").is_some()
+                && c.attribute("incomingRoad") == j.attribute("mainRoad");
+            if is_virtual && (c.attribute("type") == Some("virtual") || from_main) {
                 continue;
             }
             let (Some(incoming), Some(connecting)) =

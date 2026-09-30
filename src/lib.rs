@@ -225,8 +225,9 @@
 //!
 //! A `<junction type="virtual">` joins roads to a main road part way along
 //! it, such as a driveway, without cutting it. Each is a
-//! [`VirtualJunction`] in [`RoadNetwork::virtual_junctions`], with its main
-//! road, the stretch of it the junction spans, its [`Orientation`], and a
+//! [`VirtualJunction`] in [`RoadNetwork::virtual_junctions`], with its
+//! [`MainRoad`] and the stretch of it the junction spans, its
+//! [`Orientation`], and a
 //! [`VirtualLink`] for each place a road meets another part way along. A
 //! link comes from a road of the junction whose `<predecessor>` or
 //! `<successor>` gives an `elementS`, with the lane pairs its lanes'
@@ -241,9 +242,10 @@
 //! ends on the main road, are read as in a common junction. A road link
 //! with an `elementS` outside a virtual junction is read by its
 //! `contactPoint`, since files such as ASAM's `UC_ParamPoly3` give one
-//! there. A junction whose main road the load lacks, or whose `sStart` or
-//! `sEnd` is off it, is dropped with a [`Warning::VirtualJunctionDropped`],
-//! and a link naming a road the load lacks, an `s` off it, or an
+//! there. A junction without its main road, one naming a road the load
+//! lacks, or an `sStart` or `sEnd` off it, as the spec's own example of
+//! virtual connections is, keeps its links with no [`MainRoad`], and raises
+//! a [`Warning::VirtualJunctionWithoutMainRoad`]. A link naming a road the load lacks, an `s` off it, or an
 //! `elementDir` other than `+` or `-`, with a
 //! [`Warning::VirtualLinkDropped`]. esmini reads a virtual junction as a
 //! common one. No other reader to compare against reads `elementS`.
@@ -1123,8 +1125,9 @@
 //!   roads it joins.
 //! - [`Warning::JunctionLinkMissing`] for an incoming road whose `<link>`
 //!   leaves out its junction.
-//! - [`Warning::VirtualJunctionDropped`] and [`Warning::VirtualLinkDropped`]
-//!   for a virtual junction or link the crate can't place. See
+//! - [`Warning::VirtualJunctionWithoutMainRoad`] and
+//!   [`Warning::VirtualLinkDropped`] for a virtual junction or link the
+//!   crate can't place. See
 //!   [Virtual junctions](#virtual-junctions).
 //! - [`Warning::RailwayDropped`] for a railway switch or platform segment
 //!   the crate can't place. See [Railways](#railways).
@@ -1215,7 +1218,7 @@ pub use geometry::TooFewPoints;
 pub use geometry::{Polyline, Pose, Projection, RoadSample};
 pub use junction::{
     CrossPath, CrossPathEnd, ElevationGrid, GridRow, JunctionArea, JunctionGroup,
-    JunctionGroupKind, LinkPoint, VirtualJunction, VirtualLink,
+    JunctionGroupKind, LinkPoint, MainRoad, VirtualJunction, VirtualLink,
 };
 pub use mesh::{LaneSpan, Mesh, MeshError, MeshSampler};
 pub use network::{Direction, Lane, LaneId, LaneType, RoadNetwork};

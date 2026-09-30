@@ -17,17 +17,28 @@ pub struct VirtualJunction {
     pub od_id: String,
     /// Its `name`, empty if it has none.
     pub name: String,
-    /// The road the others branch off, from `mainRoad`.
-    pub main_road: RoadId,
-    /// Where along the main road it starts, from `sStart`.
-    pub s_start: f64,
-    /// Where it ends, from `sEnd`.
-    pub s_end: f64,
+    /// The road the others branch off and the stretch of it the junction
+    /// spans, or `None` if the file doesn't give them, as the spec's own
+    /// example of virtual connections does not.
+    pub main: Option<MainRoad>,
     /// Which way along the main road it applies to, from `orientation`.
     pub orientation: Orientation,
     /// Each place in it where a road meets another part way along, in file
     /// order.
     pub links: Vec<VirtualLink>,
+}
+
+/// The road a [`VirtualJunction`]'s roads branch off, and the stretch of it
+/// the junction spans.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct MainRoad {
+    /// The road, from `mainRoad`.
+    pub road: RoadId,
+    /// Where along it the junction starts, from `sStart`.
+    pub s_start: f64,
+    /// Where it ends, from `sEnd`.
+    pub s_end: f64,
 }
 
 /// Where a road meets another part way along it, in a [`VirtualJunction`].
