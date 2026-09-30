@@ -1,0 +1,19 @@
+[package]
+name = "libopendrive-viewer"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Bakes OpenDRIVE maps into the JSON the three.js viewer in web/ draws, natively or in the browser."
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "viewer_export"
+path = "src/main.rs"
+
+[dependencies]
+libopendrive = { path = "..", features = ["serde"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+
