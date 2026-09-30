@@ -87,7 +87,8 @@ files declaring 1.4, 1.6 and 1.7.
   `centerline_s` turns that road `s` into the distance along the lane's
   baked centerline, which `nearest_lane` and the speed limits use.
 - `advance` moves a lane position along the lanes by a distance, and gives
-  one place per branch. `left_of` and `right_of` step to the lane beside.
+  one place per branch. The branches grow exponentially with the distance
+  on a map with loops, so step a few metres at a time. `left_of` and `right_of` step to the lane beside.
 
 ## Objects
 

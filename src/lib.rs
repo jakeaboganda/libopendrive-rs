@@ -759,6 +759,15 @@
 //! route. The crate gives them all: a caller with a heading or a route can
 //! pick, and one without can see every way on.
 //!
+//! Every way on grows fast. Each fork splits the branches, and on a map with
+//! loops two paths that reach the same lane have rarely come the same
+//! length, so they end at different places and don't merge. From one lane
+//! of Town07, 400 m gives 26 places, 1.2 km 1,343, 2 km 72,912 in about
+//! 150 ms, and 2.4 km 464,066 in 1.3 s: about seven times as many for each
+//! further 400 m. Nothing caps it, so a long enough distance runs out of
+//! memory. Step a few metres at a time, as CARLA's callers do, and pick a
+//! branch at each fork. An infinite or NaN distance gives no places.
+//!
 //! [`RoadNetwork::left_of`] and [`RoadNetwork::right_of`] step to the lane
 //! beside, at the same `s`, left and right of the lane's traffic. That is
 //! the lane of any type, running either way. Whether traffic may cross into

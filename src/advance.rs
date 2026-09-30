@@ -1,6 +1,8 @@
 //! Moving a lane position along the lanes: a distance down the lane graph, and
 //! across to the lane beside it.
 
+use std::collections::HashSet;
+
 use crate::network::{Direction, LaneId, RoadNetwork};
 use crate::road::{station_at, LanePosition};
 
@@ -51,14 +53,24 @@ impl RoadNetwork {
     /// traffic, so it flips sign onto a road that runs the other way.
     ///
     /// A branch that reaches a lane with nothing after it stops there, as an
-    /// [`Advance::DeadEnd`]. Branches that meet again give the same place
-    /// once. Every fork on the way splits the branches, so a long distance
-    /// through a city can give many: step in short distances. Empty if `from`
-    /// is not on a lane of the network's roads.
+    /// [`Advance::DeadEnd`]. Branches that meet again, entering the same
+    /// lane at the same end with the same distance left to within a
+    /// millimetre, go on as one, and give their place once. Every other fork
+    /// splits the branches, and on a map with loops paths that meet again
+    /// have rarely come the same length, so the branches grow exponentially
+    /// with the distance: see [Moving along the lanes](crate#moving-along-the-lanes).
+    /// Step a few metres at a time. Empty if `from` is not on a lane of the
+    /// network's roads, or `distance` is not finite.
     pub fn advance(&self, from: LanePosition, distance: f64) -> Vec<Advance> {
         let (Some(lane), Some(arc)) = (self.lane(from.lane), self.centerline_s(from)) else {
             return Vec::new();
         };
+        if !distance.is_finite() {
+            return Vec::new();
+        }
+        let millimetres = |m: f64| (m * 1000.0).round() as i64;
+        let mut entered: HashSet<(LaneId, u32, i64)> = HashSet::new();
+        let mut placed: HashSet<(LaneId, i64, Option<i64>)> = HashSet::new();
         let ahead = distance >= 0.0;
         let side = from.offset * travel(lane.direction);
         let mut out: Vec<Advance> = Vec::new();
@@ -88,11 +100,13 @@ impl RoadNetwork {
                 todo.extend(next.iter().rev().filter_map(|&id| {
                     let next = self.lane(id)?;
                     let up = (next.direction == Direction::Forward) == ahead;
-                    Some(Branch {
+                    let branch = Branch {
                         lane: id,
                         arc: if up { 0.0 } else { next.center.length() },
                         remaining: remaining - room,
-                    })
+                    };
+                    let key = (id, branch.arc.to_bits(), millimetres(branch.remaining));
+                    entered.insert(key).then_some(branch)
                 }));
                 continue;
             }
@@ -109,7 +123,11 @@ impl RoadNetwork {
             } else {
                 Advance::Reached(at)
             };
-            if !out.contains(&end) {
+            let short = match end {
+                Advance::DeadEnd { short, .. } => Some(millimetres(short)),
+                Advance::Reached(_) => None,
+            };
+            if placed.insert((at.lane, millimetres(at.s), short)) {
                 out.push(end);
             }
         }

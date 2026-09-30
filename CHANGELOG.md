@@ -12,6 +12,9 @@
 - The distance runs along the lanes' centerlines, so it is how far a
   vehicle travels. esmini and CARLA step by road `s`. The offset keeps its
   side of the traffic onto a road that runs the other way.
+- The branches grow exponentially with the distance on a map with loops:
+  from one lane of Town07, 72,912 places at 2 km. Step a few metres at a
+  time. An infinite or NaN distance gives none.
 - The crate doesn't pick a branch by a heading or a route, as esmini can.
   The caller gets them all and picks.
 - `RoadNetwork::left_of` and `right_of` step to the lane beside, left and

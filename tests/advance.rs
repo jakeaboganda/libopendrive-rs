@@ -216,3 +216,26 @@ fn a_position_off_the_network_goes_nowhere() {
         .advance(at(lane(&net, "1", 1), 60.0, 0.0), 5.0)
         .is_empty());
 }
+
+/// Road 1's lane -1 leads back into its own start, a loop with no end.
+const LOOP: &str = r#"<OpenDRIVE>
+  <road id="1" length="50" junction="-1">
+    <link><successor elementType="road" elementId="1" contactPoint="start"/></link>
+    <planView><geometry s="0" x="0" y="0" hdg="0" length="50"><line/></geometry></planView>
+    <lanes><laneSection s="0">
+      <center><lane id="0" type="none"/></center>
+      <right><lane id="-1" type="driving"><link><successor id="-1"/></link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane></right>
+    </laneSection></lanes>
+  </road>
+</OpenDRIVE>"#;
+
+#[test]
+fn an_infinite_or_nan_distance_gives_no_places_even_round_a_loop() {
+    let net = load_str(LOOP).unwrap();
+    let from = at(net.lanes()[0].id, 10.0, 0.0);
+    assert_eq!(net.lanes()[0].successors, [net.lanes()[0].id]);
+    assert!(net.advance(from, f64::INFINITY).is_empty());
+    assert!(net.advance(from, f64::NEG_INFINITY).is_empty());
+    assert!(net.advance(from, f64::NAN).is_empty());
+    assert_eq!(net.advance(from, 1000.0).len(), 1);
+}
