@@ -53,11 +53,10 @@ per object.
 
 The optional `serde` feature serializes the network and its mesh.
 The `viewer/` crate uses it to bake maps to the JSON the viewer reads.
-You can also use it to cache an import. A `RoadNetwork` serializes its lanes,
-objects, structures, signals, road marks, CRG records and roads, and rebuilds
-its indexes when deserialized, so the result behaves like a freshly imported
-map. A road serializes as the records the file gives, and rebakes its
-spirals and cubic curves on the way in.
+You can also use it to cache an import. A `RoadNetwork` serializes everything
+it read, and rebuilds its lookup indexes when deserialized, so the result
+behaves like a freshly imported map. A road serializes as the records the
+file gives, and rebakes its spirals and cubic curves on the way in.
 
 ```toml
 libopendrive = { version = "0.4", features = ["serde"] }
@@ -76,16 +75,11 @@ kinds it doesn't care about. The crate prints nothing and depends on no
 logging crate. A clean file allocates no warnings.
 
 The crate warns where it drops something, or reads a file that breaks a rule
-of the spec. So far that is a skipped road, a lane with no `<width>` or
-`<border>`, the lane borders the spec forbids, a lateral profile short
-of the road, a road `rule` the spec does not allow, a junction
-connection without the roads it joins, an incoming road whose link leaves
-out its junction, a road whose length isn't its reference line's, a lane
-link across a gap, a `<speed>` or `<access>` it can't
-read, a lane outside a level lane that isn't level, and a `<visibility>`
-it can't read. It
-doesn't warn for elements it doesn't read, such as `<userData>`, which real
-maps are full of. [support.md](support.md) lists those.
+of the spec, such as a road with no geometry, a lane with no `<width>` or
+`<border>`, or a junction boundary that isn't closed. The `Warning` enum
+lists every kind. The crate doesn't warn for elements it doesn't read, such
+as `<userData>`, which real maps are full of. [support.md](support.md) lists
+those.
 
 The parser rejects non-finite attribute values as it reads them. Rust's float
 parser accepts `NaN` and turns `1e400` into infinity, and one such value
@@ -100,15 +94,16 @@ lanes, 673 of them driving):
 | | per call |
 | --- | --- |
 | `nearest_lane` / `sample_near` | ~0.4 us |
-| `road_position` | ~5 us |
+| `road_position` | ~6 us |
 | `route` (across the map) | ~29 us |
 | `MeshSampler::height_at` | ~0.2 us |
 
-`RoadSurface::sample` on a CRG takes ~0.3 us with a warm `SurfaceHint` and
-~0.6 us without one, measured on `tests/data/crg.xodr`.
+Import is ~20 ms for that map. `RoadSurface::sample` takes ~0.5 us on
+`tests/data/crg.xodr`.
 
-Import is ~15 ms for that map.
-
-`cargo bench` reproduces these. `tests/budgets.rs` guards them in CI by racing
-each indexed lookup against the scan it replaced. Racing needs no fixed
-per-machine threshold, unlike timing a call directly.
+`cargo bench` measures the import and every lookup in the table except
+`road_position`. `tests/budgets.rs` guards `nearest_lane` and
+`MeshSampler::height_at` in CI by racing each against the scan it replaced.
+Racing needs no fixed per-machine threshold, unlike timing a call directly.
+The same test fails if any route across Town07 takes longer than one 64 Hz
+tick.
