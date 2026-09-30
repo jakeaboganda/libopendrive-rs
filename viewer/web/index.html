@@ -43,7 +43,8 @@
           background: linear-gradient(to right, #2166ac, #f7f7f7, #b2182b); }
   #legend .heading { flex-basis: 100%; color: #7c8595; margin-top: 2px; }
   #tools label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
-  #tools select { background: #1b1f27; color: inherit; border: 1px solid #2a2f3a; border-radius: 4px; padding: 2px 4px; }
+  #tools select, #tools button { background: #1b1f27; color: inherit; border: 1px solid #2a2f3a; border-radius: 4px; padding: 2px 4px; }
+  #tools button { font: inherit; cursor: pointer; }
   #flagcount { color: #e88; font-variant-numeric: tabular-nums; }
   #err { position: absolute; inset: 0; display: none; place-content: center; text-align: center; padding: 40px; color: #e88; }
   #err.prompt { color: #8fa1b3; }
@@ -65,6 +66,8 @@
   <div id="view">
     <div id="tip"></div>
     <div id="tools">
+      <button id="openbtn" title="open a .xodr, with any .crg files it uses">open .xodr</button>
+      <input type="file" id="open" accept=".xodr,.crg" multiple hidden>
       <label>map <select id="map"></select></label>
       <label>view
         <select id="mode">
@@ -266,22 +269,81 @@ let walkerMesh;              // a square at each branch of the marker
 
 init().catch(showError);
 
+document.getElementById('openbtn').addEventListener('click', () => document.getElementById('open').click());
+document.getElementById('open').addEventListener('change', async e => {
+  const files = [...e.target.files];
+  const maps = files.filter(f => /\.xodr$/i.test(f.name));
+  if (maps.length !== 1) return alert('Open one .xodr, and any .crg files it uses.');
+  await openedFiles('readwrite', store => store.put(files, 'files'));
+  location.search = '?open=' + encodeURIComponent(maps[0].name);
+});
+
+// Run `use` on the IndexedDB store that keeps the files last opened, so they
+// survive the reload that draws them, and resolve to its request's result.
+function openedFiles(mode, use) {
+  return new Promise((resolve, reject) => {
+    const db = indexedDB.open('libopendrive-viewer', 1);
+    db.onupgradeneeded = () => db.result.createObjectStore('opened');
+    db.onerror = () => reject(db.error);
+    db.onsuccess = () => {
+      const tx = db.result.transaction('opened', mode);
+      const request = use(tx.objectStore('opened'));
+      tx.oncomplete = () => resolve(request.result);
+      tx.onerror = () => reject(tx.error);
+    };
+  });
+}
+
 // Fill the map picker from the exporter's scenes.json, and return the scene
-// ?scene= names, or null for none. Picking one reloads the page on it.
+// ?scene= names or the opened map ?open= names, and how many scenes there
+// are. Picking a scene reloads the page on it.
 async function pickScene() {
   const names = await fetch('scenes.json').then(r => r.ok ? r.json() : []).catch(() => []);
-  const chosen = new URLSearchParams(location.search).get('scene');
+  const params = new URLSearchParams(location.search);
+  const chosen = params.get('scene');
+  const opened = params.get('open');
   const picker = document.getElementById('map');
-  if (!chosen) picker.add(Object.assign(new Option('choose...', '', true, true), { disabled: true }));
+  if (!chosen) {
+    picker.add(Object.assign(new Option(opened ? `${opened} (opened)` : 'choose...', '', true, true), { disabled: true }));
+  }
   for (const name of !chosen || names.includes(chosen) ? names : [chosen, ...names]) {
     picker.add(new Option(name.replace(/\.json$/, ''), name, false, name === chosen));
   }
   picker.addEventListener('change', () => { location.search = '?scene=' + encodeURIComponent(picker.value); });
-  if (chosen) {
-    document.title = `${chosen.replace(/\.json$/, '')} - libopendrive viewer`;
-    document.querySelector('#sidebar h1').textContent = chosen.replace(/\.json$/, '');
+  const title = chosen?.replace(/\.json$/, '') ?? opened?.replace(/\.xodr$/i, '');
+  if (title) {
+    document.title = `${title} - libopendrive viewer`;
+    document.querySelector('#sidebar h1').textContent = title;
   }
-  return { sceneUrl: chosen, count: names.length };
+  return { sceneUrl: chosen, opened, count: names.length };
+}
+
+// Bake the opened map `name` with the WebAssembly build of the viewer crate,
+// handing it the .crg files opened with it.
+async function bakeOpened(name) {
+  const files = await openedFiles('readonly', store => store.get('files'));
+  const map = files?.find(f => f.name === name);
+  if (!map) throw new Error(`${escapeHtml(name)} is not open any more. Open it again with <strong>open .xodr</strong>.`);
+  let baker;
+  try {
+    baker = await import('./pkg/libopendrive_viewer.js');
+    await baker.default();
+  } catch (e) {
+    throw new Error('The WebAssembly baker is not built. Run <code>sh viewer/build.sh</code>, then reload.');
+  }
+  showMessage(`<div><p>Baking ${escapeHtml(name)}...</p></div>`);
+  const crg = new Map(await Promise.all(files.filter(f => f !== map)
+    .map(async f => [f.name, new Uint8Array(await f.arrayBuffer())])));
+  const xodr = await map.text();
+  await new Promise(painted => requestAnimationFrame(() => setTimeout(painted)));
+  let json;
+  try {
+    json = baker.bake(xodr, file => crg.get(file.split(/[\\/]/).pop()));
+  } catch (e) {
+    throw new Error(`${escapeHtml(name)}: ${escapeHtml(e.message)}`);
+  }
+  document.getElementById('err').style.display = 'none';
+  return JSON.parse(json);
 }
 
 // The map's PROJ string and offset, as the file gives them, or '' for none.
@@ -294,26 +356,34 @@ function geoText(geo) {
 
 // What the page shows before a map is picked.
 function showPrompt(count) {
+  const open = `<p><strong>open .xodr</strong> a map, with any .crg files it uses</p>`;
+  showMessage(count
+    ? `<div>${open}<p>or pick one of the ${count} baked maps from the <strong>map</strong> list.</p></div>`
+    : `<div>${open}</div>`);
+}
+
+// Show `html` over the view, in the prompt's colours.
+function showMessage(html) {
   const el = document.getElementById('err');
   el.classList.add('prompt');
   el.style.display = 'grid';
-  el.innerHTML = count
-    ? `<div><p>Pick one of the ${count} baked maps from the <strong>map</strong> list.</p></div>`
-    : `<div><p>No baked maps here yet. Bake one with</p>` +
-      `<p><code>cargo run --example viewer_export --features serde -- map.xodr</code></p>` +
-      `<p>and serve this folder over HTTP.</p></div>`;
+  el.innerHTML = html;
 }
 
 async function init() {
-  const { sceneUrl, count } = await pickScene();
-  if (!sceneUrl) return showPrompt(count);
+  const { sceneUrl, opened, count } = await pickScene();
+  if (!sceneUrl && !opened) return showPrompt(count);
   let data;
-  try {
-    data = await (await fetch(sceneUrl)).json();
-  } catch (e) {
-    throw new Error(`could not load ${escapeHtml(sceneUrl)}. Serve this folder over HTTP ` +
-      `(e.g. <code>python3 -m http.server</code>) rather than opening the file directly, ` +
-      `and bake a map with <code>viewer_export</code> first.`);
+  if (opened) {
+    data = await bakeOpened(opened);
+  } else {
+    try {
+      data = await (await fetch(sceneUrl)).json();
+    } catch (e) {
+      throw new Error(`could not load ${escapeHtml(sceneUrl)}. Serve this folder over HTTP ` +
+        `(e.g. <code>python3 -m http.server</code>) rather than opening the file directly, ` +
+        `and bake a map with <code>viewer_export</code> first.`);
+    }
   }
   document.getElementById('geo').textContent = geoText(data.geoReference);
 
@@ -1395,7 +1465,7 @@ function renderSidebar() {
       item(g, w, `<span class="warning">${escapeHtml(w.message)}</span>`, () => {
         const list = lanesOf(w.lanes);
         if (select('warning', w) && list.length) frameOnPoints(list.flatMap(l => l.centerline));
-        if (selected && !list.length) showSelectedTip([`<b>road ${escapeHtml(String(w.roadId))}</b> baked no lanes`]);
+        if (selected && !list.length && w.roadId != null) showSelectedTip([`<b>road ${escapeHtml(String(w.roadId))}</b> baked no lanes`]);
         else hideTip();
       });
     }
@@ -2152,6 +2222,7 @@ function dist3(a, b) { return Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]); }
 
 function showError(e) {
   const el = document.getElementById('err');
+  el.classList.remove('prompt');
   el.style.display = 'grid';
   el.innerHTML = `<div><p><strong>Viewer could not start.</strong></p><p>${e.message}</p></div>`;
   console.error(e);
