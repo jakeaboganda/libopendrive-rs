@@ -6,8 +6,8 @@
 
 - The viewer opens a `.xodr` itself. Click `open .xodr`, pick a map and any
   `.crg` files it uses, and the page bakes it with the crate compiled to
-  WebAssembly. Build that once with `sh viewer/build.sh`. A reload keeps the
-  map.
+  WebAssembly. `sh viewer/run.sh` builds the page, serves it and opens it.
+  A reload keeps the map.
 - The exporter moved from `examples/viewer_export.rs` to the
   `libopendrive-viewer` crate in `viewer/`, which the page's WebAssembly
   build shares. Run it with `cargo run -p libopendrive-viewer -- map.xodr`.
