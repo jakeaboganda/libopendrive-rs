@@ -11,8 +11,9 @@ esmini, libOpenDRIVE and CARLA do with it.
 ## Which OpenDRIVE version
 
 Of `<header>`, the importer reads only the geo reference. It never inspects
-`revMajor` or `revMinor` and never rejects a file for its declared version. Whether a file
-loads depends only on whether it uses the elements listed below.
+`revMajor` or `revMinor`, and never rejects a file for its declared version.
+Whether a file loads depends only on whether it uses the elements listed
+below.
 
 Every one of those elements but a lane's `<visibility>` and a road's
 `<neighbor>` is in ASAM OpenDRIVE 1.9.0, the current revision. 1.9 defines
@@ -80,8 +81,8 @@ files declaring 1.4, 1.6 and 1.7.
   warning says so.
 - Railway `<switch>`es and `<station>`s, as `RoadNetwork::switches` and
   `RoadNetwork::stations`, each on the roads of its tracks.
-- `<junctionGroup>`s, as `RoadNetwork::junction_groups`: junctions routing
-  should see as one, such as a roundabout's.
+- `<junctionGroup>`s, as `RoadNetwork::junction_groups`: the junctions the
+  file groups as one, such as a roundabout's. The router does not use them.
 - Virtual junctions, as `RoadNetwork::virtual_junctions`: roads meeting a
   main road part way along it, such as a driveway. The router does not
   follow those links.
@@ -116,15 +117,17 @@ files declaring 1.4, 1.6 and 1.7.
   heights and the lateral shape. `road_lane` gives a lane's road, lane
   section and `<lane id>`.
 - `road_position` takes the road whose surface is nearest in 3D, so a point
-  on a bridge finds the bridge. Where roads overlap in a junction, which
-  road comes back is not defined; `road_position_on` picks one.
+  on a bridge finds the bridge. Where roads overlap in a junction,
+  `road_position` may return any of them. `road_position_on` takes the road
+  to use.
 - `lane_point` and `lane_position` do the same by lane: a road `s` and an
   offset from the lane's center, as esmini's `SetLanePos` takes them.
   `centerline_s` turns that road `s` into the distance along the lane's
   baked centerline, which `nearest_lane` and the speed limits use.
 - `advance` moves a lane position along the lanes by a distance, and gives
-  one place per branch. The branches grow exponentially with the distance
-  on a map with loops, so step a few metres at a time. `left_of` and `right_of` step to the lane beside.
+  one place per branch. On a map with loops the branches grow exponentially
+  with the distance, so step a few metres at a time. `left_of` and
+  `right_of` step to the lane beside.
 
 ## Objects
 
@@ -252,34 +255,55 @@ cargo run --release --example crg_profile -- target/crg/country_road.xodr > prof
 
 ## Warnings
 
-`Provenance::warnings` lists what a load dropped from a bad file. A road with
-no finite `length`, no `<planView>` or no geometry the importer can bake
-raises `Warning::RoadSkipped`. A lane with no `<width>` or `<border>` raises
-`Warning::LaneDropped`. The lane borders the spec forbids raise
-`Warning::WidthAndBorder`, `Warning::BorderWithLaneOffset` and
-`Warning::BorderCrossesInnerLane`. A lateral profile that doesn't cover the
-road raises `Warning::ShapeShortOfRoad`. A road `rule` other than `RHT` or
-`LHT` raises `Warning::UnknownTrafficRule`. A junction connection without
-the roads it joins raises `Warning::ConnectionDropped`, and an incoming road
-whose `<link>` leaves out its junction raises `Warning::JunctionLinkMissing`.
-A junction `<priority>` naming a road the load didn't bake raises
-`Warning::PriorityDropped`. A virtual junction or link the crate can't place
-raises `Warning::VirtualJunctionWithoutMainRoad` or
-`Warning::VirtualLinkDropped`, and a road `<neighbor>` the crate can't read
-raises `Warning::NeighborDropped`. A road whose `length` isn't where its `<planView>` ends raises
-`Warning::RoadLengthMismatch`, and a lane link between lanes more than
-10 cm apart raises `Warning::LinkGap`. A `<speed>` the
-crate can't read raises `Warning::SpeedLimitDropped`, and an `<access>`
-whose `rule` is neither `allow` nor `deny` raises `Warning::AccessDropped`.
-A lane outside a level lane that isn't level raises `Warning::LaneNotLevel`,
-and a `<visibility>` with a distance the crate can't read raises
-`Warning::VisibilityDropped`.
+`Provenance::warnings` lists what a load dropped from a bad file, or read
+from a file that breaks a rule of the spec. `Warning::road_id` gives the
+road a warning happened on, or an empty string for one about a whole
+junction or junction group.
+
+| `Warning` | Raised for |
+| --- | --- |
+| `RoadSkipped` | a road with no finite `length`, no `<planView>` or no geometry the importer can bake |
+| `LaneDropped` | a lane with no `<width>` or `<border>` the crate can read |
+| `WidthAndBorder` | a lane with `<border>`s in a lane section that also has `<width>`s |
+| `BorderWithLaneOffset` | a border lane on a road whose `<laneOffset>` is not 0 |
+| `BorderCrossesInnerLane` | a `<border>` inside the lane within it |
+| `ShapeShortOfRoad` | a `<lateralProfile>` whose shapes start inside the road's edge |
+| `CrossSectionWithShape` | a `<crossSectionSurface>` on a road that also has `<shape>`s or a `<superelevation>` |
+| `StripDropped` | a cross-section `<strip>` with an `id` the spec doesn't allow, a repeated `id`, or no inner strip or `<width>` to place it by |
+| `UnknownStripMode` | an outer `<strip>` whose `mode` is neither `independent` nor `relative` |
+| `LaneNotLevel` | a lane outside a level lane that isn't level |
+| `UnknownTrafficRule` | a road `rule` other than `RHT` or `LHT` |
+| `UnknownLaneDirection` | a lane `direction` other than `standard`, `reversed` or `both` |
+| `RoadLengthMismatch` | a road whose `length` isn't where its `<planView>` ends |
+| `LinkGap` | a lane link between lanes more than 10 cm apart |
+| `ConnectionDropped` | a junction `<connection>` without the roads it joins |
+| `JunctionLinkMissing` | an incoming road whose `<link>` leaves out its junction |
+| `PriorityDropped` | a junction `<priority>` naming a road the load didn't bake |
+| `JunctionReferenceDropped` | a `<junctionReference>` naming a junction the file lacks |
+| `UnknownJunctionGroupType` | a `<junctionGroup>` with a missing `type` or one the spec doesn't allow |
+| `CrossPathDropped` | a `<crossPath>` naming a road, lane or `s` the load didn't bake |
+| `BoundarySegmentDropped` | a junction `<boundary>` segment naming a road or lane the load didn't bake |
+| `BoundaryNotClosed` | a junction `<boundary>` whose segments don't meet |
+| `BoundaryClockwise` | a junction `<boundary>` that runs clockwise |
+| `ElevationGridDropped` | a junction `<elevationGrid>` the crate can't place |
+| `ElevationGridNotApplied` | every junction `<elevationGrid>`, since the crate doesn't move the junction's roads onto it |
+| `VirtualJunctionWithoutMainRoad` | a virtual junction without a `mainRoad` and stretch on a baked road |
+| `VirtualLinkDropped` | a virtual junction link the crate can't place |
+| `NeighborDropped` | a road `<neighbor>` the crate can't read |
+| `RailwayDropped` | a railway `<switch>` or platform `<segment>` the crate can't place |
+| `SpeedLimitDropped` | a `<speed>` whose `max` or `unit` the crate can't read |
+| `AccessDropped` | an `<access>` whose `rule` is neither `allow` nor `deny` |
+| `VisibilityDropped` | a `<visibility>` with a distance the crate can't read |
+
 The elements below raise nothing.
 
 ## What it ignores
 
-The importer silently skips everything else in the file: `<vmsGroup>`, a header's `<license>` and
-`<defaultRegulations>`, `<dataQuality>` and `<include>`, a junction's
-`<objects>` and `<roadSection>`s, and an object's `<surface>`, `<skeleton>`
-and `<curveLocal>` corners. One omission changes the road you get back, not only the detail
-around it: `<center>`, so lane 0 never becomes a `Lane`.
+The importer skips everything else in the file without a warning:
+`<vmsGroup>`, a header's `<license>` and `<defaultRegulations>`,
+`<dataQuality>` and `<include>`, a junction's `<objects>` and
+`<roadSection>`s, and an object's `<surface>`, `<skeleton>` and
+`<curveLocal>` corners.
+
+The importer reads a lane section's `<center>` only for the road marks on
+the center line. Lane 0 never becomes a `Lane`.
