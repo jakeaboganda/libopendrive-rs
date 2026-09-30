@@ -29,6 +29,9 @@ pub(crate) struct LinkTarget {
     pub elem: ElemType,
     pub id: String,
     pub contact: Contact,
+    /// Whether the file gives the `contactPoint`, rather than it reading as
+    /// the start.
+    pub contact_given: bool,
 }
 
 pub(crate) struct RoadInfo {
@@ -213,6 +216,7 @@ pub(crate) fn road_link(road: roxmltree::Node) -> (Option<LinkTarget>, Option<Li
                 elem,
                 id: n.attribute("elementId")?.to_string(),
                 contact: contact_of(n),
+                contact_given: n.attribute("contactPoint").is_some(),
             })
         })
     };
@@ -297,8 +301,9 @@ pub(crate) fn junctions(
 /// junction at neither end into it, at the end the connecting road's own
 /// link names, and warn of each. That end is the `contactPoint` of the
 /// connecting road's `<predecessor>` or `<successor>`, whichever the
-/// connection's `contactPoint` picks, where it names the incoming road. An
-/// end that already links elsewhere is left as it is.
+/// connection's `contactPoint` picks, where it names the incoming road. A
+/// link back with no `contactPoint` names no end, and an end that already
+/// links elsewhere is left as it is: neither is linked.
 fn missing_links(
     jid: &str,
     conns: &[JunctionConn],
@@ -320,7 +325,8 @@ fn missing_links(
             Contact::Start => r.predecessor.as_ref(),
             Contact::End => r.successor.as_ref(),
         });
-        let Some(back) = back.filter(|b| b.elem == ElemType::Road && b.id == c.incoming_road)
+        let Some(back) =
+            back.filter(|b| b.elem == ElemType::Road && b.id == c.incoming_road && b.contact_given)
         else {
             continue;
         };
@@ -339,6 +345,7 @@ fn missing_links(
             elem: ElemType::Junction,
             id: jid.to_string(),
             contact: end,
+            contact_given: true,
         });
         warnings.push(Warning::JunctionLinkMissing {
             road_id: c.incoming_road.clone(),

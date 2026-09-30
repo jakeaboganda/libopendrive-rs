@@ -101,8 +101,8 @@ pub enum Warning {
         connection_id: String,
     },
     /// A road that a common junction's `<connection>` names as its
-    /// `incomingRoad`, whose own `<link>` does not name the junction at the
-    /// end that meets it. The spec says it must. The crate finds that end
+    /// `incomingRoad`, whose own `<link>` names the junction at neither end.
+    /// The spec says it must name it at the end that meets it. The crate finds that end
     /// from the connecting road's link back to the road, and links the road
     /// into the junction there, so its lanes drive on through it.
     JunctionLinkMissing {

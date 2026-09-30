@@ -151,10 +151,10 @@
 //! ASAM's examples does. Then the crate finds that end from the connecting
 //! road's own link back to the incoming road, at the end of the connecting
 //! road the connection's `contactPoint` names, and raises
-//! [`Warning::JunctionLinkMissing`]. libOpenDRIVE links through every
-//! connection too, but takes the incoming road's last section only if its
-//! successor names the junction, and its first otherwise. An end that
-//! already links elsewhere is left as it is.
+//! [`Warning::JunctionLinkMissing`]. A link back with no `contactPoint`
+//! names no end, and an end that already links elsewhere is left as it is,
+//! so neither is linked. libOpenDRIVE skips such a connection
+//! (`OpenDriveMap.cpp:830`).
 //!
 //! Each `<object>` bakes to one or more [`Object`]s in world coordinates,
 //! sitting on the road surface. As in libOpenDRIVE, an object's own frame
