@@ -5,8 +5,9 @@
 Every road is a flat straight heading +X with right lanes only.
 
 Road 0 runs 50 m from the origin. Its lane section at 0 has lane -1, 7 m
-wide, linked on to lane -1 of its section at 25, which splits it in two
-3.5 m lanes, -1 and -2. Lane -1 of that section links to lane -1 of road
+wide, linked on to lane -1 of its section at 25, which has two 3.5 m
+lanes, -1 and -2, as if it split in two. A lane links to one successor, so
+only the -1 half of the split is in the lane graph. Lane -1 of that section links to lane -1 of road
 1, and lane -2 to lane -3. Road 1 carries on from (50, 0) with lanes -1
 and -2, and lane -3 opening out of nothing, 0 m wide at its start. Road 1 is 30 m long, but its
 <planView> gives 40 m.

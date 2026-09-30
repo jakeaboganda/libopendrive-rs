@@ -42,7 +42,7 @@ fn a_link_across_a_gap_warns_and_is_kept() {
 }
 
 #[test]
-fn a_lane_that_splits_in_two_or_hands_over_to_one_opening_beside_it_meets_it() {
+fn a_lane_narrowing_onto_half_a_split_or_handing_over_to_one_opening_beside_it_meets_it() {
     let (net, prov) = load_file_with_provenance(FIXTURE).unwrap();
     let lane = |road: &str, section: usize, od_id: i32| {
         let id = prov

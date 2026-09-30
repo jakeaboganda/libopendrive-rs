@@ -83,9 +83,10 @@ and one whose connecting road doesn't name it either. Regenerate with
     python3 tests/data/junction_links.py
 
 `link_gaps.xodr` comes from `link_gaps.py`, which writes the XML itself.
-It has a lane that splits in two across a lane section seam, one that hands
-over to a lane opening out of nothing beside it, a link across a 2 m gap,
-and a road whose `length` is short of its `<planView>`. Regenerate with
+It has a lane that narrows onto one half of a split across a lane section
+seam, one that hands over to a lane opening out of nothing beside it, a
+link across a 2 m gap, and a road whose `length` is short of its
+`<planView>`. Regenerate with
 
     python3 tests/data/link_gaps.py
 
