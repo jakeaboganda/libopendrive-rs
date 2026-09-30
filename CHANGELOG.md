@@ -11,8 +11,12 @@
   starting there answers. The crate reads `laneChange` whatever the mark's
   type, since the spec does not tie the two.
 - The viewer shows whether a hovered lane may change left and right, or
-  `n/a` where no mark or no lane says. A scene baked by an older
-  `viewer_export` has no answers, and the readout says to bake it again.
+  `n/a` where no mark or no lane says.
+- `viewer_export` records the `.xodr` each scene in `viewer/web/` came
+  from, in `sources.json`. `viewer_export --refresh` bakes again every
+  scene older than its `.xodr` or than `viewer_export`, and
+  `viewer/build.sh`, and so `viewer/run.sh`, runs it. So the `map` list
+  stays current with the viewer.
 
 ### Speed limits
 

@@ -3,13 +3,20 @@
 //! ```sh
 //! cargo run -p libopendrive-viewer -- tests/data/*.xodr
 //! cargo run -p libopendrive-viewer -- tests/data/testtrack.xodr /tmp/testtrack.json
+//! cargo run -p libopendrive-viewer -- --refresh
 //! ```
 //!
 //! Each map goes to `viewer/web/<map name>.json`, unless there is one map and
 //! an output path after it. A map that fails to load is reported and the rest
 //! still export. It then lists every scene in `viewer/web/` in
-//! `scenes.json`, which the viewer's map picker reads. OpenCRG files are
-//! read from beside the `.xodr`.
+//! `scenes.json`, which the viewer's map picker reads, and records the
+//! `.xodr` each came from in `sources.json`. OpenCRG files are read from
+//! beside the `.xodr`.
+//!
+//! `--refresh` bakes again every scene in `viewer/web/` that is older than
+//! its `.xodr` or than this program, so a scene always holds what the
+//! current viewer shows. It finds a scene's `.xodr` in `sources.json`, or
+//! else as `tests/data/<map name>.xodr`, and names the scenes it can't.
 
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -23,9 +30,21 @@ use libopendrive_viewer::bake;
 /// Where scenes go without an output path, and the folder the viewer serves.
 const SCENES: &str = "viewer/web";
 
+/// The files in [`SCENES`] that aren't scenes: the scene list the map picker
+/// reads, and each scene's source `.xodr`.
+const LISTS: [&str; 2] = ["scenes.json", "sources.json"];
+
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     let jobs: Vec<(String, String)> = match args.as_slice() {
+        [flag] if flag == "--refresh" => {
+            let jobs = stale_scenes(Path::new(SCENES));
+            if jobs.is_empty() {
+                eprintln!("every scene in {SCENES} is up to date");
+                return ExitCode::SUCCESS;
+            }
+            jobs
+        }
         [input, output] if output.ends_with(".json") => vec![(input.clone(), output.clone())],
         inputs if !inputs.is_empty() && !inputs.iter().any(|a| a.ends_with(".json")) => inputs
             .iter()
@@ -38,6 +57,7 @@ fn main() -> ExitCode {
         _ => {
             eprintln!("usage: viewer_export <input.xodr> [output.json]");
             eprintln!("       viewer_export <input.xodr>...");
+            eprintln!("       viewer_export --refresh");
             return ExitCode::FAILURE;
         }
     };
@@ -69,6 +89,13 @@ fn main() -> ExitCode {
         fs::canonicalize(folder.unwrap_or(Path::new("."))).ok() == scenes
     };
     if scenes.is_some() && written.keys().any(in_scenes) {
+        let baked = written
+            .iter()
+            .filter(|(output, _)| in_scenes(output))
+            .map(|(output, input)| (*output, *input));
+        if let Err(e) = write_sources(Path::new(SCENES), baked) {
+            eprintln!("warning: recording sources in {SCENES}: {e}");
+        }
         if let Err(e) = write_scene_list(Path::new(SCENES)) {
             eprintln!("warning: listing scenes in {SCENES}: {e}");
         }
@@ -119,19 +146,92 @@ fn export(input: &str, output: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Write `scenes.json` in `folder`: the sorted names of the other `.json`
-/// files there.
-fn write_scene_list(folder: &Path) -> std::io::Result<()> {
+/// The file names of the scenes in `folder`.
+fn scene_names(folder: &Path) -> std::io::Result<Vec<String>> {
     let mut names = Vec::new();
     for entry in fs::read_dir(folder)? {
         let name = entry?.file_name().to_string_lossy().into_owned();
-        if name.ends_with(".json") && name != "scenes.json" {
+        if name.ends_with(".json") && !LISTS.contains(&name.as_str()) {
             names.push(name);
         }
     }
     names.sort_by_key(|n| n.to_lowercase());
+    Ok(names)
+}
+
+/// Write `scenes.json` in `folder`: the sorted names of its scenes.
+fn write_scene_list(folder: &Path) -> std::io::Result<()> {
+    let names = scene_names(folder)?;
     fs::write(
         folder.join("scenes.json"),
         serde_json::to_vec(&names).expect("names serialize"),
     )
+}
+
+/// Each scene's source `.xodr` from `sources.json` in `folder`, by scene
+/// file name. Empty if there is no such file.
+fn read_sources(folder: &Path) -> HashMap<String, String> {
+    fs::read(folder.join("sources.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
+}
+
+/// Record in `sources.json` in `folder` the `.xodr` each of `baked`'s
+/// `(scene path, source path)` came from, as an absolute path.
+fn write_sources<'a>(
+    folder: &Path,
+    baked: impl Iterator<Item = (&'a str, &'a str)>,
+) -> std::io::Result<()> {
+    let mut sources = read_sources(folder);
+    for (output, input) in baked {
+        let name = Path::new(output).file_name().unwrap_or_default();
+        let input = fs::canonicalize(input)?;
+        sources.insert(
+            name.to_string_lossy().into_owned(),
+            input.to_string_lossy().into_owned(),
+        );
+    }
+    let sorted: std::collections::BTreeMap<_, _> = sources.into_iter().collect();
+    fs::write(
+        folder.join("sources.json"),
+        serde_json::to_vec_pretty(&sorted).expect("sources serialize"),
+    )
+}
+
+/// The `(source, scene)` jobs that bake again each scene in `folder` older
+/// than its `.xodr` or than this program. It names the scenes whose source it
+/// can't find, which it leaves as they are.
+fn stale_scenes(folder: &Path) -> Vec<(String, String)> {
+    let modified = |path: &Path| fs::metadata(path).and_then(|m| m.modified()).ok();
+    let exporter = env::current_exe().ok().and_then(|exe| modified(&exe));
+    let sources = read_sources(folder);
+    let (mut jobs, mut unknown) = (Vec::new(), Vec::new());
+    for name in scene_names(folder).unwrap_or_default() {
+        let scene = folder.join(&name);
+        let stem = name.trim_end_matches(".json");
+        let source = sources
+            .get(&name)
+            .map(Into::into)
+            .unwrap_or_else(|| Path::new("tests/data").join(format!("{stem}.xodr")));
+        let Some(source_time) = modified(&source) else {
+            unknown.push(name);
+            continue;
+        };
+        let scene_time = modified(&scene);
+        if scene_time < Some(source_time) || scene_time < exporter {
+            jobs.push((
+                source.to_string_lossy().into_owned(),
+                scene.to_string_lossy().into_owned(),
+            ));
+        }
+    }
+    if !unknown.is_empty() {
+        eprintln!(
+            "not refreshed, no .xodr found for: {}. Export each once with `viewer_export <map.xodr>`, \
+             and later refreshes will find it.",
+            unknown.join(", ")
+        );
+    }
+    jobs
 }

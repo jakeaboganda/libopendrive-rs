@@ -1895,7 +1895,7 @@ function laneWidth(lane, i, u) {
 // Whether the lane may change left and right at centerline `s`, from the
 // exported `laneChanges`. A scene baked before them has none to show.
 function laneChangeRow(lane, s) {
-  if (lane.laneChanges === undefined) return 'lane change  not in this scene, bake it again';
+  if (lane.laneChanges === undefined) return 'lane change  not in this scene, which an older viewer wrote. Run sh viewer/run.sh to update it';
   const text = allowed => allowed == null ? 'n/a' : allowed ? 'allowed' : 'not allowed';
   const [left, right] = alongAt(lane.laneChanges, s)?.[2] ?? [null, null];
   return `lane change  left ${text(left)}   right ${text(right)}`;
