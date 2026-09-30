@@ -10,7 +10,9 @@
   a `laneChange` the crate does not recognise. Where two marks meet, the one
   starting there answers. The crate reads `laneChange` whatever the mark's
   type, since the spec does not tie the two.
-- The viewer shows whether a hovered lane may change left and right.
+- The viewer shows whether a hovered lane may change left and right, or
+  `n/a` where no mark or no lane says. A scene baked by an older
+  `viewer_export` has no answers, and the readout says to bake it again.
 
 ### Speed limits
 

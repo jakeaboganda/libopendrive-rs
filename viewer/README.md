@@ -155,7 +155,7 @@ stay lit as you hover others. The readout shows:
   they run, where the map gives `<neighbor>`s
 - whether the road mark on each side lets a vehicle change into the lane
   beside, left and right of the traffic, or `n/a` where there is no mark or
-  no lane
+  no lane. A scene baked before this readout says to bake it again.
 - the lane's rule, who may use it (`only` the users an allow names, or
   `all but` those a deny names) and its material, where the map gives them
 - how far a driver can see from the lane, forward, back, left and right,
