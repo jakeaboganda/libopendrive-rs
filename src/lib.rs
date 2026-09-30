@@ -1082,7 +1082,9 @@
 //! [`RoadNetwork::may_change_left`] and [`RoadNetwork::may_change_right`]
 //! say whether the road mark on that border lets a vehicle cross into the
 //! lane, from the mark's [`LaneChange`]. `increase` allows a crossing toward
-//! the higher `<lane id>` only, and `decrease` toward the lower. The answer
+//! the higher `<lane id>` only, and `decrease` toward the lower, whichever
+//! side traffic drives on. Left and right follow the lane's traffic, so
+//! under `rule="LHT"` the center line is on the right of lane 1. The answer
 //! is `None` where there is no lane beside, no mark on the border at the
 //! `s`, or a `laneChange` the crate does not recognise. Whether the lane
 //! runs the other way, or is one traffic may use, is the caller's to decide.

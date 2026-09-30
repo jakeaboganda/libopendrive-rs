@@ -4,7 +4,9 @@
 //! road runs along +X in right-hand traffic, so the left of lanes -1 to -3
 //! is `+t`, and the left of lane 1 is `-t`.
 
-use libopendrive::{load_file_with_provenance, LanePosition, Provenance, RoadNetwork};
+use libopendrive::{
+    load_file_with_provenance, load_str_with_provenance, LanePosition, Provenance, RoadNetwork,
+};
 
 const FIXTURE: &str = "tests/data/lane_change.xodr";
 
@@ -67,4 +69,41 @@ fn lane_changes_survive_a_serde_round_trip() {
     let back: RoadNetwork = serde_json::from_str(&serde_json::to_string(&net).unwrap()).unwrap();
     assert_eq!(back.may_change_left(at(&prov, -1, 70.0)), Some(true));
     assert_eq!(back.may_change_right(at(&prov, -2, 30.0)), Some(true));
+}
+
+/// A road with lanes 2, 1, -1 and -2 under `rule`, whose center line
+/// forbids crossing and whose other inner borders allow it.
+fn two_way(rule: &str) -> (RoadNetwork, Provenance) {
+    let mark = |c: &str| format!(r#"<roadMark sOffset="0" type="broken" laneChange="{c}"/>"#);
+    let lane = |id: i32, mark: &str| {
+        format!(
+            r#"<lane id="{id}" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/>{mark}</lane>"#
+        )
+    };
+    let xodr = format!(
+        r#"<OpenDRIVE><header/><road id="0" length="100" junction="-1" rule="{rule}">
+<planView><geometry s="0" x="0" y="0" hdg="0" length="100"><line/></geometry></planView>
+<lanes><laneSection s="0"><left>{}{}</left><center><lane id="0" type="none">{}</lane></center><right>{}{}</right></laneSection></lanes>
+</road></OpenDRIVE>"#,
+        lane(2, ""),
+        lane(1, &mark("both")),
+        mark("none"),
+        lane(-1, &mark("both")),
+        lane(-2, ""),
+    );
+    load_str_with_provenance(&xodr).unwrap()
+}
+
+#[test]
+fn left_hand_traffic_puts_the_center_line_on_the_right() {
+    let (net, prov) = two_way("LHT");
+    assert_eq!(net.may_change_right(at(&prov, 1, 50.0)), Some(false));
+    assert_eq!(net.may_change_left(at(&prov, 1, 50.0)), Some(true));
+    assert_eq!(net.may_change_right(at(&prov, -1, 50.0)), Some(false));
+    assert_eq!(net.may_change_left(at(&prov, -1, 50.0)), Some(true));
+    assert_eq!(net.may_change_left(at(&prov, 2, 50.0)), None);
+
+    let (net, prov) = two_way("RHT");
+    assert_eq!(net.may_change_left(at(&prov, -1, 50.0)), Some(false));
+    assert_eq!(net.may_change_right(at(&prov, -1, 50.0)), Some(true));
 }
