@@ -1128,7 +1128,7 @@
 //! document yielded no lanes at all. Non-finite attribute values are rejected
 //! at parse. Rust's float parser accepts `NaN` and turns `1e400` into
 //! infinity, and one such value poisons every point derived from it. A
-//! number the crate keeps as an `f32`, such as a signal's size, counts as
+//! number the crate keeps as an `f32`, such as a signal's or a road mark's size, counts as
 //! unreadable too when it is too large for one.
 //!
 //! [`Provenance::warnings`] says what the load did with a bad file. Each
@@ -1142,7 +1142,8 @@
 //! - [`Warning::GeometryDropped`] for a `<geometry>` it can't bake, such as
 //!   one whose `length` isn't above 0. The road keeps its other geometry.
 //! - [`Warning::RoadMarkLineDropped`] for a road mark line with too many
-//!   dashes to paint, such as dashes a fraction of a millimetre long.
+//!   dashes to paint, such as dashes a fraction of a millimetre long, or one
+//!   so wide or so far off its border that its paint lands out of range.
 //! - [`Warning::LaneDropped`] for a lane with no `<width>` or `<border>` it
 //!   can read.
 //! - [`Warning::WidthAndBorder`], [`Warning::BorderWithLaneOffset`] and

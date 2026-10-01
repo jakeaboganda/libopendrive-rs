@@ -533,3 +533,53 @@ fn dashes_too_fine_to_paint_are_dropped_with_a_warning() {
     assert_eq!(painted, 10);
     assert_eq!(prov.warnings, vec![dropped; 40]);
 }
+
+/// A 20 m road whose lane -1 has one mark with `attributes` and `inner`.
+fn one_mark(attributes: &str, inner: &str) -> String {
+    format!(
+        r#"<OpenDRIVE><header/><road id="1" length="20" junction="-1">
+        <planView><geometry s="0" x="0" y="0" hdg="0" length="20"><line/></geometry></planView>
+        <lanes><laneSection s="0"><center><lane id="0" type="none"/></center><right>
+        <lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/>
+        <roadMark sOffset="0" type="solid" {attributes}>{inner}</roadMark>
+        </lane></right></laneSection></lanes></road></OpenDRIVE>"#
+    )
+}
+
+#[test]
+fn a_mark_too_large_for_an_f32_paints_in_range_or_not_at_all() {
+    let finite = |net: &RoadNetwork| {
+        net.road_marks()
+            .iter()
+            .flat_map(|m| &m.lines)
+            .flat_map(|l| l.pieces.iter().flatten())
+            .all(|p| p.to_array().iter().all(|c| c.is_finite()))
+    };
+
+    let (net, prov) =
+        load_str_with_provenance(&one_mark(r#"width="1e39" height="1e39""#, "")).unwrap();
+    let mark = net
+        .road_marks()
+        .iter()
+        .find(|m| !m.lines.is_empty())
+        .unwrap();
+    assert_eq!(mark.width, 0.12, "the width reads as missing");
+    assert_eq!(mark.height, None);
+    assert!(
+        finite(&net) && prov.warnings.is_empty(),
+        "{:?}",
+        prov.warnings
+    );
+
+    let line = r#"<type name="far" width="0.1"><line length="0" space="0" width="3e38" tOffset="3e38"/></type>"#;
+    let (net, prov) = load_str_with_provenance(&one_mark("", line)).unwrap();
+    assert!(finite(&net));
+    assert_eq!(
+        prov.warnings,
+        [Warning::RoadMarkLineDropped {
+            road_id: "1".into(),
+            s: 0.0,
+            lane: -1,
+        }]
+    );
+}

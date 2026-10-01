@@ -68,6 +68,11 @@
   `<positionInertial>` coordinate, or a board sign's size or offset, too
   large for an `f32` (such as `1e39`) became infinity. Each now reads as
   missing, as a value like `inf` already did.
+- Fixed: a road mark or line `width`, `tOffset`, `length`, `space`,
+  `height` or `sOffset` too large for an `f32` became infinity, and a
+  huge width or offset made every corner of the paint NaN. Each now reads
+  as missing. A line whose paint still lands out of range paints nothing,
+  with a `RoadMarkLineDropped` warning.
 
 ## 0.4.0 - 2026-09-30
 
