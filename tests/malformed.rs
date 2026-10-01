@@ -404,3 +404,39 @@ fn a_lane_section_without_s_starts_at_0_and_overlaps_nothing() {
     assert!((net.lanes()[0].center.length() - 100.0).abs() < 0.01);
     assert!(prov.warnings.is_empty(), "{:?}", prov.warnings);
 }
+
+#[test]
+fn a_road_whose_lanes_land_out_of_f32_range_is_skipped() {
+    let road = |id: &str, y: f64, profile: &str, width: &str| {
+        format!(
+            r#"<road id="{id}" length="20" junction="-1">{profile}<planView>
+            <geometry s="0" x="0" y="{y}" hdg="0" length="20"><line/></geometry></planView>
+            <lanes><laneSection s="0"><center><lane id="0" type="none"/></center><right>
+            <lane id="-1" type="driving"><width sOffset="0" a="{width}" b="0" c="0" d="0"/></lane>
+            </right></laneSection></lanes></road>"#
+        )
+    };
+    let elevation =
+        r#"<elevationProfile><elevation s="0" a="1e39" b="0" c="0" d="0"/></elevationProfile>"#;
+    let bank =
+        r#"<lateralProfile><superelevation s="0" a="1e39" b="0" c="0" d="0"/></lateralProfile>"#;
+    let xodr = format!(
+        "<OpenDRIVE><header/>{}{}{}{}</OpenDRIVE>",
+        road("high", 0.0, elevation, "3.5"),
+        road("good", 10.0, "", "3.5"),
+        road("wide", 20.0, "", "1e39"),
+        road("banked", 30.0, bank, "3.5"),
+    );
+    let (net, prov) = load_str_with_provenance(&xodr).expect("the good road loads");
+    assert_eq!(
+        prov.warnings,
+        [
+            skipped("high", RoadSkipReason::OutOfRange),
+            skipped("wide", RoadSkipReason::OutOfRange),
+            skipped("banked", RoadSkipReason::OutOfRange),
+        ]
+    );
+    assert_eq!(net.lanes().len(), 1);
+    assert_eq!(net.lanes()[0].id.0, 0, "lane ids stay dense");
+    net.surface_mesh().validate().expect("a valid mesh");
+}

@@ -1137,7 +1137,8 @@
 //! that breaks a rule of the spec:
 //!
 //! - [`Warning::RoadSkipped`] for a road with no finite `length`, one over
-//!   [`MAX_LENGTH`], no `<planView>`, or no `<geometry>` it can bake. The [`RoadSkipReason`]
+//!   [`MAX_LENGTH`], no `<planView>`, no `<geometry>` it can bake, or lanes
+//!   that land outside the range of an `f32`. The [`RoadSkipReason`]
 //!   says which.
 //! - [`Warning::GeometryDropped`] for a `<geometry>` it can't bake, such as
 //!   one whose `length` isn't above 0. The road keeps its other geometry.

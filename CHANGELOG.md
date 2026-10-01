@@ -73,6 +73,10 @@
   huge width or offset made every corner of the paint NaN. Each now reads
   as missing. A line whose paint still lands out of range paints nothing,
   with a `RoadMarkLineDropped` warning.
+- Fixed: one huge number in a road, such as an elevation, lane width,
+  lane offset, superelevation or start point of `1e39`, gave its lanes and
+  the mesh infinite points, with no warning. The road is now skipped with
+  `RoadSkipReason::OutOfRange`.
 
 ## 0.4.0 - 2026-09-30
 

@@ -265,7 +265,7 @@ junction or junction group.
 
 | `Warning` | Raised for |
 | --- | --- |
-| `RoadSkipped` | a road with no finite `length`, one over 100 km, no `<planView>` or no geometry the importer can bake |
+| `RoadSkipped` | a road with no finite `length`, one over 100 km, no `<planView>`, no geometry the importer can bake, or lanes that land outside the range of an `f32` |
 | `GeometryDropped` | a `<geometry>` missing its pose or `length`, with a `length` that isn't above 0 or is over 100 km, or of a shape the crate doesn't know |
 | `RoadMarkLineDropped` | a road mark line with more dashes than the crate paints (100,000 on the line, or 1,000,000 in the whole file), or whose paint lands out of range |
 | `LaneDropped` | a lane with no `<width>` or `<border>` the crate can read |
