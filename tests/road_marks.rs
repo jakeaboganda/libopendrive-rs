@@ -13,8 +13,9 @@
 //! `<explicit>` lines on lane -1 and a center mark that sways.
 
 use libopendrive::{
-    load_file_with_provenance, LaneChange, LinePattern, LineRule, Point, Provenance, RoadMark,
-    RoadMarkLine, RoadMarkProvenance, RoadMarkType, RoadMarkWeight, RoadNetwork,
+    load_file_with_provenance, load_str_with_provenance, LaneChange, LinePattern, LineRule, Point,
+    Provenance, RoadMark, RoadMarkLine, RoadMarkProvenance, RoadMarkType, RoadMarkWeight,
+    RoadNetwork, Warning,
 };
 
 const ROAD_MARKS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/road_marks.xodr");
@@ -485,4 +486,50 @@ fn road_marks_survive_a_round_trip() {
     let back: RoadNetwork = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(back.road_marks(), net.road_marks());
     assert_eq!(back, net);
+}
+
+/// A 20 m road whose lane -1 has one mark with `lines` `<type><line>`s of
+/// dashes `dash` metres long and no gap.
+fn fine_dashes(lines: usize, dash: f64) -> String {
+    let line = format!(r#"<line length="{dash}" space="0"/>"#);
+    format!(
+        r#"<OpenDRIVE><header/><road id="1" length="20" junction="-1">
+        <planView><geometry s="0" x="0" y="0" hdg="0" length="20"><line/></geometry></planView>
+        <lanes><laneSection s="0"><center><lane id="0" type="none"/></center><right>
+        <lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/>
+        <roadMark sOffset="0" type="broken"><type name="fine" width="0.1">{}</type></roadMark>
+        </lane></right></laneSection></lanes></road></OpenDRIVE>"#,
+        line.repeat(lines)
+    )
+}
+
+fn quads(net: &RoadNetwork) -> usize {
+    net.road_marks()
+        .iter()
+        .flat_map(|m| &m.lines)
+        .map(|l| l.pieces.len())
+        .sum()
+}
+
+#[test]
+fn dashes_too_fine_to_paint_are_dropped_with_a_warning() {
+    let dropped = Warning::RoadMarkLineDropped {
+        road_id: "1".into(),
+        s: 0.0,
+        lane: -1,
+    };
+    let (net, prov) = load_str_with_provenance(&fine_dashes(1, 0.0001)).unwrap();
+    assert_eq!(quads(&net), 0);
+    assert_eq!(prov.warnings, std::slice::from_ref(&dropped));
+
+    let (net, prov) = load_str_with_provenance(&fine_dashes(50, 0.00021)).unwrap();
+    let painted = net
+        .road_marks()
+        .iter()
+        .flat_map(|m| &m.lines)
+        .filter(|l| !l.pieces.is_empty())
+        .count();
+    assert!(quads(&net) <= 1_100_000, "{} quads", quads(&net));
+    assert_eq!(painted, 10);
+    assert_eq!(prov.warnings, vec![dropped; 40]);
 }

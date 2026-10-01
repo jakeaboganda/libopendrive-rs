@@ -30,6 +30,19 @@ pub enum Warning {
         /// Its `s`, if it has one.
         s: Option<f64>,
     },
+    /// A road mark line with too many dashes to paint: more than 100,000 on
+    /// the line, or more than are left of 1,000,000 for the whole load. A
+    /// broken file can give dashes a fraction of a millimetre long. The line
+    /// keeps its pattern and paints nothing.
+    RoadMarkLineDropped {
+        /// The `<road id>` it is on.
+        road_id: String,
+        /// Where its mark starts, in metres along the reference line.
+        s: f64,
+        /// The `<lane id>` whose outer border it runs along, or 0 for the
+        /// center line.
+        lane: i32,
+    },
     /// A `<lane>` with no `<width>` or `<border>` the crate could read. It
     /// has no extent, so it did not bake, and neither did its road marks. A
     /// lane outside it stacks on the lane inside it.
@@ -406,6 +419,7 @@ impl Warning {
         match self {
             Self::RoadSkipped { road_id, .. }
             | Self::GeometryDropped { road_id, .. }
+            | Self::RoadMarkLineDropped { road_id, .. }
             | Self::LaneDropped { road_id, .. }
             | Self::WidthAndBorder { road_id, .. }
             | Self::BorderWithLaneOffset { road_id, .. }
@@ -525,6 +539,10 @@ impl fmt::Display for Warning {
                 Some(s) => write!(f, "road {road_id:?}: <geometry> at s {s:.2} m dropped"),
                 None => write!(f, "road {road_id:?}: <geometry> without an s dropped"),
             },
+            Self::RoadMarkLineDropped { road_id, s, lane } => write!(
+                f,
+                "road {road_id:?}: a line of the road mark on lane {lane} at s {s:.2} m has too many dashes to paint"
+            ),
             Self::RoadLengthMismatch {
                 road_id,
                 length,
