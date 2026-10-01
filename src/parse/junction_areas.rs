@@ -320,8 +320,13 @@ fn signed_area(ring: &[Point]) -> f32 {
         .sum()
 }
 
+/// How far off the ends of its road, in metres, a segment's station may be
+/// before it counts as off the road, rather than as rounding.
+const OFF_ROAD: f64 = 0.01;
+
 /// Where along `road` a segment's `sStart`, `sEnd` or `contactPoint` is:
-/// `begin` or `start` for its start, `end` for its end, or a number.
+/// `begin` or `start` for its start, `end` for its end, or a number. `None`
+/// for a number more than [`OFF_ROAD`] off the road.
 fn station(road: &Road, value: Option<&str>) -> Option<f64> {
     match value? {
         "begin" | "start" => Some(0.0),
@@ -329,7 +334,7 @@ fn station(road: &Road, value: Option<&str>) -> Option<f64> {
         v => v
             .parse::<f64>()
             .ok()
-            .filter(|s| s.is_finite())
+            .filter(|s| (-OFF_ROAD..=road.length + OFF_ROAD).contains(s))
             .map(|s| s.clamp(0.0, road.length)),
     }
 }

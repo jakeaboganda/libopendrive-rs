@@ -290,7 +290,7 @@ junction or junction group.
 | `JunctionReferenceDropped` | a `<junctionReference>` naming a junction the file lacks |
 | `UnknownJunctionGroupType` | a `<junctionGroup>` with a missing `type` or one the spec doesn't allow |
 | `CrossPathDropped` | a `<crossPath>` naming a road, lane or `s` the load didn't bake |
-| `BoundarySegmentDropped` | a junction `<boundary>` segment naming a road or lane the load didn't bake |
+| `BoundarySegmentDropped` | a junction `<boundary>` segment naming a road or lane the load didn't bake, or a station more than 1 cm off its road |
 | `BoundaryNotClosed` | a junction `<boundary>` whose segments don't meet |
 | `BoundaryClockwise` | a junction `<boundary>` that runs clockwise |
 | `ElevationGridDropped` | a junction `<elevationGrid>` the crate can't place |
