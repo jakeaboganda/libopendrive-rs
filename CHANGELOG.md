@@ -157,6 +157,9 @@
   fraction of a micrometre long, when the grid's length was a hair over a
   multiple of 0.25 m. Its curvature came out huge. The last segment is now
   between 0.025 m and 0.275 m long. A grid too short for a road is an error.
+- Fixed: the published crate included `examples/crg_data.sh`, which
+  builds the viewer and so can't run outside a git checkout. It is now left
+  out, like the tests.
 
 ### Docs
 
