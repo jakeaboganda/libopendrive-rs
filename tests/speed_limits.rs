@@ -187,3 +187,15 @@ fn speed_limits_and_road_types_survive_a_serde_round_trip() {
     assert_eq!(back, net);
     assert!(!back.speed_limits().is_empty() && !back.road_types().is_empty());
 }
+
+#[test]
+fn a_stretch_with_a_nan_end_is_left_out_not_a_panic() {
+    let stretch = |from: f32| Along {
+        lane: LaneId(0),
+        from,
+        to: 10.0,
+        value: SpeedLimit::Max(10.0),
+    };
+    let net = RoadNetwork::new(Vec::new()).with_speed_limits(vec![stretch(f32::NAN), stretch(0.0)]);
+    assert_eq!(net.speed_limits(), [stretch(0.0)]);
+}

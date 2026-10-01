@@ -5,7 +5,8 @@ use crate::LaneId;
 
 /// A value that holds on part of one lane, from `from` to `to` metres along
 /// its centerline. Distances start at the lane's first point, as in
-/// [`Coverage`](crate::Coverage).
+/// [`Coverage`](crate::Coverage). A network leaves out a stretch whose `from`
+/// or `to` is NaN, since it covers no point.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Along<T> {
@@ -28,9 +29,11 @@ pub(crate) fn at<T>(list: &[Along<T>], lane: LaneId, s: f32) -> Option<&T> {
     (found.lane == lane && s <= found.to).then_some(&found.value)
 }
 
-/// Sort `list` by lane, then by `from`, as [`at`] needs it.
+/// Sort `list` by lane, then by `from`, as [`at`] needs it. A stretch whose
+/// `from` or `to` is NaN covers no point, so it is left out.
 pub(crate) fn sorted<T>(mut list: Vec<Along<T>>) -> Vec<Along<T>> {
-    list.sort_by(|a, b| (a.lane.0, a.from).partial_cmp(&(b.lane.0, b.from)).unwrap());
+    list.retain(|a| !a.from.is_nan() && !a.to.is_nan());
+    list.sort_by(|a, b| a.lane.0.cmp(&b.lane.0).then(a.from.total_cmp(&b.from)));
     list
 }
 
