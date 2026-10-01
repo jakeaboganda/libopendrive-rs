@@ -1473,6 +1473,10 @@ impl BakedRoad {
 
 /// Bakes one `<road>`'s lanes into `out`, and adds its lane sections to
 /// `baked`. None for a road with no `<lanes>`.
+///
+/// Each section runs from its `s` to the next section's, or the road's end.
+/// The spec requires `s`. A section without one, or with a negative one,
+/// starts at 0, as libOpenDRIVE reads it.
 fn bake_lanes(
     road: roxmltree::Node,
     baked: &mut BakedRoad,
@@ -1483,8 +1487,7 @@ fn bake_lanes(
         return;
     };
 
-    // Every lane section becomes its own set of lanes, each spanning that
-    // section's `s`-range `[start, next-start-or-length]`.
+    let start = |section: &roxmltree::Node| attr_f64(*section, "s").unwrap_or(0.0).max(0.0);
     let mut sections: Vec<roxmltree::Node> = lanes_node
         .children()
         .filter(|n| n.has_tag_name("laneSection"))
@@ -1492,20 +1495,12 @@ fn bake_lanes(
     if sections.is_empty() {
         return;
     }
-    sections.sort_by(|a, b| {
-        attr_f64(*a, "s")
-            .unwrap_or(0.0)
-            .total_cmp(&attr_f64(*b, "s").unwrap_or(0.0))
-    });
+    sections.sort_by(|a, b| start(a).total_cmp(&start(b)));
 
     let length = baked.road.length;
     for (i, section) in sections.iter().enumerate() {
-        let s_start = attr_f64(*section, "s").unwrap_or(0.0).max(0.0);
-        let s_end = sections
-            .get(i + 1)
-            .map(|n| attr_f64(*n, "s").unwrap_or(length))
-            .unwrap_or(length)
-            .min(length);
+        let s_start = start(section);
+        let s_end = sections.get(i + 1).map_or(length, start).min(length);
         if s_end - s_start < 1e-3 {
             continue; // zero-length section
         }

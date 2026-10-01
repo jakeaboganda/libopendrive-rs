@@ -382,3 +382,25 @@ fn a_zero_length_lane_section_keeps_the_links_across_it() {
     assert_eq!(next(lane("A", 2)), [lane("B", 1)]);
     assert!(prov.warnings.is_empty(), "{:?}", prov.warnings);
 }
+
+#[test]
+fn a_lane_section_without_s_starts_at_0_and_overlaps_nothing() {
+    let section = |s: &str| {
+        format!(
+            r#"<laneSection {s}><center><lane id="0" type="none"/></center><right>
+            <lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane>
+            </right></laneSection>"#
+        )
+    };
+    let xodr = format!(
+        r#"<OpenDRIVE><header/><road id="1" length="100" junction="-1"><planView>
+        <geometry s="0" x="0" y="0" hdg="0" length="100"><line/></geometry>
+        </planView><lanes>{}{}</lanes></road></OpenDRIVE>"#,
+        section(r#"s="0""#),
+        section(""),
+    );
+    let (net, prov) = load_str_with_provenance(&xodr).expect("the road loads");
+    assert_eq!(net.lanes().len(), 1);
+    assert!((net.lanes()[0].center.length() - 100.0).abs() < 0.01);
+    assert!(prov.warnings.is_empty(), "{:?}", prov.warnings);
+}
