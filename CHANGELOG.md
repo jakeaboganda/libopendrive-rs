@@ -57,6 +57,9 @@
   100,000 on its own, paints nothing and raises the new
   `Warning::RoadMarkLineDropped`. Before, a line over 100,000 dropped
   without a word.
+- Fixed: a lane section shorter than a millimetre, such as one at
+  `s = length` that many exporters write, cut every link across it, with
+  no warning. Links now step over it to the next section or road.
 
 ## 0.4.0 - 2026-09-30
 
