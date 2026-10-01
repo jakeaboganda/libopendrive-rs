@@ -238,18 +238,26 @@ impl ElevationGrid {
         if !(0.0..=last_row).contains(&u) || !(-widest..=widest).contains(&v) {
             return None;
         }
-        let z = |i: i64, j: i64| self.value(i, j);
-        // A point on the far edge of the last square is in that square.
-        let corner = |at: f64, other: bool| {
+        // A point on a grid line is on the edge of the squares either side.
+        let squares = |at: f64| {
             let i = at.floor() as i64;
-            if at == i as f64 && !other {
-                (i - 1, 1.0)
+            let frac = at - i as f64;
+            if frac == 0.0 {
+                vec![(i, 0.0), (i - 1, 1.0)]
             } else {
-                (i, at - i as f64)
+                vec![(i, frac)]
             }
         };
-        let (i, x) = corner(u, z(u.floor() as i64 + 1, v.floor() as i64).is_some());
-        let (j, y) = corner(v, z(i, v.floor() as i64 + 1).is_some());
+        let (rows, columns) = (squares(u), squares(v));
+        rows.iter()
+            .flat_map(|&row| columns.iter().map(move |&column| (row, column)))
+            .find_map(|((i, x), (j, y))| self.in_square(i, x, j, y))
+    }
+
+    /// The bicubic height at `(x, y)` within the square from grid point
+    /// `(i, j)`, or `None` if the grid lacks a point it needs.
+    fn in_square(&self, i: i64, x: f64, j: i64, y: f64) -> Option<f64> {
+        let z = |i: i64, j: i64| self.value(i, j);
         let dt = |i: i64| slopes(|k| z(i, j - 1 + k));
         let [z00, z01, z10, z11] = [z(i, j)?, z(i, j + 1)?, z(i + 1, j)?, z(i + 1, j + 1)?];
         let (t0, t1) = (dt(i)?, dt(i + 1)?);
