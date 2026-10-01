@@ -285,11 +285,12 @@ fn sweep(mesh: &mut Mesh, sections: &[Section]) {
             );
         }
     }
-    let (Some(first), Some(last)) = (sections.first(), sections.last()) else {
+    let base = |s: &Section| s.left.base;
+    let Some((start_out, end_out)) = end_directions(sections, base) else {
         return;
     };
-    let along = last.left.base - first.left.base;
-    for (s, out) in [(first, -along), (last, along)] {
+    let (first, last) = (&sections[0], &sections[sections.len() - 1]);
+    for (s, out) in [(first, start_out), (last, end_out)] {
         face(
             mesh,
             &[s.left.base, s.right.base, s.right.top, s.left.top],
@@ -297,6 +298,19 @@ fn sweep(mesh: &mut Mesh, sections: &[Section]) {
             out,
         );
     }
+}
+
+/// The directions a sweep's two end caps face: back along its first step at
+/// the start, and on along its last step at the end, each from `at`, a point
+/// on a section. Each cap faces its own end even where the sweep curves back
+/// on itself. `None` for no sections. One section gives zero, which keeps a
+/// cap's triangles as given.
+fn end_directions<T>(sections: &[T], at: impl Fn(&T) -> Point) -> Option<(Vector, Vector)> {
+    let n = sections.len();
+    let (first, last) = (sections.first()?, sections.last()?);
+    let second = &sections[1.min(n - 1)];
+    let before_last = &sections[n.saturating_sub(2)];
+    Some((at(first) - at(second), at(last) - at(before_last)))
 }
 
 /// A tube through the ellipse inscribed in each section, a prism of
@@ -326,12 +340,12 @@ fn round_sweep(mesh: &mut Mesh, sections: &[Section]) {
             face(mesh, &[a[k], a[j], b[j], b[k]], &fan(4), out);
         }
     }
-    let (Some((first, ring_first)), Some((last, ring_last))) = (rings.first(), rings.last()) else {
+    let Some((start_out, end_out)) = end_directions(&rings, |(centre, _)| *centre) else {
         return;
     };
-    let along = *last - *first;
-    face(mesh, ring_first, &fan(CYLINDER_SEGMENTS), -along);
-    face(mesh, ring_last, &fan(CYLINDER_SEGMENTS), along);
+    let (ring_first, ring_last) = (&rings[0].1, &rings[rings.len() - 1].1);
+    face(mesh, ring_first, &fan(CYLINDER_SEGMENTS), start_out);
+    face(mesh, ring_last, &fan(CYLINDER_SEGMENTS), end_out);
 }
 
 /// The triangles of a convex polygon of `n` corners, fanned from the first.

@@ -260,3 +260,38 @@ fn an_outline_standing_on_its_edge_gets_a_lid() {
         .sum();
     assert!((area - 2.0).abs() < 1e-4, "sign: {area} m²");
 }
+
+/// A rail swept three quarters of the way round a circle has a cap at each
+/// end facing away from the rail, though its ends' chord runs back against
+/// its last step. Its volume, cross-section times the arc its middle runs
+/// along, shows it.
+#[test]
+fn a_sweep_round_a_bend_caps_both_ends_outward() {
+    let road = |object: &str| {
+        format!(
+            r#"<OpenDRIVE><road length="94.247780" id="1" junction="-1">
+              <planView><geometry s="0" x="0" y="0" hdg="0" length="94.247780"><arc curvature="0.05"/></geometry></planView>
+              <lanes><laneSection s="0"><right><lane id="-1" type="driving">
+                <width sOffset="0" a="3.5"/></lane></right></laneSection></lanes>
+              <objects>{object}</objects></road></OpenDRIVE>"#
+        )
+    };
+    let rail = r#"<object id="rail" s="0" t="-4" zOffset="0" height="1" width="0.4">
+        <repeat s="0" length="94.247780" distance="0" tStart="-4" tEnd="-4" widthStart="0.4" widthEnd="0.4"
+          heightStart="1" heightEnd="1" zOffsetStart="0" zOffsetEnd="0"/></object>"#;
+    let mesh = libopendrive::load_str(&road(rail)).unwrap().object_mesh();
+    mesh.validate().expect("a collider can build it");
+    let want = 0.4 * 1.0 * 1.5 * std::f32::consts::PI * 24.0;
+    let got = volume(&mesh, &mesh.objects[0]);
+    assert!((got - want).abs() < 0.02 * want, "{got} m³, want {want}");
+
+    let pipe = r#"<object id="pipe" s="0" t="-4" zOffset="0" radius="0.5">
+        <repeat s="0" length="94.247780" distance="0" tStart="-4" tEnd="-4" radiusStart="0.5" radiusEnd="0.5"
+          zOffsetStart="0" zOffsetEnd="0"/></object>"#;
+    let mesh = libopendrive::load_str(&road(pipe)).unwrap().object_mesh();
+    let got = volume(&mesh, &mesh.objects[0]);
+    assert!(
+        got > 0.9 * 0.5 * 0.5 * std::f32::consts::PI * 0.9 * std::f32::consts::PI * 24.0,
+        "{got} m³"
+    );
+}
