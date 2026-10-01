@@ -355,17 +355,21 @@ impl RoadNetwork {
                 };
                 // The centerline's tangent at this vertex: the same bisector at
                 // an interior vertex, but the analytical curve tangent at the
-                // ends. Welding can leave a vertex whose tangent no longer
-                // matches its new neighbours, so fall back to the chords.
+                // ends. A zero tangent falls back to the chords.
                 let along =
                     horizontal(along[i]).normalize_or((inc + out).normalize_or(Vector::ZERO));
+                // The grade, as rise over run between this vertex's neighbours.
+                let (a, b) = (points[i.saturating_sub(1)], points[(i + 1).min(n - 1)]);
+                let run = horizontal(b - a).length();
+                let grade = if run > 1e-6 { (b.z - a.z) / run } else { 0.0 };
+                let slope = (along + Vector::Z * grade).normalize_or(along);
                 // Cross axis, rolled about the tangent by the local bank.
                 // Positive bank raises the left rib. A flat lane leaves it the
                 // horizontal left normal, so the mesh is unchanged.
                 let lateral = left_normal(along).rotate_about(along, bank[i]);
-                // Surface up-normal. along × lateral is +Z on a flat road and
-                // tilts with grade or bank.
-                let up = along.cross(lateral).normalize_or(Vector::Z);
+                // Surface up-normal, from the tangent with its grade. It is +Z
+                // on a flat road and tilts with grade and bank.
+                let up = slope.cross(lateral).normalize_or(Vector::Z);
 
                 // Offset `m` slides the inner vertex back along each segment by
                 // `m * sin(turn/2)`. Cap that at ~half the shorter segment so the

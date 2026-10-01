@@ -82,6 +82,10 @@
   lane change entered the last lane. It now goes round the network to reach
   such a goal, or returns `None` if it can't, and never runs against a
   lane's traffic.
+- Fixed: the surface mesh's normals ignored the road's grade, so on a
+  climb they pointed straight up. `Mesh::height_at` and `MeshSampler`
+  pass them on, and `RoadSample::up` points callers to them for the grade.
+  They now lean with grade and bank alike.
 
 ## 0.4.0 - 2026-09-30
 
