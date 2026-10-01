@@ -97,6 +97,10 @@
   turned by the line from its first section to its last. On a sweep bending
   past a right angle a cap faced into the rail. Each cap now faces along
   its own end.
+- Fixed: on a junction `<elevationGrid>` whose rows have different
+  lengths, a point on the edge of a fully covered square could get no
+  height, so the junction mesh dropped to the boundary there. Every square
+  the point is on is now tried.
 
 ## 0.4.0 - 2026-09-30
 

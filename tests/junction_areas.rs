@@ -167,3 +167,31 @@ fn a_grid_without_one_straight_reference_line_is_dropped_with_a_warning() {
         }));
     }
 }
+
+/// Rows of different widths: a point on the edge of a square the grid covers
+/// whole gets its height, though the square beyond that edge is missing a
+/// corner.
+#[test]
+fn a_point_on_the_edge_of_a_covered_square_has_a_height_on_ragged_rows() {
+    let grid = libopendrive::ElevationGrid {
+        origin: [0.0, 0.0],
+        heading: 0.0,
+        s_start: 0.0,
+        spacing: 1.0,
+        rows: vec![
+            libopendrive::GridRow {
+                center: 1.0,
+                left: vec![2.0, 3.0],
+                right: Vec::new(),
+            },
+            libopendrive::GridRow {
+                center: 1.0,
+                left: vec![2.0],
+                right: Vec::new(),
+            },
+        ],
+    };
+    let at_edge = grid.height(0.5, 1.0).expect("on the covered square's edge");
+    assert!((at_edge - 2.0).abs() < 1e-9, "{at_edge}");
+    assert!(grid.height(0.5, 0.5).is_some(), "inside it");
+}
