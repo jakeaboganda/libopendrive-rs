@@ -283,7 +283,8 @@ junction or junction group.
 | `UnknownLaneDirection` | a lane `direction` other than `standard`, `reversed` or `both` |
 | `RoadLengthMismatch` | a road whose `length` isn't where its `<planView>` ends |
 | `LinkGap` | a lane link between lanes more than 10 cm apart |
-| `ConnectionDropped` | a junction `<connection>` without the roads it joins |
+| `ConnectionDropped` | a junction `<connection>` without the roads it joins, or in a junction without an `id` |
+| `LaneLinkDropped` | a junction `<laneLink>` whose `from` or `to` isn't a whole number |
 | `JunctionLinkMissing` | an incoming road whose `<link>` leaves out its junction |
 | `PriorityDropped` | a junction `<priority>` naming a road the load didn't bake |
 | `JunctionReferenceDropped` | a `<junctionReference>` naming a junction the file lacks |
