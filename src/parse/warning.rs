@@ -363,8 +363,9 @@ pub enum Warning {
         junction_id: String,
     },
     /// A junction `<boundary>` `<segment>` naming no baked road, a lane its
-    /// road does not have, or a `type` other than `lane` or `joint`. The
-    /// crate drops it, so the boundary has a gap there.
+    /// road does not have, a `type` other than `lane` or `joint`, or an
+    /// `sStart`, `sEnd` or `contactPoint` off its road. The crate drops it,
+    /// so the boundary has a gap there.
     BoundarySegmentDropped {
         /// The `<junction id>`.
         junction_id: String,

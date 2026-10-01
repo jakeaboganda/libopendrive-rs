@@ -195,3 +195,17 @@ fn a_point_on_the_edge_of_a_covered_square_has_a_height_on_ragged_rows() {
     assert!((at_edge - 2.0).abs() < 1e-9, "{at_edge}");
     assert!(grid.height(0.5, 0.5).is_some(), "inside it");
 }
+
+#[test]
+fn a_boundary_segment_off_its_road_is_dropped_with_a_warning() {
+    let xodr = std::fs::read_to_string(FIXTURE).unwrap().replacen(
+        r#"<segment type="lane" roadId="10" boundaryLane="-1" sStart="start" sEnd="end"/>"#,
+        r#"<segment type="lane" roadId="10" boundaryLane="-1" sStart="start" sEnd="500"/>"#,
+        1,
+    );
+    let (_, prov) = libopendrive::load_str_with_provenance(&xodr).unwrap();
+    assert!(prov.warnings.contains(&Warning::BoundarySegmentDropped {
+        junction_id: "7".into(),
+        road_id: "10".into(),
+    }));
+}

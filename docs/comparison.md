@@ -787,12 +787,12 @@ the files the first table lists for that library.
 | &lt;junction&gt; &lt;boundary&gt; &lt;segment&gt; | builds `junction_areas.rs:254` | - | - | - |
 | &lt;junction&gt; &lt;boundary&gt; &lt;segment&gt; `@roadId` | builds `junction_areas.rs:255` | - | - | - |
 | &lt;junction&gt; &lt;boundary&gt; &lt;segment&gt; `@type` | builds `junction_areas.rs:256` | - | - | - |
-| &lt;junction&gt; &lt;boundary&gt; &lt;segment&gt; `@boundaryLane` | builds `junction_areas.rs:352` | - | - | - |
-| &lt;junction&gt; &lt;boundary&gt; &lt;segment&gt; `@sStart` | builds `junction_areas.rs:353` | - | - | - |
-| &lt;junction&gt; &lt;boundary&gt; &lt;segment&gt; `@sEnd` | builds `junction_areas.rs:354` | - | - | - |
-| &lt;junction&gt; &lt;boundary&gt; &lt;segment&gt; `@contactPoint` | builds `junction_areas.rs:380` | - | - | - |
-| &lt;junction&gt; &lt;boundary&gt; &lt;segment&gt; `@jointLaneStart` | builds `junction_areas.rs:400` | - | - | - |
-| &lt;junction&gt; &lt;boundary&gt; &lt;segment&gt; `@jointLaneEnd` | builds `junction_areas.rs:400` | - | - | - |
+| &lt;junction&gt; &lt;boundary&gt; &lt;segment&gt; `@boundaryLane` | builds `junction_areas.rs:357` | - | - | - |
+| &lt;junction&gt; &lt;boundary&gt; &lt;segment&gt; `@sStart` | builds `junction_areas.rs:358` | - | - | - |
+| &lt;junction&gt; &lt;boundary&gt; &lt;segment&gt; `@sEnd` | builds `junction_areas.rs:359` | - | - | - |
+| &lt;junction&gt; &lt;boundary&gt; &lt;segment&gt; `@contactPoint` | builds `junction_areas.rs:385` | - | - | - |
+| &lt;junction&gt; &lt;boundary&gt; &lt;segment&gt; `@jointLaneStart` | builds `junction_areas.rs:405` | - | - | - |
+| &lt;junction&gt; &lt;boundary&gt; &lt;segment&gt; `@jointLaneEnd` | builds `junction_areas.rs:405` | - | - | - |
 | &lt;junction&gt; &lt;boundary&gt; &lt;segment&gt; `@transitionLength` | - | - | - | - |
 | &lt;junction&gt; &lt;elevationGrid&gt; | builds `junction_areas.rs:27` | - | - | - |
 | &lt;junction&gt; &lt;elevationGrid&gt; `@sStart` | builds `junction_areas.rs:221` | - | - | - |

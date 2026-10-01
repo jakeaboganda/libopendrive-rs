@@ -115,6 +115,9 @@
 - Fixed: a virtual junction link's lane pair naming a lane its road
   doesn't have was dropped without a word, which could leave a link with
   no lanes. It now raises the new `Warning::VirtualLaneDropped`.
+- Fixed: a junction boundary segment whose `sStart`, `sEnd` or
+  `contactPoint` lies off its road was quietly moved to the road's end. One
+  more than 1 cm off is now dropped with `BoundarySegmentDropped`.
 
 ## 0.4.0 - 2026-09-30
 
