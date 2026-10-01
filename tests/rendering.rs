@@ -30,7 +30,8 @@ fn every_lane_span_addresses_its_own_slice_of_the_mesh() {
         assert_eq!(span.lane, lane.id, "spans are in emission order");
         assert!(net.lane(span.lane).is_some(), "span names a real lane");
 
-        // Two ribs per surviving centerline vertex, two triangles per segment.
+        // Two ribs per surviving centerline vertex, and up to two triangles
+        // per segment, less any with no area, where the lane's width is 0.
         // Welding near-duplicate points can drop some, so a lane keeps at most
         // one rib pair per centerline vertex and always at least two.
         let points = lane.center.points().len();
@@ -45,7 +46,11 @@ fn every_lane_span_addresses_its_own_slice_of_the_mesh() {
             "lane {:?} kept {ribs} rib pairs from {points} points",
             lane.id
         );
-        assert_eq!(indices, (ribs - 1) * 6, "lane {:?} index count", lane.id);
+        assert!(
+            indices % 3 == 0 && indices <= (ribs - 1) * 6,
+            "lane {:?} index count {indices}",
+            lane.id
+        );
 
         // The slices are addressable, and every triangle in this lane's index
         // range points inside this lane's vertex range, so a renderer can

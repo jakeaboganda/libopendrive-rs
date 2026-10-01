@@ -223,3 +223,43 @@ fn the_normal_on_a_climbing_road_tilts_with_the_grade() {
     assert!((z - 5.0).abs() < 1e-3, "z {z}");
     assert!((up - want).length() < 1e-4, "up {up:?}, want {want:?}");
 }
+
+#[test]
+fn validate_rejects_a_triangle_with_no_area_or_too_few_corners() {
+    use libopendrive::MeshError;
+    let mesh = |indices: Vec<u32>| Mesh {
+        vertices: vec![
+            Point::new(0.0, 0.0, 0.0),
+            Point::new(1.0, 0.0, 0.0),
+            Point::new(2.0, 0.0, 0.0),
+            Point::new(0.0, 1.0, 0.0),
+        ],
+        normals: vec![Vector::Z; 4],
+        indices,
+        lanes: Vec::new(),
+        objects: Vec::new(),
+    };
+    assert_eq!(mesh(vec![0, 1, 3]).validate(), Ok(()));
+    assert_eq!(
+        mesh(vec![0, 1, 2]).validate(),
+        Err(MeshError::DegenerateTriangle(0)),
+        "corners in a line"
+    );
+    assert_eq!(
+        mesh(vec![0, 1, 3, 0]).validate(),
+        Err(MeshError::DegenerateTriangle(1)),
+        "a leftover index"
+    );
+}
+
+#[test]
+fn a_lane_opening_out_of_nothing_tessellates_into_a_valid_mesh() {
+    let net = libopendrive::load_file(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/data/lane_borders.xodr"
+    ))
+    .unwrap();
+    net.surface_mesh()
+        .validate()
+        .expect("no triangle without area");
+}

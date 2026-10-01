@@ -127,6 +127,11 @@
   deserializing one. Such a stretch is now left out.
 - Fixed: `min_elevation` returned NaN when the first point it looked at
   had a NaN height. It now skips NaN heights.
+- Fixed: `surface_mesh` made triangles with no area wherever a lane's
+  width is 0, as where a lane opens out of nothing. A collider builder can
+  choke on those. They are now left out. `Mesh::validate` didn't catch
+  them, nor a leftover index that makes no whole triangle. It now reports
+  both as `MeshError::DegenerateTriangle`.
 
 ## 0.4.0 - 2026-09-30
 
