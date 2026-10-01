@@ -299,3 +299,37 @@ fn a_geometry_of_no_length_is_dropped_with_a_warning_not_a_panic() {
     };
     assert_eq!(prov.warnings, vec![dropped(10.0), dropped(30.0)]);
 }
+
+#[test]
+fn a_huge_length_is_refused_instead_of_exhausting_memory() {
+    let road = |id: &str, length: &str, geometry: &str, section: &str| {
+        format!(
+            r#"<road id="{id}" length="{length}" junction="-1"><planView>
+            <geometry s="0" x="0" y="{id}0" hdg="0" length="{geometry}"><spiral curvStart="0" curvEnd="0"/></geometry>
+            </planView><lanes><laneSection s="{section}"><center><lane id="0" type="none"/></center><right>
+            <lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane>
+            </right></laneSection></lanes></road>"#
+        )
+    };
+    let xodr = format!(
+        "<OpenDRIVE><header/>{}{}{}{}</OpenDRIVE>",
+        road("1", "100", "100", "0"),
+        road("2", "1e13", "1e13", "0"),
+        road("3", "100", "1e13", "0"),
+        road("4", "100", "100", "-1e13"),
+    );
+    let (net, prov) = load_str_with_provenance(&xodr).expect("the short roads load");
+    assert_eq!(
+        prov.warnings,
+        [
+            skipped("2", RoadSkipReason::TooLong),
+            skipped("3", RoadSkipReason::NoGeometry),
+        ]
+    );
+    let length = |road: &str| {
+        let p = prov.lanes.iter().find(|p| p.road_id == road).unwrap();
+        net.lane(p.lane).unwrap().center.length()
+    };
+    assert!((length("1") - 100.0).abs() < 0.1);
+    assert!((length("4") - 100.0).abs() < 0.1);
+}

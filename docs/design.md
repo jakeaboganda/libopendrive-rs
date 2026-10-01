@@ -68,6 +68,10 @@ A road the importer cannot interpret is skipped, not fatal. Losing a city map
 to one junk road is the worse failure. `load_str` still errors if the document
 yields no lanes at all.
 
+A road or geometry longer than `MAX_LENGTH`, 100 km, is skipped too. The
+crate samples a road along its whole length, so a length like 1e13 from a
+broken file would need more memory than any machine has.
+
 `Provenance::warnings` says what the load did with a bad file. A `Warning` is
 data, not a log line: one enum variant per kind, naming the road, lane section
 or lane it happened at. A test can assert on it, and a caller can filter the

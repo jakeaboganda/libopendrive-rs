@@ -46,6 +46,11 @@
   panic. The crate now drops it with the new `Warning::GeometryDropped`,
   which it also raises for a geometry missing its pose or of a shape it
   doesn't know. It used to drop those without a word.
+- Fixed: a road, geometry or lane section with a huge length, such as
+  `1e13`, made the load run out of memory or never finish. A road or
+  geometry over the new `MAX_LENGTH`, 100 km, is now skipped with a
+  warning (`RoadSkipReason::TooLong` or `Warning::GeometryDropped`). A
+  negative `<laneSection s>` counts as 0.
 
 ## 0.4.0 - 2026-09-30
 
