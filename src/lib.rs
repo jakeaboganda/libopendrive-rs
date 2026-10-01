@@ -273,7 +273,9 @@
 //! road's grade and bank, and `zOffset` raises it square to the surface. So
 //! an object on a banked road leans with the bank. `<repeat>` sweeps and
 //! `<cornerRoad>` corners are given in road coordinates, not the object's
-//! frame, and still rise straight up. `<object type>`
+//! frame, and still rise straight up. libOpenDRIVE raises a `<cornerRoad>`
+//! along the road's normal instead, which differs on a banked road.
+//! `<object type>`
 //! chooses their [`ObjectType`], and an unrecognised name bakes as
 //! [`ObjectType::Unknown`]. The [`Shape`] follows libOpenDRIVE:
 //!

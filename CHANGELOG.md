@@ -141,6 +141,12 @@
 - Fixed: `object_mesh` panicked on an open `Shape::Outline` with no
   corners. It now meshes to nothing. Only a hand-built object can have one.
 
+### Docs
+
+- The docs of a `<cornerRoad>` corner said its top rises along the road's
+  normal. It rises straight up, as the crate docs already said elsewhere.
+  Both now say so, and that libOpenDRIVE raises it along the normal.
+
 ## 0.4.0 - 2026-09-30
 
 ### Virtual junctions
