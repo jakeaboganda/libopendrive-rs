@@ -8,6 +8,7 @@
 //! Geometry is cross-checked against the reference C++
 //! [libOpenDRIVE](https://github.com/pageldev/libOpenDRIVE).
 
+use std::cell::Cell;
 use std::collections::HashMap;
 
 use crate::coords::{Point, Vector};
@@ -465,6 +466,7 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     warnings.extend(gaps::link_gaps(&lanes, &topo.metas));
     // The parser already recorded each lane's OpenDRIVE origin while baking;
     // surface it rather than reconstructing lane-id order downstream.
+    warnings.append(&mut objects.warnings);
     let provenance = Provenance {
         lanes: topo
             .metas
@@ -2076,11 +2078,13 @@ fn lane_cubics<'a>(records: impl Iterator<Item = roxmltree::Node<'a, 'a>>) -> Ve
 
 // --- Objects ------------------------------------------------------------------
 
-/// The objects baked so far, and the provenance of each, in step.
+/// The objects baked so far, the provenance of each, in step, and what
+/// placing them left out.
 #[derive(Default)]
 struct Objects {
     baked: Vec<Object>,
     provenance: Vec<ObjectProvenance>,
+    warnings: Vec<Warning>,
 }
 
 /// Where an object sits along its road, and how big it is there. An
@@ -2368,6 +2372,7 @@ fn place_objects(
 /// Each baked object applies to the lanes alongside the stretch of road it
 /// spans, narrowed by `at`'s validity.
 fn place_object(node: roxmltree::Node, at: &Placement, road: &Road, out: &mut Objects) {
+    let too_many = Cell::new(false);
     let base = Station {
         s: at.s,
         t: at.t,
@@ -2398,7 +2403,7 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &Road, out: &mut Ob
             extent: extent(st),
         };
         let mut part = Part::new(solid, st, (st.s, st.s));
-        part.markings = side_markings(node, &f, extent(st));
+        part.markings = side_markings(node, &f, extent(st), &too_many);
         part
     };
 
@@ -2412,11 +2417,15 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &Road, out: &mut Ob
     let outlined = |st: &Station| {
         let origin = road.on_road(st.s).then(|| frame(st));
         let shift = (at.shift.0 + st.s - base.s, at.shift.1 + st.t - base.t);
-        outline_parts(node, &outlines, origin.as_ref(), st, shift, road)
+        outline_parts(node, &outlines, origin.as_ref(), st, shift, road, &too_many)
     };
     for repeat in &repeats {
         if repeat.distance > 0.0 {
-            for st in repeat.stations(&base) {
+            let Some(stations) = repeat.stations(&base) else {
+                too_many.set(true);
+                continue;
+            };
+            for st in stations {
                 if !outlines.is_empty() {
                     parts.extend(outlined(&st));
                 } else if road.on_road(st.s) {
@@ -2460,6 +2469,12 @@ fn place_object(node: roxmltree::Node, at: &Placement, road: &Road, out: &mut Ob
             }
         })
         .collect();
+    if too_many.get() {
+        out.warnings.push(Warning::TooManyCopies {
+            road_id: road.od_id.clone(),
+            object_id: text("id"),
+        });
+    }
     for part in parts {
         let id = ObjectId(out.baked.len());
         out.baked.push(Object {
@@ -2501,6 +2516,7 @@ fn outline_parts(
     st: &Station,
     shift: (f64, f64),
     road: &Road,
+    too_many: &Cell<bool>,
 ) -> Vec<Part> {
     let mut parts = Vec::new();
     let mut holes = Vec::new();
@@ -2521,7 +2537,7 @@ fn outline_parts(
             st,
             ring.stretch,
         );
-        part.markings = markings(node, outline_node, &ring);
+        part.markings = markings(node, outline_node, &ring, too_many);
         part.borders = borders(node, outline_node, &ring, ring.closed);
         parts.push(part);
     }
@@ -2534,7 +2550,9 @@ fn outline_parts(
         let Some(owner) = owner else {
             continue;
         };
-        owner.markings.extend(markings(node, outline_node, &ring));
+        owner
+            .markings
+            .extend(markings(node, outline_node, &ring, too_many));
         owner
             .borders
             .extend(borders(node, outline_node, &ring, true));
@@ -2618,14 +2636,14 @@ impl<'a> Repeat<'a> {
         }
     }
 
-    /// One station every `distance` metres, both ends included, or none if
+    /// One station every `distance` metres, both ends included, or `None` if
     /// that is more than [`MAX_REPEAT_INSTANCES`].
-    fn stations(&self, base: &Station) -> Vec<Station> {
+    fn stations(&self, base: &Station) -> Option<Vec<Station>> {
         let count = (self.length / self.distance).floor() + 1.0;
         if count > MAX_REPEAT_INSTANCES {
-            return Vec::new();
+            return None;
         }
-        (0..count as usize)
+        let stations = (0..count as usize)
             .map(|k| {
                 let along = k as f64 * self.distance;
                 let f = if self.length > 0.0 {
@@ -2635,7 +2653,8 @@ impl<'a> Repeat<'a> {
                 };
                 self.at(base, f)
             })
-            .collect()
+            .collect();
+        Some(stations)
     }
 }
 
@@ -2854,10 +2873,15 @@ fn marking_nodes<'a>(
 /// the corners' `id`s. It belongs to the outline that has every one of them,
 /// so one naming a corner the outline lacks is left to another outline. So
 /// is one with fewer than two references.
-fn markings(object: roxmltree::Node, outline: roxmltree::Node, ring: &Ring) -> Vec<Marking> {
+fn markings(
+    object: roxmltree::Node,
+    outline: roxmltree::Node,
+    ring: &Ring,
+    too_many: &Cell<bool>,
+) -> Vec<Marking> {
     let ids: Vec<Option<&str>> = corner_nodes(outline).map(|c| c.attribute("id")).collect();
     marking_nodes(object)
-        .filter_map(|m| paint(m, &corner_path(m, &ids, ring)?))
+        .filter_map(|m| paint(m, &corner_path(m, &ids, ring)?, too_many))
         .collect()
 }
 
@@ -2867,7 +2891,12 @@ fn markings(object: roxmltree::Node, outline: roxmltree::Node, ring: &Ring) -> V
 /// `rear` across the +u and -u ends, `left` and `right` along the +v and -v
 /// sides. The edge runs anticlockwise round the box seen from above. One
 /// with any other side, or on a solid with no extent, is skipped.
-fn side_markings(object: roxmltree::Node, frame: &Frame, extent: Option<Extent>) -> Vec<Marking> {
+fn side_markings(
+    object: roxmltree::Node,
+    frame: &Frame,
+    extent: Option<Extent>,
+    too_many: &Cell<bool>,
+) -> Vec<Marking> {
     let (u, v) = match extent {
         Some(Extent::Box { length, width, .. }) => (length / 2.0, width / 2.0),
         Some(Extent::Cylinder { radius, .. }) => (radius, radius),
@@ -2885,17 +2914,19 @@ fn side_markings(object: roxmltree::Node, frame: &Frame, extent: Option<Extent>)
                 "right" => [corner(-u, -v), corner(u, -v)],
                 _ => return None,
             };
-            paint(m, &edge)
+            paint(m, &edge, too_many)
         })
         .collect()
 }
 
-/// One `<marking>` painted along `path`, or `None` if it has no width.
+/// One `<marking>` painted along `path`, or `None` if it has no width. A
+/// marking with more dashes than [`MAX_REPEAT_INSTANCES`] paints nothing,
+/// and sets `too_many`.
 ///
 /// The paint is raised `zOffset` off the path along its normals, 5 mm if the
 /// map does not say, and starts `startOffset` along the first edge and stops `stopOffset` short
 /// of the end of the last.
-fn paint(m: roxmltree::Node, path: &[(Point, Vector)]) -> Option<Marking> {
+fn paint(m: roxmltree::Node, path: &[(Point, Vector)], too_many: &Cell<bool>) -> Option<Marking> {
     let width = attr_f64(m, "width").filter(|w| *w > 0.0)?;
     let raise = attr_f64(m, "zOffset").unwrap_or(0.005) as f32;
     let path: Vec<(Point, Vector)> = path.iter().map(|&(p, up)| (p + up * raise, up)).collect();
@@ -2914,7 +2945,11 @@ fn paint(m: roxmltree::Node, path: &[(Point, Vector)]) -> Option<Marking> {
             attr_f64(m, "stopOffset").unwrap_or(0.0),
             (line > 0.0 && space > 0.0).then_some((line, space)),
             width / 2.0,
-        ),
+        )
+        .unwrap_or_else(|| {
+            too_many.set(true);
+            Vec::new()
+        }),
     })
 }
 
@@ -2957,7 +2992,7 @@ fn borders(
             Some(Border {
                 kind: b.attribute("type").unwrap_or_default().to_string(),
                 width: width as f32,
-                pieces: strip(&path, 0.0, 0.0, None, width / 2.0),
+                pieces: strip(&path, 0.0, 0.0, None, width / 2.0).unwrap_or_default(),
             })
         })
         .collect()
@@ -2990,15 +3025,14 @@ fn corner_path(
 /// of `path` comes with the normal of the surface it is on, and each quad
 /// lies in the surface its edge's ends share, anticlockwise seen from that
 /// normal. An edge along that normal has no across to measure, and gets no
-/// quad. Nor does a pattern of more than [`MAX_REPEAT_INSTANCES`] dashes, as a
-/// runaway `<repeat>` does not.
+/// quad. `None` for a pattern of more than [`MAX_REPEAT_INSTANCES`] dashes.
 fn strip(
     path: &[(Point, Vector)],
     start: f64,
     stop: f64,
     dashes: Option<(f64, f64)>,
     half_width: f64,
-) -> Vec<[Point; 4]> {
+) -> Option<Vec<[Point; 4]>> {
     let mut along = vec![0.0];
     for w in path.windows(2) {
         along.push(along.last().unwrap() + f64::from(w[0].0.distance_to(w[1].0)));
@@ -3006,7 +3040,9 @@ fn strip(
     let end = along.last().unwrap() - stop;
     let painted: Vec<(f64, f64)> = match dashes {
         None => vec![(start, end)],
-        Some((line, space)) if (end - start) / (line + space) > MAX_REPEAT_INSTANCES => Vec::new(),
+        Some((line, space)) if (end - start) / (line + space) > MAX_REPEAT_INSTANCES => {
+            return None
+        }
         Some((line, space)) => (0..)
             .map(|k| start + k as f64 * (line + space))
             .take_while(|&a| a < end)
@@ -3031,7 +3067,7 @@ fn strip(
             pieces.push([p - across, q - across, q + across, p + across]);
         }
     }
-    pieces
+    Some(pieces)
 }
 
 /// The volume a solid occupies: a cylinder if it has a radius, a box if it
@@ -4569,23 +4605,26 @@ mod tests {
         // no length in plan, so no across to measure.
         let up = Point::new(2.0, 0.0, 1.0);
         assert_eq!(
-            ends(&strip(&level(&[a, a, b]), 0.0, 0.0, None, 0.1)),
+            ends(&strip(&level(&[a, a, b]), 0.0, 0.0, None, 0.1).unwrap()),
             [(0.0, 2.0)]
         );
         assert_eq!(
-            ends(&strip(&level(&[a, b, up]), 0.0, 0.0, None, 0.1)),
+            ends(&strip(&level(&[a, b, up]), 0.0, 0.0, None, 0.1).unwrap()),
             [(0.0, 2.0)]
         );
         // A dash across the repeated corner carries on past it.
-        let dashes = strip(&level(&[a, b, b, c]), 1.0, 0.0, Some((2.0, 1.0)), 0.1);
+        let dashes = strip(&level(&[a, b, b, c]), 1.0, 0.0, Some((2.0, 1.0)), 0.1).unwrap();
         assert_eq!(ends(&dashes), [(1.0, 2.0), (2.0, 3.0)]);
     }
 
     #[test]
     fn a_strip_of_too_many_dashes_is_refused() {
         let path = level(&[Point::ORIGIN, Point::new(10.0, 0.0, 0.0)]);
-        assert!(strip(&path, 0.0, 0.0, Some((1e-5, 1e-5)), 0.1).is_empty());
-        assert_eq!(strip(&path, 0.0, 0.0, Some((0.5, 0.5)), 0.1).len(), 10);
+        assert!(strip(&path, 0.0, 0.0, Some((1e-5, 1e-5)), 0.1).is_none());
+        assert_eq!(
+            strip(&path, 0.0, 0.0, Some((0.5, 0.5)), 0.1).unwrap().len(),
+            10
+        );
     }
 
     #[test]
@@ -4593,11 +4632,14 @@ mod tests {
         let path = level(&[Point::ORIGIN, Point::new(10.0, 0.0, 0.0)]);
         for (start, stop) in [(20.0, 0.0), (0.0, 20.0), (6.0, 6.0)] {
             for dashes in [None, Some((1.0, 1.0))] {
-                let pieces = strip(&path, start, stop, dashes, 0.1);
+                let pieces = strip(&path, start, stop, dashes, 0.1).unwrap();
                 assert!(pieces.is_empty(), "{start}, {stop}, {dashes:?}: {pieces:?}");
             }
         }
-        assert_eq!(ends(&strip(&path, 4.0, 4.0, None, 0.1)), [(4.0, 6.0)]);
+        assert_eq!(
+            ends(&strip(&path, 4.0, 4.0, None, 0.1).unwrap()),
+            [(4.0, 6.0)]
+        );
     }
 
     #[test]

@@ -101,6 +101,9 @@
   lengths, a point on the edge of a fully covered square could get no
   height, so the junction mesh dropped to the boundary there. Every square
   the point is on is now tried.
+- Fixed: an object whose `<repeat>` or dashed `<marking>` would make
+  over 100,000 copies or dashes vanished without a word. It now raises the
+  new `Warning::TooManyCopies`.
 
 ## 0.4.0 - 2026-09-30
 
