@@ -40,9 +40,21 @@ fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     let jobs: Vec<(String, String)> = match args.as_slice() {
         [flag] if flag == "--refresh" => {
-            let jobs = stale_scenes(Path::new(SCENES));
+            let (jobs, unknown) = stale_scenes(Path::new(SCENES));
+            if !unknown.is_empty() {
+                eprintln!(
+                    "not refreshed, no .xodr found for: {}. Export each once with \
+                     `viewer_export <map.xodr>`, and later refreshes will find it.",
+                    unknown.join(", ")
+                );
+            }
             if jobs.is_empty() {
-                eprintln!("every scene in {SCENES} is up to date");
+                let which = if unknown.is_empty() {
+                    "every"
+                } else {
+                    "every other"
+                };
+                eprintln!("{which} scene in {SCENES} is up to date");
                 return ExitCode::SUCCESS;
             }
             jobs
@@ -202,9 +214,9 @@ fn write_sources<'a>(
 }
 
 /// The `(source, scene)` jobs that bake again each scene in `folder` older
-/// than its `.xodr` or than this program. It names the scenes whose source it
+/// than its `.xodr` or than this program, and the scenes whose source it
 /// can't find, which it leaves as they are.
-fn stale_scenes(folder: &Path) -> Vec<(String, String)> {
+fn stale_scenes(folder: &Path) -> (Vec<(String, String)>, Vec<String>) {
     let modified = |path: &Path| fs::metadata(path).and_then(|m| m.modified()).ok();
     let exporter = env::current_exe().ok().and_then(|exe| modified(&exe));
     let sources = read_sources(folder);
@@ -229,12 +241,5 @@ fn stale_scenes(folder: &Path) -> Vec<(String, String)> {
             ));
         }
     }
-    if !unknown.is_empty() {
-        eprintln!(
-            "not refreshed, no .xodr found for: {}. Export each once with `viewer_export <map.xodr>`, \
-             and later refreshes will find it.",
-            unknown.join(", ")
-        );
-    }
-    jobs
+    (jobs, unknown)
 }
