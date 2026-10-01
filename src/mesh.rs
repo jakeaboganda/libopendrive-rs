@@ -149,7 +149,7 @@ impl Mesh {
     }
 
     /// The highest of `triangles` covering `(x, y)`, with its normal and
-    /// index.
+    /// index. A triangle naming a vertex the mesh lacks covers nothing.
     fn highest(
         &self,
         triangles: impl IntoIterator<Item = usize>,
@@ -158,9 +158,11 @@ impl Mesh {
     ) -> Option<(f32, Vector, usize)> {
         let mut best: Option<(f32, Vector, usize)> = None;
         for t in triangles {
+            let Some([a, b, c]) = self.corners(t) else {
+                continue;
+            };
             let tri = &self.indices[t * 3..t * 3 + 3];
             let (ia, ib, ic) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
-            let (a, b, c) = (self.vertices[ia], self.vertices[ib], self.vertices[ic]);
             // Barycentric coords of (x,y) in the triangle's XY projection.
             let det = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
             if det.abs() < 1e-9 {
@@ -194,6 +196,14 @@ impl Mesh {
         }
         best
     }
+
+    /// The corners of triangle `t`, or `None` if it names a vertex the mesh
+    /// lacks.
+    fn corners(&self, t: usize) -> Option<[Point; 3]> {
+        let tri = self.indices.get(t * 3..t * 3 + 3)?;
+        let at = |i: u32| self.vertices.get(i as usize).copied();
+        Some([at(tri[0])?, at(tri[1])?, at(tri[2])?])
+    }
 }
 
 /// A mesh plus a ground-plane index over its triangles. Borrows the mesh, so
@@ -205,23 +215,23 @@ impl Mesh {
 pub struct MeshSampler<'a> {
     mesh: &'a Mesh,
     grid: Grid,
+    /// The triangle behind each item of `grid`. A triangle naming a vertex
+    /// the mesh lacks has no item.
+    triangles: Vec<usize>,
 }
 
 impl<'a> MeshSampler<'a> {
     fn new(mesh: &'a Mesh) -> Self {
-        let bounds: Vec<Aabb> = mesh
-            .indices
-            .chunks_exact(3)
-            .filter_map(|tri| {
-                Aabb::around(
-                    tri.iter()
-                        .filter_map(|&i| mesh.vertices.get(i as usize).map(|v| (v.x, v.y))),
-                )
+        let (bounds, triangles): (Vec<Aabb>, Vec<usize>) = (0..mesh.indices.len() / 3)
+            .filter_map(|t| {
+                let corners = mesh.corners(t)?;
+                Some((Aabb::around(corners.map(|v| (v.x, v.y)))?, t))
             })
-            .collect();
+            .unzip();
         Self {
             mesh,
             grid: Grid::build(&bounds),
+            triangles,
         }
     }
 
@@ -244,7 +254,7 @@ impl<'a> MeshSampler<'a> {
         let candidates = self.grid.at(x, y);
         let (height, normal, t) =
             self.mesh
-                .highest(candidates.iter().map(|&t| t as usize), x, y)?;
+                .highest(candidates.iter().map(|&k| self.triangles[k as usize]), x, y)?;
         let index = (t * 3) as u32;
         let lanes = &self.mesh.lanes;
         let span = lanes.partition_point(|span| span.indices.end <= index);
