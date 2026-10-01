@@ -437,7 +437,8 @@ pub fn load_str_with_provenance(xml: &str) -> Result<(RoadNetwork, Provenance), 
     }
     surfaces.extend(junction_crgs(root, &topo));
     let signals = signals::place(root, &roads, &objects.provenance);
-    let road_marks = road_marks::place(&mut roads);
+    let mut road_marks = road_marks::place(&mut roads);
+    warnings.append(&mut road_marks.warnings);
     let properties = properties::place(roads.iter().map(|(_, road)| road), &lanes);
     let (neighbors, dropped_neighbors) = road_neighbors(&roads);
     warnings.extend(dropped_neighbors);

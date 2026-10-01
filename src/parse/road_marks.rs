@@ -2,7 +2,7 @@
 
 use super::{
     active, attr_f64, child, cubics_in, side_borders, BakedRoad, Cubic, RoadMarkProvenance,
-    SectionDef, MAX_REPEAT_INSTANCES,
+    SectionDef, Warning, MAX_REPEAT_INSTANCES,
 };
 use crate::coords::Point;
 use crate::road::{LaneGeom, MarkSpan, Road, RoadSection};
@@ -108,11 +108,29 @@ impl LineDef {
     }
 }
 
-/// The road marks baked so far, and the provenance of each, in step.
-#[derive(Default)]
+/// The most dashes the crate paints across one load. Real maps paint a few
+/// tens of thousands. A broken file can ask for millions from a few bytes,
+/// with dashes a fraction of a millimetre long.
+const MAX_DASHES: f64 = 1_000_000.0;
+
+/// The road marks baked so far, the provenance of each, in step, each line
+/// left unpainted, and how many more dashes the load may paint.
 pub(super) struct RoadMarks {
     pub baked: Vec<RoadMark>,
     pub provenance: Vec<RoadMarkProvenance>,
+    pub warnings: Vec<Warning>,
+    dashes_left: f64,
+}
+
+impl Default for RoadMarks {
+    fn default() -> Self {
+        Self {
+            baked: Vec::new(),
+            provenance: Vec::new(),
+            warnings: Vec::new(),
+            dashes_left: MAX_DASHES,
+        }
+    }
 }
 
 /// The `<roadMark>`s of one `<lane>`, in order along it.
@@ -264,8 +282,8 @@ fn place_section(
                 continue;
             }
             let id = RoadMarkId(out.baked.len());
-            out.baked
-                .push(bake(road, section, border, mark, id, (start, end)));
+            let baked = bake(road, section, border, mark, id, (start, end), out);
+            out.baked.push(baked);
             out.provenance.push(RoadMarkProvenance {
                 road_mark: id,
                 road_id: road.od_id.clone(),
@@ -285,7 +303,8 @@ fn place_section(
     spans
 }
 
-/// One mark along `border` over the stretch `[start, end]` of road.
+/// One mark along `border` over the stretch `[start, end]` of road. A line
+/// with more dashes than `out` has left paints nothing, with a warning.
 fn bake(
     road: &Road,
     section: &RoadSection,
@@ -293,6 +312,7 @@ fn bake(
     mark: &MarkDef,
     id: RoadMarkId,
     (start, end): (f64, f64),
+    out: &mut RoadMarks,
 ) -> RoadMark {
     let width = mark.width.or(mark.type_width).unwrap_or(match mark.weight {
         RoadMarkWeight::Standard => STANDARD_WIDTH,
@@ -306,28 +326,41 @@ fn bake(
         &mark.lines
     };
     let sway = |s: f64| active(&mark.sways, s - start).map_or(0.0, |c| c.eval(s - start));
-    let lines = defs
-        .iter()
-        .map(|line| {
-            let width = line.width.unwrap_or(width);
-            RoadMarkLine {
-                color: line.color.clone().unwrap_or_else(|| mark.color.clone()),
-                width: width as f32,
-                t_offset: line.t_offset as f32,
-                s_offset: line.s_offset as f32,
-                pattern: line.pattern,
-                rule: line.rule,
-                pieces: paint(
-                    road,
-                    section,
-                    border.od_lane_id,
-                    |s| border.t(road, section, s) + line.t_offset + sway(s),
-                    width / 2.0,
-                    &painted(line.pattern, start + line.s_offset, (start, end)),
-                ),
+    let mut lines = Vec::new();
+    for line in defs {
+        let width = line.width.unwrap_or(width);
+        let from = start + line.s_offset;
+        let stretches = match painted(line.pattern, from, (start, end), out.dashes_left) {
+            Some(stretches) => {
+                out.dashes_left -= stretches.len() as f64;
+                stretches
             }
-        })
-        .collect();
+            None => {
+                out.warnings.push(Warning::RoadMarkLineDropped {
+                    road_id: road.od_id.clone(),
+                    s: start,
+                    lane: border.od_lane_id,
+                });
+                Vec::new()
+            }
+        };
+        lines.push(RoadMarkLine {
+            color: line.color.clone().unwrap_or_else(|| mark.color.clone()),
+            width: width as f32,
+            t_offset: line.t_offset as f32,
+            s_offset: line.s_offset as f32,
+            pattern: line.pattern,
+            rule: line.rule,
+            pieces: paint(
+                road,
+                section,
+                border.od_lane_id,
+                |s| border.t(road, section, s) + line.t_offset + sway(s),
+                width / 2.0,
+                &stretches,
+            ),
+        });
+    }
     RoadMark {
         id,
         kind: mark.kind,
@@ -369,14 +402,20 @@ fn stand_in_lines(kind: RoadMarkType, inside: f64) -> Vec<LineDef> {
 }
 
 /// The stretches of road a line with `pattern` paints within its mark's
-/// `[start, end]`, starting at `from`. None for dashes of no length, or more
-/// than [`MAX_REPEAT_INSTANCES`] of them.
-fn painted(pattern: LinePattern, from: f64, (start, end): (f64, f64)) -> Vec<(f64, f64)> {
+/// `[start, end]`, starting at `from`. Empty for dashes of no length. `None`
+/// for more than [`MAX_REPEAT_INSTANCES`] dashes, or more than `left`.
+fn painted(
+    pattern: LinePattern,
+    from: f64,
+    (start, end): (f64, f64),
+    left: f64,
+) -> Option<Vec<(f64, f64)>> {
     let once = |to: f64| {
-        [(from.max(start), to.min(end))]
+        let stretch: Vec<_> = [(from.max(start), to.min(end))]
             .into_iter()
             .filter(|(a, b)| b - a > 1e-6)
-            .collect()
+            .collect();
+        (stretch.len() as f64 <= left).then_some(stretch)
     };
     let (length, space) = match pattern {
         LinePattern::Continuous => return once(end),
@@ -385,16 +424,22 @@ fn painted(pattern: LinePattern, from: f64, (start, end): (f64, f64)) -> Vec<(f6
     };
     let length = f64::from(length);
     let period = length + f64::from(space.max(0.0));
-    if length <= 0.0 || (end - from.min(start)) / period > MAX_REPEAT_INSTANCES {
-        return Vec::new();
+    if length <= 0.0 {
+        return Some(Vec::new());
+    }
+    let dashes = (end - from.min(start)) / period;
+    if dashes > MAX_REPEAT_INSTANCES || dashes > left {
+        return None;
     }
     let first = ((start - from) / period).floor().max(0.0);
-    (0..)
-        .map(|k| from + (first + k as f64) * period)
-        .take_while(|&a| a < end)
-        .map(|a| (a.max(start), (a + length).min(end)))
-        .filter(|(a, b)| b - a > 1e-6)
-        .collect()
+    Some(
+        (0..)
+            .map(|k| from + (first + k as f64) * period)
+            .take_while(|&a| a < end)
+            .map(|a| (a.max(start), (a + length).min(end)))
+            .filter(|(a, b)| b - a > 1e-6)
+            .collect(),
+    )
 }
 
 /// Quads `half_width` either side of the line at `t(s)`, over each stretch of

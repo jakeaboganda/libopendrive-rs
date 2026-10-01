@@ -1135,6 +1135,8 @@
 //!   says which.
 //! - [`Warning::GeometryDropped`] for a `<geometry>` it can't bake, such as
 //!   one whose `length` isn't above 0. The road keeps its other geometry.
+//! - [`Warning::RoadMarkLineDropped`] for a road mark line with too many
+//!   dashes to paint, such as dashes a fraction of a millimetre long.
 //! - [`Warning::LaneDropped`] for a lane with no `<width>` or `<border>` it
 //!   can read.
 //! - [`Warning::WidthAndBorder`], [`Warning::BorderWithLaneOffset`] and

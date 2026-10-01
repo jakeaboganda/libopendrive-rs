@@ -51,6 +51,12 @@
   geometry over the new `MAX_LENGTH`, 100 km, is now skipped with a
   warning (`RoadSkipReason::TooLong` or `Warning::GeometryDropped`). A
   negative `<laneSection s>` counts as 0.
+- Fixed: a small file with many road mark lines of tiny dashes made
+  millions of quads, 228 MB from 2 KB. The cap on dashes was per line. A
+  load now paints at most 1,000,000 dashes. A line over that, or over
+  100,000 on its own, paints nothing and raises the new
+  `Warning::RoadMarkLineDropped`. Before, a line over 100,000 dropped
+  without a word.
 
 ## 0.4.0 - 2026-09-30
 
