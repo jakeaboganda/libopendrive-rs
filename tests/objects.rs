@@ -1021,3 +1021,45 @@ fn a_border_tilts_with_a_banked_road() {
         assert!(off.abs() < 1e-5, "{p:?} is {off} m off the road");
     }
 }
+
+#[test]
+fn a_stretch_ending_on_a_section_boundary_stays_out_of_the_next_section() {
+    let section = |s: f64| {
+        format!(
+            r#"<laneSection s="{s}"><center><lane id="0" type="none"/></center><right>
+            <lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane>
+            </right></laneSection>"#
+        )
+    };
+    let xodr = format!(
+        r#"<OpenDRIVE><header/><road id="1" length="100" junction="-1"><planView>
+        <geometry s="0" x="0" y="0" hdg="0" length="100"><line/></geometry></planView>
+        <lanes>{}{}</lanes><objects>
+        <object id="rail" type="barrier" s="0" t="-4" zOffset="0" height="1" width="0.3">
+          <repeat s="0" length="50" distance="0" tStart="-4" tEnd="-4" widthStart="0.3" widthEnd="0.3" heightStart="1" heightEnd="1" zOffsetStart="0" zOffsetEnd="0"/>
+        </object>
+        <object id="post" type="pole" s="50" t="-4" zOffset="0" height="1" radius="0.1"/>
+        </objects></road></OpenDRIVE>"#,
+        section(0.0),
+        section(50.0),
+    );
+    let (net, prov) = libopendrive::load_str_with_provenance(&xodr).unwrap();
+    let lane = |section: usize| {
+        prov.lanes
+            .iter()
+            .find(|p| p.section == section)
+            .unwrap()
+            .lane
+    };
+    let lanes_of = |name: &str| {
+        let id = prov
+            .objects
+            .iter()
+            .find(|p| p.od_id == name)
+            .unwrap()
+            .object;
+        net.object(id).unwrap().lanes.clone()
+    };
+    assert_eq!(lanes_of("rail"), [lane(0)]);
+    assert_eq!(lanes_of("post"), [lane(1)]);
+}
