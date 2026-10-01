@@ -74,6 +74,7 @@ fn main() -> ExitCode {
 
 /// The `.xodr` text for `grid`, named `file` in its `<CRG>`.
 fn map(grid: &CrgGrid, file: &str, genuine: bool) -> String {
+    let file = escape(file);
     let ((u0, u1), (v0, v1)) = (grid.u_range(), grid.v_range());
     let length = u1 - u0;
     let knots: Vec<f64> = (0..=(length / STEP).ceil().max(1.0) as usize)
@@ -141,7 +142,7 @@ fn map(grid: &CrgGrid, file: &str, genuine: bool) -> String {
     };
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
-<!-- Written by the crg_to_xodr example for {file}. -->
+<!-- Written by the crg_to_xodr example. -->
 <OpenDRIVE>
   <header revMajor="1" revMinor="9"/>
   <road id="1" length="{length:.6}" junction="-1">
@@ -174,6 +175,14 @@ fn cubic(s: f64, l: f64, a: f64, a1: f64, m0: f64, m1: f64) -> String {
     let c = (3.0 * rise - 2.0 * m0 - m1) / l;
     let d = (m0 + m1 - 2.0 * rise) / (l * l);
     format!(r#"s="{s:.6}" a="{a:.9}" b="{m0:.9}" c="{c:.9}" d="{d:.9}""#)
+}
+
+/// `text` with the characters XML gives a meaning in an attribute escaped.
+fn escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 /// An angle wrapped into `[-pi, pi)`.
