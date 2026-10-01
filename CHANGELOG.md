@@ -89,6 +89,10 @@
 - Fixed: of several `<access>`es or `<rule>`s at one `sOffset`, only the
   last was kept. An `allow` and a `deny` there now merge into the
   `allow` less the denied users, and rules join with `"; "`.
+- Fixed: an object, sweep or CRG whose stretch of road ended exactly where
+  a lane section starts also took that section's lanes. It now stops at the
+  boundary. A single station on a boundary still counts in the section that
+  starts there.
 
 ## 0.4.0 - 2026-09-30
 

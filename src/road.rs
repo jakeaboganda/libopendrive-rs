@@ -1062,7 +1062,8 @@ impl Road {
             .iter()
             .enumerate()
             .filter(|(i, sec)| {
-                sec.start <= to && (from < sec.end || (*i == last && from <= sec.end))
+                let starts = sec.start < to || (from == to && sec.start <= to);
+                starts && (from < sec.end || (*i == last && from <= sec.end))
             })
             .flat_map(|(_, sec)| &sec.lanes)
             .filter(|(od_id, _)| is_valid(*od_id, validity))
