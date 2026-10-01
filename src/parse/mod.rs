@@ -1072,6 +1072,9 @@ fn parse_road(
 ) -> Result<BakedRoad, RoadSkipReason> {
     let road_id = road.attribute("id").unwrap_or_default().to_string();
     let length = attr_f64(road, "length").ok_or(RoadSkipReason::NoLength)?;
+    if length > MAX_LENGTH {
+        return Err(RoadSkipReason::TooLong);
+    }
     let rule = traffic_rule(road).unwrap_or(TrafficRule::RightHand);
     let plan_view = child(road, "planView").ok_or(RoadSkipReason::NoPlanView)?;
     let mut geoms: Vec<GeomRec> = Vec::new();
@@ -1157,7 +1160,8 @@ fn parse_road(
 
 /// One `<planView><geometry>` record, or `None` for one the crate can't
 /// bake: one missing its `s`, `x`, `y`, `hdg` or `length`, one whose
-/// `length` isn't above 0, or one of a shape it doesn't know.
+/// `length` isn't above 0 or is over [`MAX_LENGTH`], or one of a shape it
+/// doesn't know.
 fn geometry(g: roxmltree::Node) -> Option<GeomRec> {
     let (Some(s), Some(x), Some(y), Some(hdg), Some(length)) = (
         attr_f64(g, "s"),
@@ -1168,7 +1172,7 @@ fn geometry(g: roxmltree::Node) -> Option<GeomRec> {
     ) else {
         return None;
     };
-    if length <= 0.0 {
+    if length <= 0.0 || length > MAX_LENGTH {
         return None;
     }
     let shape = if let Some(arc) = child(g, "arc") {
@@ -1210,6 +1214,12 @@ fn geometry(g: roxmltree::Node) -> Option<GeomRec> {
     };
     Some(GeomRec::new(s, x, y, hdg, length, shape))
 }
+
+/// The longest road or geometry the crate bakes, in metres. The crate
+/// samples a road every few centimetres to metres along its length, so a
+/// length from a broken file, such as 1e13, would need more memory than any
+/// machine has. Real roads are far shorter.
+pub const MAX_LENGTH: f64 = 100_000.0;
 
 /// How far, in metres, a `<border>` may lie inside its inner neighbour's
 /// outer border before it counts as crossing it, rather than as rounding.
@@ -1501,7 +1511,7 @@ fn bake_lanes(
 
     let length = baked.road.length;
     for (i, section) in sections.iter().enumerate() {
-        let s_start = attr_f64(*section, "s").unwrap_or(0.0);
+        let s_start = attr_f64(*section, "s").unwrap_or(0.0).max(0.0);
         let s_end = sections
             .get(i + 1)
             .map(|n| attr_f64(*n, "s").unwrap_or(length))
@@ -1910,13 +1920,17 @@ fn sample_positions(start: f64, end: f64, bends: &[f64], knots: &[f64]) -> Vec<f
             .map(|k| k - s)
             .filter(|&d| d > 1e-6 && s + d < end - 1e-6)
             .fold(f64::INFINITY, f64::min);
-        s += if knot <= step {
+        let next = s + if knot <= step {
             knot
         } else if knot < 2.0 * step {
             knot / 2.0
         } else {
             step
         };
+        if next <= s {
+            break;
+        }
+        s = next;
     }
     ss.push(end);
     ss

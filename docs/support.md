@@ -265,8 +265,8 @@ junction or junction group.
 
 | `Warning` | Raised for |
 | --- | --- |
-| `RoadSkipped` | a road with no finite `length`, no `<planView>` or no geometry the importer can bake |
-| `GeometryDropped` | a `<geometry>` missing its pose or `length`, with a `length` that isn't above 0, or of a shape the crate doesn't know |
+| `RoadSkipped` | a road with no finite `length`, one over 100 km, no `<planView>` or no geometry the importer can bake |
+| `GeometryDropped` | a `<geometry>` missing its pose or `length`, with a `length` that isn't above 0 or is over 100 km, or of a shape the crate doesn't know |
 | `LaneDropped` | a lane with no `<width>` or `<border>` the crate can read |
 | `WidthAndBorder` | a lane with `<border>`s in a lane section that also has `<width>`s |
 | `BorderWithLaneOffset` | a border lane on a road whose `<laneOffset>` is not 0 |

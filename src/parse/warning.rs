@@ -21,7 +21,8 @@ pub enum Warning {
     },
     /// A `<planView><geometry>` the crate can't bake: one missing its `s`,
     /// `x`, `y`, `hdg` or `length`, one whose `length` isn't above 0, or one
-    /// of a shape it doesn't know. The crate drops it, so the geometry before
+    /// of a shape it doesn't know, or over [`MAX_LENGTH`](crate::MAX_LENGTH).
+    /// The crate drops it, so the geometry before
     /// it runs on over its stretch of road.
     GeometryDropped {
         /// The `<road id>` it is on.
@@ -394,6 +395,8 @@ pub enum RoadSkipReason {
     /// missing a coordinate, carries one that is not a finite number, or has
     /// a shape the crate does not know.
     NoGeometry,
+    /// Its `length` is over [`MAX_LENGTH`](crate::MAX_LENGTH), 100 km.
+    TooLong,
 }
 
 impl Warning {
@@ -708,6 +711,7 @@ impl fmt::Display for RoadSkipReason {
             Self::NoLength => "no finite length",
             Self::NoPlanView => "no <planView>",
             Self::NoGeometry => "no <geometry> it can bake",
+            Self::TooLong => "a length over 100 km",
         })
     }
 }

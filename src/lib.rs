@@ -1130,8 +1130,8 @@
 //! sentence. The crate raises one where it drops something, or reads a file
 //! that breaks a rule of the spec:
 //!
-//! - [`Warning::RoadSkipped`] for a road with no finite `length`, no
-//!   `<planView>`, or no `<geometry>` it can bake. The [`RoadSkipReason`]
+//! - [`Warning::RoadSkipped`] for a road with no finite `length`, one over
+//!   [`MAX_LENGTH`], no `<planView>`, or no `<geometry>` it can bake. The [`RoadSkipReason`]
 //!   says which.
 //! - [`Warning::GeometryDropped`] for a `<geometry>` it can't bake, such as
 //!   one whose `length` isn't above 0. The road keeps its other geometry.
@@ -1262,6 +1262,7 @@ pub use parse::{
     CrossPathProvenance, ImportError, JunctionControllerProvenance, LaneHeight, LaneProvenance,
     ObjectProvenance, Orientation, PriorityProvenance, Provenance, RoadEnd, RoadMarkProvenance,
     RoadSkipReason, SignalProvenance, SignalReferenceProvenance, StructureProvenance, Warning,
+    MAX_LENGTH,
 };
 pub use railway::{Platform, PlatformSegment, Station, Switch, SwitchPosition, TrackPoint};
 pub use road::{LanePosition, Priority, Road, RoadId, RoadLane, RoadNeighbor, RoadPosition, Side};
