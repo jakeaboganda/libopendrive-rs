@@ -153,6 +153,10 @@
 - Fixed: `examples/crg_to_xodr.rs` wrote the CRG file's name into the
   map unescaped, so a name with `&`, `<` or `"` made a map that doesn't
   parse. It is now escaped.
+- Fixed: `examples/crg_to_xodr.rs` could end a road with a segment a
+  fraction of a micrometre long, when the grid's length was a hair over a
+  multiple of 0.25 m. Its curvature came out huge. The last segment is now
+  between 0.025 m and 0.275 m long. A grid too short for a road is an error.
 
 ### Docs
 

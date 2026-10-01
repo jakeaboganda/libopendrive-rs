@@ -53,6 +53,14 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let ((u0, u1), _) = (grid.u_range(), grid.v_range());
+    if u1 - u0 < STEP / 10.0 {
+        eprintln!(
+            "error: {input}: the grid is {:.3} m long, too short for a road",
+            u1 - u0
+        );
+        return ExitCode::FAILURE;
+    }
     let file = Path::new(input);
     let output = file.with_extension("xodr");
     let name = file.file_name().and_then(|n| n.to_str()).unwrap_or(input);
@@ -77,9 +85,11 @@ fn map(grid: &CrgGrid, file: &str, genuine: bool) -> String {
     let file = escape(file);
     let ((u0, u1), (v0, v1)) = (grid.u_range(), grid.v_range());
     let length = u1 - u0;
-    let knots: Vec<f64> = (0..=(length / STEP).ceil().max(1.0) as usize)
-        .map(|i| (u0 + i as f64 * STEP).min(u1))
+    let mut knots: Vec<f64> = (0..)
+        .map(|i| u0 + i as f64 * STEP)
+        .take_while(|&u| u < u1 - STEP / 10.0)
         .collect();
+    knots.push(u1);
     let rate = |u: f64, f: &dyn Fn(f64) -> f64| {
         let (behind, ahead) = ((u - STEP).max(u0), (u + STEP).min(u1));
         (f(ahead) - f(behind)) / (ahead - behind)
