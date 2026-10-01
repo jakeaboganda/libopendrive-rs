@@ -64,6 +64,10 @@
   ending the section before it at the road's end. The road got two sets of
   lanes on top of each other, and a false `LinkGap`. A missing `s` now
   means 0 everywhere, as libOpenDRIVE reads it.
+- Fixed: a signal's `width`, `height`, `length` or `zOffset`, a
+  `<positionInertial>` coordinate, or a board sign's size or offset, too
+  large for an `f32` (such as `1e39`) became infinity. Each now reads as
+  missing, as a value like `inf` already did.
 
 ## 0.4.0 - 2026-09-30
 

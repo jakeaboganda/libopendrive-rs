@@ -1006,6 +1006,15 @@ fn attr_f64(node: roxmltree::Node, name: &str) -> Option<f64> {
         .filter(|v| v.is_finite())
 }
 
+/// `node`'s attribute `name` as an `f32`, or `None` like [`attr_f64`]. A
+/// value too large for an `f32` counts as unreadable too, rather than
+/// becoming infinity.
+fn attr_f32(node: roxmltree::Node, name: &str) -> Option<f32> {
+    attr_f64(node, name)
+        .map(|v| v as f32)
+        .filter(|v| v.is_finite())
+}
+
 /// `road`'s traffic rule, or the value of its `rule` if that is neither
 /// `RHT` nor `LHT`. A road without one is right-hand traffic.
 fn traffic_rule<'a>(road: roxmltree::Node<'a, '_>) -> Result<TrafficRule, &'a str> {

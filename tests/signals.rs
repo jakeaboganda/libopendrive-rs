@@ -398,3 +398,61 @@ fn signals_survive_a_round_trip() {
     assert_eq!(back.controllers(), net.controllers());
     assert_eq!(back, net);
 }
+
+#[test]
+fn a_number_too_large_for_an_f32_reads_as_missing_not_infinite() {
+    let signal = |id: &str, t: f64, extra: &str, inner: &str| {
+        format!(
+            r#"<signal id="{id}" s="10" t="{t}" orientation="+" dynamic="no" {extra}>{inner}</signal>"#
+        )
+    };
+    let xodr = format!(
+        r#"<OpenDRIVE><header/><road id="1" length="20" junction="-1"><planView>
+        <geometry s="0" x="0" y="0" hdg="0" length="20"><line/></geometry></planView>
+        <lanes><laneSection s="0"><center><lane id="0" type="none"/></center><right>
+        <lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane>
+        </right></laneSection></lanes><signals>{}{}{}</signals></road></OpenDRIVE>"#,
+        signal(
+            "size",
+            -4.0,
+            r#"width="1e39" height="1e39" length="1e39" zOffset="1e39""#,
+            ""
+        ),
+        signal(
+            "inertial",
+            -4.0,
+            "",
+            r#"<positionInertial x="1e39" y="0" z="0" hdg="0"/>"#
+        ),
+        signal(
+            "board",
+            -4.0,
+            "",
+            r#"<staticBoard><sign v="1e39" z="0" width="1e39" height="1"/></staticBoard>"#
+        ),
+    );
+    let net = libopendrive::load_str(&xodr).unwrap();
+    let finite = |p: libopendrive::Point| p.to_array().iter().all(|c| c.is_finite());
+    for s in net.signals() {
+        assert!(finite(s.position), "{:?}", s.position);
+        for size in [s.width, s.height, s.length] {
+            assert!(size.is_none_or(f32::is_finite), "{size:?}");
+        }
+        for board in &s.boards {
+            if let libopendrive::SignalBoard::Static(signs) = board {
+                for sign in signs {
+                    assert!(finite(sign.position), "{:?}", sign.position);
+                    assert_eq!(sign.width, None);
+                }
+            }
+        }
+    }
+    let size = &net.signals()[0];
+    assert_eq!((size.width, size.height, size.length), (None, None, None));
+    assert!((size.position.z - 0.0).abs() < 1e-3, "zOffset reads as 0");
+    let inertial = &net.signals()[1];
+    assert!(
+        (inertial.position.x - 10.0).abs() < 1e-3,
+        "the board stays at its station"
+    );
+}
