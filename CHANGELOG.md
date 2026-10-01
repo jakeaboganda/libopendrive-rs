@@ -104,6 +104,9 @@
 - Fixed: an object whose `<repeat>` or dashed `<marking>` would make
   over 100,000 copies or dashes vanished without a word. It now raises the
   new `Warning::TooManyCopies`.
+- Fixed: a `<lane>` under `<left>` or `<right>` whose `id` isn't a
+  whole number, or is 0, was dropped without a word. It now raises the new
+  `Warning::LaneIdUnreadable`.
 
 ## 0.4.0 - 2026-09-30
 

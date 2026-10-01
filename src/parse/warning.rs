@@ -56,6 +56,17 @@ pub enum Warning {
         /// Its `<object id>`.
         object_id: String,
     },
+    /// A `<lane>` under `<left>` or `<right>` whose `id` isn't a whole
+    /// number, or is 0, the center lane's. The crate can't tell which lane
+    /// it is, so it drops it.
+    LaneIdUnreadable {
+        /// The `<road id>` it is on.
+        road_id: String,
+        /// Its zero-based lane section.
+        section: usize,
+        /// Its `id`, as the file writes it. Empty if it has none.
+        id: String,
+    },
     /// A `<lane>` with no `<width>` or `<border>` the crate could read. It
     /// has no extent, so it did not bake, and neither did its road marks. A
     /// lane outside it stacks on the lane inside it.
@@ -435,6 +446,7 @@ impl Warning {
         match self {
             Self::RoadSkipped { road_id, .. }
             | Self::GeometryDropped { road_id, .. }
+            | Self::LaneIdUnreadable { road_id, .. }
             | Self::TooManyCopies { road_id, .. }
             | Self::RoadMarkLineDropped { road_id, .. }
             | Self::LaneDropped { road_id, .. }
@@ -563,6 +575,14 @@ impl fmt::Display for Warning {
             Self::TooManyCopies { road_id, object_id } => write!(
                 f,
                 "road {road_id:?}: object {object_id:?} would make over 100,000 copies or dashes, so they were left out"
+            ),
+            Self::LaneIdUnreadable {
+                road_id,
+                section,
+                id,
+            } => write!(
+                f,
+                "road {road_id:?}: a lane in section {section} with id {id:?} dropped, the id isn't a whole number other than 0"
             ),
             Self::RoadLengthMismatch {
                 road_id,
