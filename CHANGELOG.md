@@ -150,6 +150,9 @@
 - Fixed: `examples/crg_profile.rs --step 0` ran forever, and a negative
   or unreadable value was taken without a word. A value that isn't a
   number, or a step that isn't above 0, is now an error.
+- Fixed: `examples/crg_to_xodr.rs` wrote the CRG file's name into the
+  map unescaped, so a name with `&`, `<` or `"` made a map that doesn't
+  parse. It is now escaped.
 
 ### Docs
 
