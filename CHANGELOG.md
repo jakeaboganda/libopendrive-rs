@@ -149,6 +149,9 @@
 - The docs of a `<cornerRoad>` corner said its top rises along the road's
   normal. It rises straight up, as the crate docs already said elsewhere.
   Both now say so, and that libOpenDRIVE raises it along the normal.
+- `Pose::heading` and `Polyline::tangents` said they are always unit
+  vectors. They are zero where a hand-built polyline turns straight back or
+  repeats a point, and now say so.
 
 ## 0.4.0 - 2026-09-30
 

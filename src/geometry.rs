@@ -8,7 +8,10 @@ use crate::coords::{Point, Vector};
 pub struct Pose {
     /// Position on the lane.
     pub position: Point,
-    /// Unit tangent in the XY (ground) plane, the direction of travel.
+    /// Unit tangent in the XY (ground) plane, the direction of travel. Zero
+    /// where the polyline has no direction: at a vertex where it turns
+    /// straight back, or where it has no horizontal length either side, as at
+    /// a repeated point. Polylines the importer bakes have neither.
     pub heading: Vector,
 }
 
@@ -157,7 +160,8 @@ impl Polyline {
 
     /// Per-vertex horizontal unit tangents, parallel to `points`: the bisector
     /// at an interior vertex, and the curve's analytical tangent at either end
-    /// where the importer supplied one. These are what [`Polyline::pose_at`]
+    /// where the importer supplied one. Zero at a vertex with no direction, as
+    /// [`Pose::heading`] says. These are what [`Polyline::pose_at`]
     /// interpolates, so reading them is how a consumer reproduces its heading
     /// at a vertex rather than re-deriving one from the chords and disagreeing.
     pub fn tangents(&self) -> &[Vector] {
