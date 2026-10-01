@@ -223,9 +223,9 @@ fn place_signal(
         lanes: road.lanes((s, s), &lane_ranges(road, orientation, validity(node))),
         applies_at: vec![road.surface(s, t).0],
         position: board.position,
-        heading: wrap(board.heading) as f32,
-        pitch: wrap(board.pitch) as f32,
-        roll: wrap(board.roll) as f32,
+        heading: angle(board.heading),
+        pitch: angle(board.pitch),
+        roll: angle(board.roll),
         length: size("length"),
         width: size("width"),
         height: size("height"),
@@ -478,6 +478,17 @@ fn lane_ranges(
         Orientation::Positive => vec![road.rule.side(Direction::Forward)],
         Orientation::Negative => vec![road.rule.side(Direction::Backward)],
         Orientation::Both => Vec::new(),
+    }
+}
+
+/// `angle` as an `f32` in `(-π, π]`. The `f32` nearest π is a little over
+/// it, so an angle just over -π rounds onto -π, and is turned to π.
+fn angle(angle: f64) -> f32 {
+    let wrapped = wrap(angle) as f32;
+    if wrapped <= -std::f32::consts::PI {
+        std::f32::consts::PI
+    } else {
+        wrapped
     }
 }
 

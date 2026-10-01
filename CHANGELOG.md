@@ -140,6 +140,9 @@
   say the two always agree.
 - Fixed: `object_mesh` panicked on an open `Shape::Outline` with no
   corners. It now meshes to nothing. Only a hand-built object can have one.
+- Fixed: `Signal::heading`, documented in `(-π, π]`, could be exactly
+  `-π` after rounding to `f32`. It is now `π` there, and so are a
+  signal's pitch and roll.
 
 ### Docs
 

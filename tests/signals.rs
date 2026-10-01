@@ -456,3 +456,19 @@ fn a_number_too_large_for_an_f32_reads_as_missing_not_infinite() {
         "the board stays at its station"
     );
 }
+
+#[test]
+fn a_heading_just_over_minus_pi_stays_in_range() {
+    let xodr = r#"<OpenDRIVE><header/><road id="1" length="20" junction="-1"><planView>
+        <geometry s="0" x="0" y="0" hdg="0" length="20"><line/></geometry></planView>
+        <lanes><laneSection s="0"><center><lane id="0" type="none"/></center><right>
+        <lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane>
+        </right></laneSection></lanes><signals>
+        <signal id="s" s="10" t="-4" orientation="-" hOffset="-3.14159264"/>
+        </signals></road></OpenDRIVE>"#;
+    let heading = libopendrive::load_str(xodr).unwrap().signals()[0].heading;
+    assert!(
+        heading > -std::f32::consts::PI && heading <= std::f32::consts::PI,
+        "{heading}"
+    );
+}
