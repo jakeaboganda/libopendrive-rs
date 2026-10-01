@@ -107,3 +107,36 @@ fn an_empty_network_indexes_and_answers_nothing() {
     let mesh = empty.surface_mesh();
     assert!(mesh.sampler().height_at(0.0, 0.0).is_none());
 }
+
+#[test]
+fn nan_never_finds_or_wins_a_lane() {
+    use libopendrive::{Direction, Lane, LaneId, LaneType, Polyline, RoadNetwork};
+    let lane = |id: usize, points: Vec<Point>| Lane {
+        id: LaneId(id),
+        kind: LaneType::Driving,
+        direction: Direction::Forward,
+        center: Polyline::new(points),
+        width: 3.5,
+        widths: Vec::new(),
+        bank: Vec::new(),
+        successors: Vec::new(),
+        predecessors: Vec::new(),
+        neighbors: Vec::new(),
+    };
+    let net = RoadNetwork::new(vec![
+        lane(
+            0,
+            vec![Point::new(0.0, 0.0, f32::NAN), Point::new(10.0, 0.0, 0.0)],
+        ),
+        lane(
+            1,
+            vec![Point::new(0.0, 3.0, 0.0), Point::new(10.0, 3.0, 0.0)],
+        ),
+    ]);
+    assert!(net
+        .nearest_lane(Point::new(f32::NAN, f32::NAN, 0.0))
+        .is_none());
+    assert!(net.sample_near(Point::new(5.0, f32::NAN, 0.0)).is_none());
+    let (id, _) = net.nearest_lane(Point::new(5.0, 3.0, 0.0)).unwrap();
+    assert_eq!(id, LaneId(1), "the NaN vertex doesn't win");
+}

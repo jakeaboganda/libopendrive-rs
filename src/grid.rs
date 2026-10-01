@@ -185,13 +185,16 @@ impl Grid {
     /// re-measured in each one. It is an upper bound to beat, not to match:
     /// an item exactly at that distance must still be offered, or the tie
     /// break cannot see it.
+    ///
+    /// `None` for a point that isn't finite. An item whose distance is NaN,
+    /// such as one with a NaN vertex, never wins.
     pub fn nearest<T>(
         &self,
         x: f32,
         y: f32,
         mut consider: impl FnMut(u32, f32) -> Option<(f32, T)>,
     ) -> Option<T> {
-        if self.cells.is_empty() {
+        if self.cells.is_empty() || !x.is_finite() || !y.is_finite() {
             return None;
         }
         let (cx, cy) = (self.col(x) as isize, self.row(y) as isize);
@@ -211,7 +214,8 @@ impl Grid {
                 in_bounds = true;
                 for &item in &self.cells[iy * self.cols + ix] {
                     let ceiling = best.as_ref().map_or(f32::INFINITY, |(d2, _, _)| *d2);
-                    let Some((d2, value)) = consider(item, ceiling) else {
+                    let Some((d2, value)) = consider(item, ceiling).filter(|(d2, _)| !d2.is_nan())
+                    else {
                         continue;
                     };
                     let wins = best
