@@ -118,7 +118,7 @@ Filtering opens every group that matches.
 At the top, in amber, are the map's warnings. Most are what `libopendrive`
 dropped from a bad file, such as a road with no geometry or a lane with no
 `<width>`. The rest come from the baker: a CRG file it could not load, or a
-mesh that is not a valid trimesh. Click a warning to light the lanes of the
+mesh that is not a valid triangle mesh. Click a warning to light the lanes of the
 road it names and frame them. A skipped road has no lanes, so the readout
 says so instead. A clean map has no warnings group.
 

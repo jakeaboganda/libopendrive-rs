@@ -60,7 +60,7 @@ mod web;
 pub struct Scene {
     /// The scene. Its `warnings` table ends with `notes`.
     pub json: Value,
-    /// A mesh that is not a valid trimesh, or a CRG file that did not load.
+    /// A mesh that is not a valid triangle mesh, or a CRG file that did not load.
     pub notes: Vec<String>,
 }
 
@@ -76,13 +76,13 @@ pub fn bake(
 
     let mesh = net.surface_mesh();
     if let Err(e) = mesh.validate() {
-        notes.push(format!("mesh is not a valid trimesh: {e}"));
+        notes.push(format!("mesh is not a valid triangle mesh: {e}"));
     }
 
     let object_mesh = net.object_mesh();
     if !object_mesh.objects.is_empty() {
         if let Err(e) = object_mesh.validate() {
-            notes.push(format!("object mesh is not a valid trimesh: {e}"));
+            notes.push(format!("object mesh is not a valid triangle mesh: {e}"));
         }
     }
 

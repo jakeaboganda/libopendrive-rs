@@ -42,11 +42,11 @@ use, or its version.
 `surface_mesh()` returns plain position, normal and index buffers with no
 engine types in them, and a `LaneSpan` per lane saying which slice of those
 buffers it owns. Buffers plus spans are enough to pick the lane under a
-cursor, or give one lane its own material without re-tessellating. The viewer
+cursor, or give one lane its own material without rebuilding the mesh. The viewer
 uses the same spans to resolve a raycast hit to a lane.
 
 `object_mesh()` does the same for objects: every box, cylinder, outline and
-sweep tessellated into one mesh of outward-facing faces, with an `ObjectSpan`
+sweep turned into triangles in one mesh of outward-facing faces, with an `ObjectSpan`
 per object.
 
 ## Serialization

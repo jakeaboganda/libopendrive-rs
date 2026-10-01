@@ -28,8 +28,9 @@ files declaring 1.4, 1.6 and 1.7.
 
 - Reference geometry: `line`, `arc`, `spiral` (clothoid), `paramPoly3`,
   `poly3`.
-- `<elevationProfile>`, and `<lateralProfile>` superelevation baked as a real
-  cant. The cross-section rolls about the reference line, so an outer lane
+- `<elevationProfile>`, and `<lateralProfile>` superelevation, which tilts
+  the road from side to side. The cross-section rolls about the reference
+  line, so an outer lane
   rides higher and its surface normal leans.
 - `<lateralProfile>` shapes, so a crowned road has its crown. Each lane
   border stands at the shape under it, and a lane goes straight across
