@@ -166,6 +166,9 @@
 - Fixed: `viewer_export --refresh` said every scene was up to date right
   after naming scenes it couldn't check. It now says "every other scene"
   then.
+- Fixed: `viewer_export --refresh` didn't notice a changed OpenCRG file,
+  so a scene's heat map could go stale. It now also compares each `.crg`
+  file the map names.
 
 ### Docs
 
