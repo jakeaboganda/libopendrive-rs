@@ -60,6 +60,10 @@
 - Fixed: a lane section shorter than a millimetre, such as one at
   `s = length` that many exporters write, cut every link across it, with
   no warning. Links now step over it to the next section or road.
+- Fixed: a `<laneSection>` without `s` was read as starting at 0 but
+  ending the section before it at the road's end. The road got two sets of
+  lanes on top of each other, and a false `LinkGap`. A missing `s` now
+  means 0 everywhere, as libOpenDRIVE reads it.
 
 ## 0.4.0 - 2026-09-30
 

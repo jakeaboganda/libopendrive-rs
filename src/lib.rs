@@ -180,7 +180,9 @@
 //! "Successor" means "a lane you can drive into off this lane's exit end",
 //! not a raw mirror of the file's `+s` links. A lane section shorter than a
 //! millimetre, such as the one many exporters write at a road's end, bakes
-//! no lanes, and links step over it to the section beyond.
+//! no lanes, and links step over it to the section beyond. A
+//! `<laneSection>` without the `s` the spec requires starts at 0, as
+//! libOpenDRIVE reads it, so a section that also starts at 0 has no length.
 //!
 //! A direct junction joins roads end to end, with no connecting road
 //! between them. Each `<laneLink>` there says which lane of the linked road
