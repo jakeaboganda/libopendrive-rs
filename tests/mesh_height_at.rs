@@ -205,3 +205,21 @@ fn an_extreme_query_returns_none_rather_than_a_nan_height() {
         }
     }
 }
+
+/// The surface normal of a straight road climbing a 10 % grade leans back
+/// against the climb, as the face it lies on does.
+#[test]
+fn the_normal_on_a_climbing_road_tilts_with_the_grade() {
+    let xodr = r#"<OpenDRIVE><header/><road id="1" length="100" junction="-1">
+        <planView><geometry s="0" x="0" y="0" hdg="0" length="100"><line/></geometry></planView>
+        <elevationProfile><elevation s="0" a="0" b="0.1" c="0" d="0"/></elevationProfile>
+        <lanes><laneSection s="0"><center><lane id="0" type="none"/></center><right>
+        <lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane>
+        </right></laneSection></lanes></road></OpenDRIVE>"#;
+    let mesh = libopendrive::load_str(xodr).unwrap().surface_mesh();
+    let pitch = 0.1_f32.atan();
+    let want = Vector::new(-pitch.sin(), 0.0, pitch.cos());
+    let (z, up) = mesh.height_at(50.0, -1.75).expect("on the road");
+    assert!((z - 5.0).abs() < 1e-3, "z {z}");
+    assert!((up - want).length() < 1e-4, "up {up:?}, want {want:?}");
+}
