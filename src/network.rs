@@ -1236,12 +1236,14 @@ impl RoadNetwork {
     /// the road legitimately reaches. `None` if the network has no lanes. Used
     /// to set an off-map fall floor relative to the terrain, so a map that dips
     /// well below zero (a valley, an underpass) isn't mistaken for freefall.
+    /// A height that is NaN is skipped.
     pub fn min_elevation(&self) -> Option<f32> {
         self.lanes
             .iter()
             .flat_map(|l| l.center.points())
             .map(|p| p.z)
-            .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .filter(|z| !z.is_nan())
+            .reduce(f32::min)
     }
 
     /// The lanes reachable by driving off `id`'s exit end (its `successors`).

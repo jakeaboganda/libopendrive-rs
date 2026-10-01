@@ -125,6 +125,8 @@
 - Fixed: `with_speed_limits` and the other builders for stretches along
   lanes panicked on a stretch whose `from` was NaN, and so did
   deserializing one. Such a stretch is now left out.
+- Fixed: `min_elevation` returned NaN when the first point it looked at
+  had a NaN height. It now skips NaN heights.
 
 ## 0.4.0 - 2026-09-30
 
