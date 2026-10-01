@@ -141,3 +141,24 @@ fn rules_access_and_materials_survive_serde() {
     assert_eq!(back, net);
     assert!(!back.lane_access().is_empty());
 }
+
+#[test]
+fn entries_at_the_same_s_offset_apply_together() {
+    let lane = r#"<access sOffset="0" rule="allow" restriction="bus"/>
+        <access sOffset="0" rule="allow" restriction="taxi"/>
+        <access sOffset="0" rule="deny" restriction="taxi"/>
+        <access sOffset="0" rule="deny" restriction="truck"/>
+        <rule sOffset="0" value="no stopping"/><rule sOffset="0" value="bus lane"/>"#;
+    let xodr = format!(
+        r#"<OpenDRIVE><header/><road id="1" length="20" junction="-1"><planView>
+        <geometry s="0" x="0" y="0" hdg="0" length="20"><line/></geometry></planView>
+        <lanes><laneSection s="0"><center><lane id="0" type="none"/></center><right>
+        <lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/>{lane}</lane>
+        </right></laneSection></lanes></road></OpenDRIVE>"#
+    );
+    let net = libopendrive::load_str(&xodr).unwrap();
+    let access: Vec<_> = net.lane_access().iter().map(|a| a.value.clone()).collect();
+    assert_eq!(access, [Access::Allow(users(&["bus"]))]);
+    let rules: Vec<_> = net.lane_rules().iter().map(|a| a.value.clone()).collect();
+    assert_eq!(rules, ["no stopping; bus lane"]);
+}

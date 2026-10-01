@@ -170,9 +170,20 @@ fn by_offset<T>(
     out
 }
 
-/// A lane's `<rule>` values. A `<rule>` without a `value` is skipped.
+/// A lane's `<rule>` values. A `<rule>` without a `value` is skipped. Rules
+/// at the same `sOffset` all apply, so their values join with `"; "`.
 pub(super) fn lane_rules(lane: roxmltree::Node) -> Vec<(f64, String)> {
-    by_offset(lane, "rule", |n| n.attribute("value").map(String::from))
+    let mut out: Vec<(f64, String)> = Vec::new();
+    for (s, rule) in by_offset(lane, "rule", |n| n.attribute("value").map(String::from)) {
+        match out.last_mut() {
+            Some((at, last)) if *at == s => {
+                last.push_str("; ");
+                last.push_str(&rule);
+            }
+            _ => out.push((s, rule)),
+        }
+    }
+    out
 }
 
 /// A lane's `<material>`s.
@@ -180,28 +191,42 @@ pub(super) fn lane_materials(lane: roxmltree::Node) -> Vec<(f64, Material)> {
     by_offset(lane, "material", |n| Some(material(n)))
 }
 
-/// A lane's `<access>`es. Files before 1.8 give one road user per
-/// `<access>`, so those at the same `sOffset` with the same rule merge.
+/// A lane's `<access>`es. Those at the same `sOffset` apply together, as
+/// files before 1.8 write them, one road user per `<access>`. Two of the
+/// same rule merge their road users. An `allow` and a `deny` merge into the
+/// `allow`, less the users the `deny` names: only those may use the lane.
 pub(super) fn lane_access(lane: roxmltree::Node) -> Vec<(f64, AccessDef)> {
     let mut out: Vec<(f64, AccessDef)> = Vec::new();
     for (s, def) in by_offset(lane, "access", |n| Some(AccessDef::parse(n))) {
         if let (Some((at, AccessDef::Restricted(last))), AccessDef::Restricted(next)) =
             (out.last_mut(), &def)
         {
-            match (last, next) {
-                (Access::Allow(users), Access::Allow(more))
-                | (Access::Deny(users), Access::Deny(more))
-                    if *at == s =>
-                {
-                    users.extend(more.iter().cloned());
-                    continue;
-                }
-                _ => {}
+            if *at == s {
+                *last = merge(last, next);
+                continue;
             }
         }
         out.push((s, def));
     }
     out
+}
+
+/// Two `<access>`es that apply together, as one.
+fn merge(a: &Access, b: &Access) -> Access {
+    let less = |users: &[String], gone: &[String]| {
+        users
+            .iter()
+            .filter(|u| !gone.contains(u))
+            .cloned()
+            .collect()
+    };
+    match (a, b) {
+        (Access::Allow(a), Access::Allow(b)) => Access::Allow([&a[..], b].concat()),
+        (Access::Deny(a), Access::Deny(b)) => Access::Deny([&a[..], b].concat()),
+        (Access::Allow(allow), Access::Deny(deny)) | (Access::Deny(deny), Access::Allow(allow)) => {
+            Access::Allow(less(allow, deny))
+        }
+    }
 }
 
 /// A lane's `<visibility>` as the file gives it.
