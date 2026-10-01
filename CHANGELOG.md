@@ -147,6 +147,9 @@
   kept a half-downloaded `.crg` file forever, so later runs failed on it.
   It now runs from any folder, and downloads to a `.part` file it renames
   only once the download is complete.
+- Fixed: `examples/crg_profile.rs --step 0` ran forever, and a negative
+  or unreadable value was taken without a word. A value that isn't a
+  number, or a step that isn't above 0, is now an error.
 
 ### Docs
 

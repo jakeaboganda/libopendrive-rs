@@ -6,7 +6,8 @@
 //! ```
 //!
 //! The wheel follows the first lane a CRG covers, or `--lane ID`, from its
-//! start to its end in steps of `--step` metres, 0.01 by default.
+//! start to its end in steps of `--step` metres, 0.01 by default and above
+//! 0. A flag whose value isn't a number is an error.
 //! `--offset T` moves it `T` metres left of the lane's centerline. It loads
 //! the CRG files from beside the `.xodr` and carries one [`SurfaceHint`] down
 //! the lane, as a wheel in a simulation would.
@@ -27,11 +28,17 @@ use libopendrive::{load_file, LaneId, RoadSurface, SurfaceHint};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
-    let option = |name: &str| {
-        args.iter()
-            .position(|a| a == name)
-            .and_then(|i| args.get(i + 1))
-            .and_then(|v| v.parse::<f64>().ok())
+    let option = |name: &str| -> Result<Option<f64>, String> {
+        let Some(i) = args.iter().position(|a| a == name) else {
+            return Ok(None);
+        };
+        let value = args.get(i + 1).map(String::as_str).unwrap_or_default();
+        value
+            .parse::<f64>()
+            .ok()
+            .filter(|v| v.is_finite())
+            .map(Some)
+            .ok_or_else(|| format!("{name} {value:?} is not a number"))
     };
     let Some(input) = args
         .iter()
@@ -42,8 +49,19 @@ fn main() -> ExitCode {
         eprintln!("usage: crg_profile FILE.xodr [--lane ID] [--offset T] [--step DS]");
         return ExitCode::FAILURE;
     };
-    let step = option("--step").unwrap_or(0.01);
-    let offset = option("--offset").unwrap_or(0.0);
+    let options =
+        (|| Ok::<_, String>((option("--step")?, option("--offset")?, option("--lane")?)))();
+    let (step, offset, lane_id) = match options {
+        Ok((step, offset, lane)) => (step.unwrap_or(0.01), offset.unwrap_or(0.0), lane),
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if step <= 0.0 {
+        eprintln!("error: --step {step} must be above 0");
+        return ExitCode::FAILURE;
+    }
 
     let net = match load_file(input) {
         Ok(net) => net,
@@ -60,7 +78,7 @@ fn main() -> ExitCode {
             .ok()
     });
 
-    let id = option("--lane").map(|id| LaneId(id as usize)).or_else(|| {
+    let id = lane_id.map(|id| LaneId(id as usize)).or_else(|| {
         net.crg_surfaces()
             .iter()
             .find_map(|c| c.lanes.first().copied())
