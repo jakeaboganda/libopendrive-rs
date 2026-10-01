@@ -138,6 +138,8 @@
 - Fixed: `MeshSampler` missed a point a hair outside a triangle, or on
   the far edge of the mesh, that `Mesh::height_at` finds, though the docs
   say the two always agree.
+- Fixed: `object_mesh` panicked on an open `Shape::Outline` with no
+  corners. It now meshes to nothing. Only a hand-built object can have one.
 
 ## 0.4.0 - 2026-09-30
 

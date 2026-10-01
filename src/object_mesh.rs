@@ -244,7 +244,7 @@ fn walls(mesh: &mut Mesh, ring: &[Corner], normal: Option<Vector>) {
     let bases: Vec<Point> = ring.iter().map(|c| c.base).collect();
     let (edges, normal) = match normal {
         Some(normal) => (n, normal),
-        None => (n - 1, Vector::ZERO),
+        None => (n.saturating_sub(1), Vector::ZERO),
     };
     for i in 0..edges {
         let j = (i + 1) % n;

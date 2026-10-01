@@ -295,3 +295,29 @@ fn a_sweep_round_a_bend_caps_both_ends_outward() {
         "{got} m³"
     );
 }
+
+#[test]
+fn an_outline_with_no_corners_meshes_to_nothing() {
+    let object = |closed: bool| libopendrive::Object {
+        id: libopendrive::ObjectId(0),
+        kind: ObjectType::Barrier,
+        subtype: String::new(),
+        name: String::new(),
+        dynamic: false,
+        lanes: Vec::new(),
+        markings: Vec::new(),
+        borders: Vec::new(),
+        parking_space: None,
+        materials: Vec::new(),
+        user_data: Vec::new(),
+        shape: Shape::Outline {
+            corners: Vec::new(),
+            closed,
+            holes: Vec::new(),
+        },
+    };
+    for closed in [false, true] {
+        let net = RoadNetwork::new(Vec::new()).with_objects(vec![object(closed)]);
+        assert!(net.object_mesh().indices.is_empty());
+    }
+}
