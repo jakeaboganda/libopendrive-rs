@@ -38,7 +38,10 @@ pub(crate) struct LinkTarget {
 }
 
 pub(crate) struct RoadInfo {
-    pub sections: usize,
+    /// The index among the road's `<laneSection>`s of each section that
+    /// baked, in order. A section shorter than a millimetre bakes no lanes,
+    /// so links step over it.
+    pub sections: Vec<usize>,
     /// The road's `junction`, if it is in one.
     pub junction: Option<String>,
     pub predecessor: Option<LinkTarget>,
@@ -82,11 +85,29 @@ pub(crate) struct Topology {
 }
 
 impl Topology {
+    /// The index of `road`'s first lane section with lanes.
+    pub(crate) fn first_section(&self, road: &str) -> usize {
+        self.sections(road).first().copied().unwrap_or(0)
+    }
+
+    /// The index of `road`'s last lane section with lanes.
     pub(crate) fn last_section(&self, road: &str) -> usize {
-        self.roads
-            .get(road)
-            .map(|r| r.sections.saturating_sub(1))
-            .unwrap_or(0)
+        self.sections(road).last().copied().unwrap_or(0)
+    }
+
+    /// The index of the lane section with lanes after `section` on `road`,
+    /// or before it if not `forward`.
+    fn next_section(&self, road: &str, section: usize, forward: bool) -> Option<usize> {
+        let sections = self.sections(road);
+        if forward {
+            sections.iter().copied().find(|&i| i > section)
+        } else {
+            sections.iter().copied().rev().find(|&i| i < section)
+        }
+    }
+
+    fn sections(&self, road: &str) -> &[usize] {
+        self.roads.get(road).map_or(&[], |r| &r.sections)
     }
 }
 
@@ -190,34 +211,25 @@ fn successors_of(meta: &LaneMeta, topo: &Topology) -> Vec<LaneId> {
 /// `+s` end (next section, or the road's successor); backward at the `-s`
 /// (start) end (previous section, or the predecessor).
 fn exits(meta: &LaneMeta, topo: &Topology, direction: Direction) -> Vec<(LaneId, Contact)> {
-    let last = topo.last_section(&meta.road);
     let road = topo.roads.get(&meta.road);
-    if direction == Direction::Forward {
-        if meta.section < last {
-            at(
-                Contact::Start,
-                lookup(topo, &meta.road, meta.section + 1, meta.succ_link),
-            )
-        } else {
-            cross(
-                topo,
-                meta,
-                road.and_then(|r| r.successor.clone()),
-                meta.succ_link,
-            )
-        }
-    } else if meta.section > 0 {
-        at(
-            Contact::End,
-            lookup(topo, &meta.road, meta.section - 1, meta.pred_link),
-        )
+    let forward = direction == Direction::Forward;
+    let (link, contact) = if forward {
+        (meta.succ_link, Contact::Start)
     } else {
-        cross(
-            topo,
-            meta,
-            road.and_then(|r| r.predecessor.clone()),
-            meta.pred_link,
-        )
+        (meta.pred_link, Contact::End)
+    };
+    match topo.next_section(&meta.road, meta.section, forward) {
+        Some(next) => at(contact, lookup(topo, &meta.road, next, link)),
+        None => {
+            let target = road.and_then(|r| {
+                if forward {
+                    r.successor.clone()
+                } else {
+                    r.predecessor.clone()
+                }
+            });
+            cross(topo, meta, target, link)
+        }
     }
 }
 
@@ -251,7 +263,7 @@ fn cross(
         // contact) or last (end contact); the lane is our own <link> id.
         ElemType::Road => {
             let section = match target.contact {
-                Contact::Start => 0,
+                Contact::Start => topo.first_section(&target.id),
                 Contact::End => topo.last_section(&target.id),
             };
             at(target.contact, lookup(topo, &target.id, section, lane_link))
@@ -265,7 +277,7 @@ fn cross(
             let mut out = Vec::new();
             for c in conns.iter().filter(|c| c.incoming_road == meta.road) {
                 let section = match c.contact {
-                    Contact::Start => 0,
+                    Contact::Start => topo.first_section(&c.connecting_road),
                     Contact::End => topo.last_section(&c.connecting_road),
                 };
                 for (_, to) in c.lane_links.iter().filter(|(f, _)| *f == meta.od_id) {

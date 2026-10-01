@@ -1498,18 +1498,6 @@ fn bake_lanes(
             .total_cmp(&attr_f64(*b, "s").unwrap_or(0.0))
     });
 
-    // Record the road's link targets + section count for connectivity.
-    let (predecessor, successor) = links::road_link(road);
-    topo.roads.insert(
-        baked.road.od_id.clone(),
-        RoadInfo {
-            sections: sections.len(),
-            junction: baked.road.junction().map(String::from),
-            predecessor,
-            successor,
-        },
-    );
-
     let length = baked.road.length;
     for (i, section) in sections.iter().enumerate() {
         let s_start = attr_f64(*section, "s").unwrap_or(0.0).max(0.0);
@@ -1544,6 +1532,17 @@ fn bake_lanes(
         baked.road.sections.push(geom);
         baked.defs.push(def);
     }
+
+    let (predecessor, successor) = links::road_link(road);
+    topo.roads.insert(
+        baked.road.od_id.clone(),
+        RoadInfo {
+            sections: baked.road.sections.iter().map(|s| s.index).collect(),
+            junction: baked.road.junction().map(String::from),
+            predecessor,
+            successor,
+        },
+    );
 }
 
 /// Append each lane of one section as a `Lane` spanning `[s_start, s_end]`,

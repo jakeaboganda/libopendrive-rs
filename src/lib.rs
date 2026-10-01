@@ -178,7 +178,9 @@
 //!
 //! `<link>`s and `<junction>`s resolve into a drive-direction lane graph.
 //! "Successor" means "a lane you can drive into off this lane's exit end",
-//! not a raw mirror of the file's `+s` links.
+//! not a raw mirror of the file's `+s` links. A lane section shorter than a
+//! millimetre, such as the one many exporters write at a road's end, bakes
+//! no lanes, and links step over it to the section beyond.
 //!
 //! A direct junction joins roads end to end, with no connecting road
 //! between them. Each `<laneLink>` there says which lane of the linked road

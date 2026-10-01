@@ -333,3 +333,52 @@ fn a_huge_length_is_refused_instead_of_exhausting_memory() {
     assert!((length("1") - 100.0).abs() < 0.1);
     assert!((length("4") - 100.0).abs() < 0.1);
 }
+
+#[test]
+fn a_zero_length_lane_section_keeps_the_links_across_it() {
+    let section = |s: f64, link: &str| {
+        format!(
+            r#"<laneSection s="{s}"><center><lane id="0" type="none"/></center><right>
+            <lane id="-1" type="driving"><link>{link}</link><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane>
+            </right></laneSection>"#
+        )
+    };
+    let both = r#"<predecessor id="-1"/><successor id="-1"/>"#;
+    let road = |id: &str, x: f64, link: &str, sections: &[f64]| {
+        let sections: String = sections.iter().map(|&s| section(s, both)).collect();
+        format!(
+            r#"<road id="{id}" length="100" junction="-1"><link>{link}</link><planView>
+            <geometry s="0" x="{x}" y="0" hdg="0" length="100"><line/></geometry>
+            </planView><lanes>{sections}</lanes></road>"#
+        )
+    };
+    let xodr = format!(
+        "<OpenDRIVE><header/>{}{}</OpenDRIVE>",
+        road(
+            "A",
+            0.0,
+            r#"<successor elementType="road" elementId="B" contactPoint="start"/>"#,
+            &[0.0, 50.0, 50.0, 100.0],
+        ),
+        road(
+            "B",
+            100.0,
+            r#"<predecessor elementType="road" elementId="A" contactPoint="end"/>"#,
+            &[0.0, 0.0, 100.0],
+        ),
+    );
+    let (net, prov) = load_str_with_provenance(&xodr).expect("the roads load");
+    let lane = |road: &str, section: usize| {
+        let p = prov
+            .lanes
+            .iter()
+            .find(|p| p.road_id == road && p.section == section);
+        p.unwrap_or_else(|| panic!("road {road} section {section}"))
+            .lane
+    };
+    let next = |id| net.lane(id).unwrap().successors.clone();
+    assert_eq!(prov.lanes.len(), 3);
+    assert_eq!(next(lane("A", 0)), [lane("A", 2)]);
+    assert_eq!(next(lane("A", 2)), [lane("B", 1)]);
+    assert!(prov.warnings.is_empty(), "{:?}", prov.warnings);
+}

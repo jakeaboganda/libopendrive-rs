@@ -206,7 +206,7 @@ fn section_of(road: &Road, topo: &Topology, point: &LinkPoint) -> usize {
         LinkPoint::End {
             end: RoadEnd::Start,
             ..
-        } => 0,
+        } => topo.first_section(&road.od_id),
         LinkPoint::End {
             end: RoadEnd::End, ..
         } => topo.last_section(&road.od_id),
