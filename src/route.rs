@@ -29,46 +29,37 @@ impl RoadNetwork {
     /// graph, or `None` if unreachable. Snaps each endpoint to its nearest
     /// driving lane, finds the shortest lane path over successor + lane-change
     /// edges, and samples the lane centerlines (in travel order) into points.
+    /// The route never runs against a lane's traffic: a goal behind the start
+    /// on a one-way lane is reached round the network, or not at all.
     pub fn route(&self, from: Point, to: Point) -> Option<Vec<Point>> {
         let (start, start_proj) = self.nearest_lane(from)?;
         let (goal, goal_proj) = self.nearest_lane(to)?;
-        let path = self.lane_path(start, goal)?;
+        let path = self.lane_path((start, start_proj.s), (goal, goal_proj.s))?;
         Some(self.sample_route(&path, start_proj.s, goal_proj.s))
     }
 
-    /// Shortest lane path `start -> goal` (Dijkstra): successor edges cost the
-    /// traversed lane's length, lane-change edges a flat penalty. `None` if
-    /// unreachable.
-    fn lane_path(&self, start: LaneId, goal: LaneId) -> Option<Vec<LaneId>> {
-        let mut dist: HashMap<LaneId, f32> = HashMap::from([(start, 0.0)]);
-        let mut prev: HashMap<LaneId, LaneId> = HashMap::new();
-        let mut heap = BinaryHeap::from([State {
-            cost: 0.0,
-            lane: start,
-        }]);
-        while let Some(State { cost, lane }) = heap.pop() {
+    /// Shortest lane path from `start` to `goal`, each a lane and a distance
+    /// along its centerline (Dijkstra): successor edges cost the traversed
+    /// lane's length, lane-change edges a flat penalty. The start lane is the
+    /// goal only when the goal lies ahead on it. `None` if unreachable.
+    fn lane_path(
+        &self,
+        (start, start_s): (LaneId, f32),
+        (goal, goal_s): (LaneId, f32),
+    ) -> Option<Vec<LaneId>> {
+        if start == goal && ahead(self.lane(start)?.direction, start_s, goal_s) {
+            return Some(vec![start]);
+        }
+        let mut search = Search::default();
+        search.expand(self, start, 0.0);
+        while let Some(State { cost, lane }) = search.heap.pop() {
             if lane == goal {
-                return Some(reconstruct(&prev, start, goal));
+                return Some(reconstruct(&search.prev, start, goal));
             }
-            if cost > *dist.get(&lane).unwrap_or(&f32::INFINITY) {
+            if cost > *search.dist.get(&lane).unwrap_or(&f32::INFINITY) {
                 continue; // a stale, longer entry
             }
-            let Some(l) = self.lane(lane) else { continue };
-            // Longitudinal edges cost the traversed lane's length; lane-change
-            // edges cost a flat penalty.
-            let step = l.center.length();
-            let edges = (l.successors.iter().map(|&n| (n, cost + step)))
-                .chain(l.neighbors.iter().map(|&n| (n, cost + LANE_CHANGE_COST)));
-            for (next, nd) in edges {
-                if nd < *dist.get(&next).unwrap_or(&f32::INFINITY) {
-                    dist.insert(next, nd);
-                    prev.insert(next, lane);
-                    heap.push(State {
-                        cost: nd,
-                        lane: next,
-                    });
-                }
-            }
+            search.expand(self, lane, cost);
         }
         None
     }
@@ -104,7 +95,12 @@ impl RoadNetwork {
                 .get(i + 1)
                 .is_some_and(|n| lane.neighbors.contains(n) && !lane.successors.contains(n));
             let exit = if i == last {
-                goal_s.clamp(0.0, len)
+                let goal = goal_s.clamp(0.0, len);
+                if ahead(lane.direction, entry, goal) {
+                    goal
+                } else {
+                    entry
+                }
             } else if changes_off {
                 advance(entry, travel_end, LANE_CHANGE_DIST)
             } else {
@@ -128,6 +124,16 @@ impl RoadNetwork {
         let points = lane.center.points();
         let away = |p: Point| (next.center.project(p).point - p).length_squared();
         away(points[points.len() - 1]) <= away(points[0])
+    }
+}
+
+/// Whether `to` is reachable from `from` along a lane running `direction`,
+/// both distances along its centerline.
+fn ahead(direction: Direction, from: f32, to: f32) -> bool {
+    match direction {
+        Direction::Forward => to >= from,
+        Direction::Backward => to <= from,
+        Direction::Both => true,
     }
 }
 
@@ -158,15 +164,50 @@ fn push_dedup(pts: &mut Vec<Point>, p: Point) {
     }
 }
 
+/// The lane path from `start` to `goal` through `prev`, which leaves `start`
+/// at least once, so a goal on the start lane comes back round to it.
 fn reconstruct(prev: &HashMap<LaneId, LaneId>, start: LaneId, goal: LaneId) -> Vec<LaneId> {
     let mut path = vec![goal];
     let mut cur = goal;
-    while cur != start {
+    loop {
         cur = prev[&cur];
         path.push(cur);
+        if cur == start {
+            break;
+        }
     }
     path.reverse();
     path
+}
+
+/// A Dijkstra search's state: the best cost to each lane, the lane it was
+/// reached from, and the frontier.
+#[derive(Default)]
+struct Search {
+    dist: HashMap<LaneId, f32>,
+    prev: HashMap<LaneId, LaneId>,
+    heap: BinaryHeap<State>,
+}
+
+impl Search {
+    /// Relax the edges out of `lane`, reached at `cost`: successors cost the
+    /// lane's length, lane changes a flat penalty.
+    fn expand(&mut self, net: &RoadNetwork, lane: LaneId, cost: f32) {
+        let Some(l) = net.lane(lane) else { return };
+        let step = l.center.length();
+        let edges = (l.successors.iter().map(|&n| (n, cost + step)))
+            .chain(l.neighbors.iter().map(|&n| (n, cost + LANE_CHANGE_COST)));
+        for (next, nd) in edges {
+            if nd < *self.dist.get(&next).unwrap_or(&f32::INFINITY) {
+                self.dist.insert(next, nd);
+                self.prev.insert(next, lane);
+                self.heap.push(State {
+                    cost: nd,
+                    lane: next,
+                });
+            }
+        }
+    }
 }
 
 /// A Dijkstra frontier entry, ordered as a min-heap on cost (ties by lane id,
@@ -258,6 +299,66 @@ mod tests {
         assert!(path.first().unwrap().x < 4.0);
         assert!(path.last().unwrap().x > 36.0);
         assert!(path.iter().any(|p| p.x > 25.0), "crosses into lane B");
+    }
+
+    #[test]
+    fn a_goal_behind_on_a_one_way_lane_is_reached_round_the_loop_or_not_at_all() {
+        let straight = lane(
+            0,
+            &[[0.0, 0.0, 0.0], [20.0, 0.0, 0.0]],
+            Direction::Forward,
+            &[],
+            &[],
+        );
+        let net = RoadNetwork::new(vec![straight.clone()]);
+        let (from, to) = (Point::new(15.0, 0.0, 0.0), Point::new(5.0, 0.0, 0.0));
+        assert_eq!(net.route(from, to), None, "no driving backwards");
+
+        let back = lane(
+            1,
+            &[
+                [20.0, 0.0, 0.0],
+                [20.0, 30.0, 0.0],
+                [0.0, 30.0, 0.0],
+                [0.0, 0.0, 0.0],
+            ],
+            Direction::Forward,
+            &[0],
+            &[],
+        );
+        let net = RoadNetwork::new(vec![
+            Lane {
+                successors: vec![LaneId(1)],
+                ..straight
+            },
+            back,
+        ]);
+        let path = net.route(from, to).expect("round the loop");
+        assert!(
+            (path[0].x - 15.0).abs() < 0.1 && path[1].x > path[0].x,
+            "sets off forward"
+        );
+        assert!(path.iter().any(|p| p.y > 29.0), "goes round");
+        assert!(
+            (path.last().unwrap().x - 5.0).abs() < 0.1,
+            "ends at the goal"
+        );
+    }
+
+    #[test]
+    fn a_goal_behind_on_a_two_way_lane_is_reached_directly() {
+        let net = RoadNetwork::new(vec![lane(
+            0,
+            &[[0.0, 0.0, 0.0], [20.0, 0.0, 0.0]],
+            Direction::Both,
+            &[],
+            &[],
+        )]);
+        let path = net
+            .route(Point::new(15.0, 0.0, 0.0), Point::new(5.0, 0.0, 0.0))
+            .expect("route");
+        assert!((path.last().unwrap().x - 5.0).abs() < 0.1);
+        assert!(path.iter().all(|p| p.x <= 15.01));
     }
 
     #[test]

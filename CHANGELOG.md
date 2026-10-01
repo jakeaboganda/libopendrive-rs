@@ -77,6 +77,11 @@
   lane offset, superelevation or start point of `1e39`, gave its lanes and
   the mesh infinite points, with no warning. The road is now skipped with
   `RoadSkipReason::OutOfRange`.
+- Fixed: `RoadNetwork::route` drove backwards along a one-way lane when
+  the goal was behind the start on the same lane, or behind the point a
+  lane change entered the last lane. It now goes round the network to reach
+  such a goal, or returns `None` if it can't, and never runs against a
+  lane's traffic.
 
 ## 0.4.0 - 2026-09-30
 
