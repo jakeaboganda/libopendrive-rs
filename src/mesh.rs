@@ -58,6 +58,16 @@ pub struct LaneSpan {
     pub indices: Range<u32>,
 }
 
+/// Twice the area, in square metres, below which a triangle has none worth
+/// drawing or colliding with. A post given a height and no footprint is all
+/// such triangles, and so is a lane where its width is 0.
+pub(crate) const MIN_AREA: f32 = 1e-6;
+
+/// Whether the triangle `a b c` has less area than [`MIN_AREA`].
+fn no_area(a: Point, b: Point, c: Point) -> bool {
+    (b - a).cross(c - a).length() < MIN_AREA
+}
+
 /// Why a mesh cannot be turned into a physics trimesh.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -71,8 +81,9 @@ pub enum MeshError {
     /// A triangle names a vertex that does not exist.
     #[error("triangle {0} indexes vertex {1}, past the {2} vertices present")]
     IndexOutOfRange(usize, u32, usize),
-    /// A triangle repeats a vertex, so it has no area.
-    #[error("triangle {0} is degenerate (it repeats a vertex)")]
+    /// A triangle with no area: it repeats a vertex, its corners lie in a
+    /// line, or it is the last and has fewer than three corners.
+    #[error("triangle {0} has no area")]
     DegenerateTriangle(usize),
 }
 
@@ -90,16 +101,17 @@ impl Mesh {
         if let Some(i) = self.vertices.iter().position(|v| !v.is_finite()) {
             return Err(MeshError::NonFiniteVertex(i));
         }
-        for (t, triangle) in self.indices.chunks_exact(3).enumerate() {
+        for (t, triangle) in self.indices.chunks(3).enumerate() {
             for &index in triangle {
                 if index as usize >= self.vertices.len() {
                     return Err(MeshError::IndexOutOfRange(t, index, self.vertices.len()));
                 }
             }
-            if triangle[0] == triangle[1]
-                || triangle[1] == triangle[2]
-                || triangle[0] == triangle[2]
-            {
+            let &[a, b, c] = triangle else {
+                return Err(MeshError::DegenerateTriangle(t));
+            };
+            let at = |i: u32| self.vertices[i as usize];
+            if a == b || b == c || a == c || no_area(at(a), at(b), at(c)) {
                 return Err(MeshError::DegenerateTriangle(t));
             }
         }
@@ -399,11 +411,17 @@ impl RoadNetwork {
                 mesh.vertices.push(points[i] - lateral * right_mag);
                 mesh.normals.push(up);
             }
-            // Two triangles per segment, over the [left, right] rib pairs.
+            // Two triangles per segment, over the [left, right] rib pairs,
+            // less any with no area, where the lane's width is 0.
             for i in 0..n as u32 - 1 {
                 let l0 = base + i * 2;
                 let (r0, l1, r1) = (l0 + 1, l0 + 2, l0 + 3);
-                mesh.indices.extend_from_slice(&[l0, r0, r1, l0, r1, l1]);
+                for [a, b, c] in [[l0, r0, r1], [l0, r1, l1]] {
+                    let at = |i: u32| mesh.vertices[i as usize];
+                    if !no_area(at(a), at(b), at(c)) {
+                        mesh.indices.extend_from_slice(&[a, b, c]);
+                    }
+                }
             }
             mesh.lanes.push(LaneSpan {
                 lane: lane.id,

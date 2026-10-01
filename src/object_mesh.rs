@@ -3,16 +3,12 @@
 use std::ops::Range;
 
 use crate::coords::{Point, Vector};
-use crate::mesh::Mesh;
+use crate::mesh::{Mesh, MIN_AREA};
 use crate::network::RoadNetwork;
 use crate::object::{orient, Corner, Extent, ObjectId, Section, Shape};
 
 /// Sides on a tessellated cylinder.
 const CYLINDER_SEGMENTS: usize = 16;
-
-/// Twice the area, in square metres, below which a triangle has none worth
-/// drawing. A post given a height and no footprint is all such triangles.
-const MIN_AREA: f32 = 1e-6;
 
 /// The slice of a [`Mesh`] belonging to one object: a half-open range into
 /// `vertices` (and, in step, `normals`) and one into `indices`.
