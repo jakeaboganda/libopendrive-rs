@@ -93,6 +93,10 @@
   a lane section starts also took that section's lanes. It now stops at the
   boundary. A single station on a boundary still counts in the section that
   starts there.
+- Fixed: the end caps of a swept object, such as a guard rail, were
+  turned by the line from its first section to its last. On a sweep bending
+  past a right angle a cap faced into the rail. Each cap now faces along
+  its own end.
 
 ## 0.4.0 - 2026-09-30
 
