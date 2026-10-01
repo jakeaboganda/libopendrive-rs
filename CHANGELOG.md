@@ -135,6 +135,9 @@
 - Fixed: `Mesh::height_at` panicked on a triangle naming a vertex the
   mesh lacks, and `MeshSampler` then read the wrong triangles. Such a
   triangle now covers nothing. Only a hand-built mesh can have one.
+- Fixed: `MeshSampler` missed a point a hair outside a triangle, or on
+  the far edge of the mesh, that `Mesh::height_at` finds, though the docs
+  say the two always agree.
 
 ## 0.4.0 - 2026-09-30
 

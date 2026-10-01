@@ -63,6 +63,11 @@ pub struct LaneSpan {
 /// such triangles, and so is a lane where its width is 0.
 pub(crate) const MIN_AREA: f32 = 1e-6;
 
+/// How far outside a triangle, as a share of its corners' weights, a point
+/// still counts as on it, so a point on an edge shared by two triangles
+/// finds one of them through rounding.
+const EDGE_SLACK: f32 = 1e-4;
+
 /// Whether the triangle `a b c` has less area than [`MIN_AREA`].
 fn no_area(a: Point, b: Point, c: Point) -> bool {
     (b - a).cross(c - a).length() < MIN_AREA
@@ -175,7 +180,7 @@ impl Mesh {
             // enough out overflows the barycentric arithmetic to infinity, and
             // every comparison against the resulting NaN is false, so the
             // bounds test alone would wave it through and report a NaN height.
-            if !(l1 >= -1e-4 && l2 >= -1e-4 && l3 >= -1e-4) {
+            if !(l1 >= -EDGE_SLACK && l2 >= -EDGE_SLACK && l3 >= -EDGE_SLACK) {
                 continue;
             }
             let height = l1 * a.z + l2 * b.z + l3 * c.z;
@@ -225,7 +230,15 @@ impl<'a> MeshSampler<'a> {
         let (bounds, triangles): (Vec<Aabb>, Vec<usize>) = (0..mesh.indices.len() / 3)
             .filter_map(|t| {
                 let corners = mesh.corners(t)?;
-                Some((Aabb::around(corners.map(|v| (v.x, v.y)))?, t))
+                let b = Aabb::around(corners.map(|v| (v.x, v.y)))?;
+                let slack = EDGE_SLACK * ((b.max_x - b.min_x) + (b.max_y - b.min_y));
+                let grown = Aabb {
+                    min_x: b.min_x - slack,
+                    max_x: b.max_x + slack,
+                    min_y: b.min_y - slack,
+                    max_y: b.max_y + slack,
+                };
+                Some((grown, t))
             })
             .unzip();
         Self {
