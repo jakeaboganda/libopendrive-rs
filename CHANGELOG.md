@@ -118,6 +118,10 @@
 - Fixed: a junction boundary segment whose `sStart`, `sEnd` or
   `contactPoint` lies off its road was quietly moved to the road's end. One
   more than 1 cm off is now dropped with `BoundarySegmentDropped`.
+- Fixed: `nearest_lane` and `sample_near` of a point that isn't finite
+  returned a lane instead of `None`. In a hand-built or deserialized
+  network, a lane with a NaN point also beat every other lane. Now it never
+  wins.
 
 ## 0.4.0 - 2026-09-30
 

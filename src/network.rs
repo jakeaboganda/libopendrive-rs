@@ -1267,7 +1267,12 @@ impl RoadNetwork {
     /// so pruning on it can only keep candidates, never drop a winner. It is
     /// also what keeps both of two stacked roads, a bridge over a road,
     /// candidates for a point between them.
+    ///
+    /// `None` for a point that isn't finite.
     pub fn nearest_lane(&self, point: Point) -> Option<(LaneId, Projection)> {
+        if !point.to_array().iter().all(|c| c.is_finite()) {
+            return None;
+        }
         let index = &self.index;
         index.grid.nearest(point.x, point.y, |item, best| {
             let i = item as usize;
