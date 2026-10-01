@@ -160,6 +160,9 @@
 - Fixed: the published crate included `examples/crg_data.sh`, which
   builds the viewer and so can't run outside a git checkout. It is now left
   out, like the tests.
+- Fixed: `viewer_export --refresh` gave up on a scene whose recorded
+  `.xodr` had moved, as after moving the checkout, instead of trying
+  `tests/data`. It now falls back, and records the new path.
 
 ### Docs
 
