@@ -163,6 +163,9 @@
 - Fixed: `viewer_export --refresh` gave up on a scene whose recorded
   `.xodr` had moved, as after moving the checkout, instead of trying
   `tests/data`. It now falls back, and records the new path.
+- Fixed: `viewer_export --refresh` said every scene was up to date right
+  after naming scenes it couldn't check. It now says "every other scene"
+  then.
 
 ### Docs
 
