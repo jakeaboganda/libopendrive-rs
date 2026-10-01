@@ -14,13 +14,15 @@ documentation = "https://docs.rs/libopendrive"
 # git and out of the published tarball. They are 1.7 MB, consumers never need
 # them, and two carry third-party licences (see tests/data/README.md). Tests
 # shipped without their data could only fail, so the tests go too. Run them
-# from a git checkout.
+# from a git checkout. examples/crg_data.sh builds the viewer, which isn't
+# in the package either.
 exclude = [
     "/.github",
     "/.gitignore",
     "/.pi",
     "/ROADMAP*.md",
     "/benches",
+    "/examples/crg_data.sh",
     "/rust-toolchain.toml",
     "/tests",
 ]
