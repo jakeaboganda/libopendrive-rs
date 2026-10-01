@@ -77,6 +77,10 @@ impl Aabb {
 pub(crate) struct Grid {
     min_x: f32,
     min_y: f32,
+    /// The far corner of the items' extent. `cols * cell` can round to just
+    /// short of it.
+    max_x: f32,
+    max_y: f32,
     cell: f32,
     cols: usize,
     rows: usize,
@@ -116,6 +120,8 @@ impl Grid {
         let mut grid = Self {
             min_x: extent.min_x,
             min_y: extent.min_y,
+            max_x: extent.max_x,
+            max_y: extent.max_y,
             cell,
             cols,
             rows,
@@ -166,11 +172,7 @@ impl Grid {
     /// clamp to an edge cell, which is right for a nearest-item walk and wrong
     /// for a containment lookup.
     fn covers(&self, x: f32, y: f32) -> bool {
-        let (dx, dy) = (x - self.min_x, y - self.min_y);
-        dx >= 0.0
-            && dy >= 0.0
-            && dx <= self.cols as f32 * self.cell
-            && dy <= self.rows as f32 * self.cell
+        (self.min_x..=self.max_x).contains(&x) && (self.min_y..=self.max_y).contains(&y)
     }
 
     /// The nearest item to `(x, y)`, by whatever `consider` measures. Exact

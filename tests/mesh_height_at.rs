@@ -285,3 +285,52 @@ fn a_triangle_naming_a_missing_vertex_covers_nothing() {
         .expect("the good triangle");
     assert_eq!(z, 1.0);
 }
+
+/// `MeshSampler` answers what `Mesh::height_at` answers, at the edges too:
+/// a point a hair outside a triangle, and one on the far edge of the mesh.
+#[test]
+fn the_sampler_agrees_with_height_at_on_the_edges() {
+    let mesh = Mesh {
+        vertices: vec![
+            Point::new(0.0, 0.0, 0.0),
+            Point::new(1.0, 0.0, 0.0),
+            Point::new(0.0, 1.0, 0.0),
+        ],
+        normals: vec![Vector::Z; 3],
+        indices: vec![0, 1, 2],
+        lanes: Vec::new(),
+        objects: Vec::new(),
+    };
+    let outside = (-5e-5, 0.5);
+    assert!(mesh.height_at(outside.0, outside.1).is_some());
+    assert!(mesh.sampler().height_at(outside.0, outside.1).is_some());
+
+    let length = 1000.3_f32;
+    let quads = 1000;
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+    for k in 0..=quads {
+        let x = length * k as f32 / quads as f32;
+        vertices.extend([Point::new(x, 0.0, 0.0), Point::new(x, 1.0, 0.0)]);
+        if k > 0 {
+            let b = 2 * (k as u32 - 1);
+            indices.extend([b, b + 2, b + 3, b, b + 3, b + 1]);
+        }
+    }
+    let strip = Mesh {
+        normals: vec![Vector::Z; vertices.len()],
+        vertices,
+        indices,
+        lanes: Vec::new(),
+        objects: Vec::new(),
+    };
+    let sampler = strip.sampler();
+    let far = strip.vertices.last().unwrap().x;
+    for y in [0.0, 0.25, 0.5, 0.75, 1.0] {
+        assert_eq!(
+            sampler.height_at(far, y).is_some(),
+            strip.height_at(far, y).is_some(),
+            "x {far} y {y}"
+        );
+    }
+}
