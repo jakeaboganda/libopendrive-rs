@@ -1063,3 +1063,37 @@ fn a_stretch_ending_on_a_section_boundary_stays_out_of_the_next_section() {
     assert_eq!(lanes_of("rail"), [lane(0)]);
     assert_eq!(lanes_of("post"), [lane(1)]);
 }
+
+#[test]
+fn a_repeat_or_marking_with_too_many_copies_is_left_out_with_a_warning() {
+    let xodr = |object: &str| {
+        format!(
+            r#"<OpenDRIVE><header/><road id="1" length="100" junction="-1"><planView>
+            <geometry s="0" x="0" y="0" hdg="0" length="100"><line/></geometry></planView>
+            <lanes><laneSection s="0"><center><lane id="0" type="none"/></center><right>
+            <lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane>
+            </right></laneSection></lanes><objects>{object}</objects></road></OpenDRIVE>"#
+        )
+    };
+    let warned = |object: &str| libopendrive::Warning::TooManyCopies {
+        road_id: "1".into(),
+        object_id: object.into(),
+    };
+    let posts = r#"<object id="posts" type="pole" s="0" t="-5" height="1" radius="0.1">
+        <repeat s="0" length="100" distance="0.0001"/></object>"#;
+    let (net, prov) = libopendrive::load_str_with_provenance(&xodr(posts)).unwrap();
+    assert!(net.objects().is_empty());
+    assert_eq!(prov.warnings, [warned("posts")]);
+
+    let crossing = r#"<object id="crossing" type="crosswalk" s="50" t="-2" zOffset="0">
+        <outlines><outline id="0" closed="true">
+          <cornerLocal id="0" u="0" v="0" z="0" height="0"/><cornerLocal id="1" u="3" v="0" z="0" height="0"/>
+          <cornerLocal id="2" u="3" v="3" z="0" height="0"/><cornerLocal id="3" u="0" v="3" z="0" height="0"/>
+        </outline></outlines>
+        <markings><marking width="0.5" color="white" lineLength="0.00001" spaceLength="0.00001">
+          <cornerReference id="0"/><cornerReference id="1"/></marking></markings></object>"#;
+    let (net, prov) = libopendrive::load_str_with_provenance(&xodr(crossing)).unwrap();
+    assert_eq!(net.objects().len(), 1, "the outline stays");
+    assert!(net.objects()[0].markings[0].pieces.is_empty());
+    assert_eq!(prov.warnings, [warned("crossing")]);
+}

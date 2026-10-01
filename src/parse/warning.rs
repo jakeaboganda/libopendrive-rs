@@ -45,6 +45,17 @@ pub enum Warning {
         /// center line.
         lane: i32,
     },
+    /// An `<object>` that would make more than 100,000 copies or dashes: a
+    /// `<repeat>` with a `distance` that short for its `length`, or a dashed
+    /// `<marking>`. A broken file can give a distance a fraction of a
+    /// millimetre. The crate leaves out the repeat's copies, or the
+    /// marking's paint.
+    TooManyCopies {
+        /// The `<road id>` it is on.
+        road_id: String,
+        /// Its `<object id>`.
+        object_id: String,
+    },
     /// A `<lane>` with no `<width>` or `<border>` the crate could read. It
     /// has no extent, so it did not bake, and neither did its road marks. A
     /// lane outside it stacks on the lane inside it.
@@ -424,6 +435,7 @@ impl Warning {
         match self {
             Self::RoadSkipped { road_id, .. }
             | Self::GeometryDropped { road_id, .. }
+            | Self::TooManyCopies { road_id, .. }
             | Self::RoadMarkLineDropped { road_id, .. }
             | Self::LaneDropped { road_id, .. }
             | Self::WidthAndBorder { road_id, .. }
@@ -547,6 +559,10 @@ impl fmt::Display for Warning {
             Self::RoadMarkLineDropped { road_id, s, lane } => write!(
                 f,
                 "road {road_id:?}: a line of the road mark on lane {lane} at s {s:.2} m can't be painted"
+            ),
+            Self::TooManyCopies { road_id, object_id } => write!(
+                f,
+                "road {road_id:?}: object {object_id:?} would make over 100,000 copies or dashes, so they were left out"
             ),
             Self::RoadLengthMismatch {
                 road_id,
