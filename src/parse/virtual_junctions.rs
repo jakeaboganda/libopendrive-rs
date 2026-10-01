@@ -16,7 +16,9 @@ use crate::road::Road;
 /// gives an `elementS`, with the lanes its lane `<link>`s and the
 /// junction's `<laneLink>`s join, or a deprecated `type="virtual"`
 /// connection, with its `<laneLink>`s. One naming a road the load lacks, an
-/// `s` off that road, or an `elementDir` other than `+` or `-` is dropped.
+/// `s` off that road, or an `elementDir` other than `+` or `-` is dropped. A
+/// lane pair naming a lane its road doesn't have there is left out of its
+/// link, with a warning.
 pub(super) fn place(
     root: roxmltree::Node,
     roads: &[(roxmltree::Node, BakedRoad)],
@@ -46,12 +48,19 @@ pub(super) fn place(
             }
         };
         let mut links = Vec::new();
-        let mut dropped = |road_id: &str, connection_id: &str| {
-            warnings.push(Warning::VirtualLinkDropped {
+        let dropped = |road_id: &str, connection_id: &str| Warning::VirtualLinkDropped {
+            junction_id: jid.to_string(),
+            road_id: road_id.to_string(),
+            connection_id: connection_id.to_string(),
+        };
+        let lost = |road_id: &str, connection_id: &str, (from, to): (i32, i32)| {
+            Warning::VirtualLaneDropped {
                 junction_id: jid.to_string(),
                 road_id: road_id.to_string(),
                 connection_id: connection_id.to_string(),
-            })
+                from,
+                to,
+            }
         };
         for (node, baked) in roads.iter().filter(|(_, r)| r.road.junction() == Some(jid)) {
             let road = &baked.road;
@@ -63,7 +72,7 @@ pub(super) fn place(
                     continue;
                 }
                 let Some(along) = point(roads, link) else {
-                    dropped(&road.od_id, "");
+                    warnings.push(dropped(&road.od_id, ""));
                     continue;
                 };
                 let here = LinkPoint::End { road: road.id, end };
@@ -95,9 +104,9 @@ pub(super) fn place(
                         .flat_map(lane_links)
                         .map(|(incoming, connecting)| (connecting, incoming)),
                 );
-                let mut lanes: Vec<(LaneId, LaneId)> = pairs
-                    .into_iter()
-                    .filter_map(|(here_od, there_od)| {
+                let mut lanes: Vec<(LaneId, LaneId)> = Vec::new();
+                for (here_od, there_od) in pairs {
+                    let found = || {
                         let here_lane = lane(topo, &road.od_id, section, here_od)?;
                         let there = other?;
                         let there_lane = lane(topo, &there.od_id, other_section?, there_od)?;
@@ -105,8 +114,12 @@ pub(super) fn place(
                             RoadEnd::Start => (there_lane, here_lane),
                             RoadEnd::End => (here_lane, there_lane),
                         })
-                    })
-                    .collect();
+                    };
+                    match found() {
+                        Some(pair) => lanes.push(pair),
+                        None => warnings.push(lost(&road.od_id, "", (here_od, there_od))),
+                    }
+                }
                 lanes.sort_by_key(|(a, b)| (a.0, b.0));
                 lanes.dedup();
                 let (from, to) = match end {
@@ -124,8 +137,9 @@ pub(super) fn place(
                 child(connection, "predecessor").and_then(|n| point(roads, n)),
                 child(connection, "successor").and_then(|n| point(roads, n)),
             );
+            let connection_id = connection.attribute("id").unwrap_or_default();
             let (Some(from), Some(to)) = ends else {
-                dropped("", connection.attribute("id").unwrap_or_default());
+                warnings.push(dropped("", connection_id));
                 continue;
             };
             let side = |p: &LinkPoint| {
@@ -140,15 +154,16 @@ pub(super) fn place(
             else {
                 continue;
             };
-            let lanes = lane_links(connection)
-                .into_iter()
-                .filter_map(|(a, b)| {
-                    Some((
-                        lane(topo, from_road, from_section, a)?,
-                        lane(topo, to_road, to_section, b)?,
-                    ))
-                })
-                .collect();
+            let mut lanes = Vec::new();
+            for (a, b) in lane_links(connection) {
+                match (
+                    lane(topo, from_road, from_section, a),
+                    lane(topo, to_road, to_section, b),
+                ) {
+                    (Some(a), Some(b)) => lanes.push((a, b)),
+                    _ => warnings.push(lost("", connection_id, (a, b))),
+                }
+            }
             links.push(VirtualLink { from, to, lanes });
         }
         out.push(VirtualJunction {

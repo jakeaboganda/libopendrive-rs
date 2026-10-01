@@ -1175,7 +1175,8 @@
 //!   leaves out its junction.
 //! - [`Warning::VirtualJunctionWithoutMainRoad`] and
 //!   [`Warning::VirtualLinkDropped`] for a virtual junction or link the
-//!   crate can't place. See
+//!   crate can't place, and [`Warning::VirtualLaneDropped`] for a lane pair
+//!   of a link that names a lane its road doesn't have. See
 //!   [Virtual junctions](#virtual-junctions).
 //! - [`Warning::RailwayDropped`] for a railway switch or platform segment
 //!   the crate can't place. See [Railways](#railways).

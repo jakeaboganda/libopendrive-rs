@@ -112,6 +112,9 @@
   were dropped without a word. The first now raises the new
   `Warning::LaneLinkDropped`, and each connection of the second a
   `ConnectionDropped`.
+- Fixed: a virtual junction link's lane pair naming a lane its road
+  doesn't have was dropped without a word, which could leave a link with
+  no lanes. It now raises the new `Warning::VirtualLaneDropped`.
 
 ## 0.4.0 - 2026-09-30
 

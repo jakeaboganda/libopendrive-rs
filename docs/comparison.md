@@ -241,7 +241,7 @@ the files the first table lists for that library.
 | &lt;road&gt; &lt;link&gt; &lt;predecessor\|successor&gt; `@elementType` | builds `links.rs:311` | builds `RoadManager.cpp:2576` | builds `OpenDriveMap.cpp:181` | - |
 | &lt;road&gt; &lt;link&gt; &lt;predecessor\|successor&gt; `@contactPoint` | builds `links.rs:319` | builds `RoadManager.cpp:2583` | builds `OpenDriveMap.cpp:190` | - |
 | &lt;road&gt; &lt;link&gt; &lt;predecessor\|successor&gt; `@elementS` | builds `links.rs:320` | - | - | - |
-| &lt;road&gt; &lt;link&gt; &lt;predecessor\|successor&gt; `@elementDir` | builds `virtual_junctions.rs:171` | - | - | - |
+| &lt;road&gt; &lt;link&gt; &lt;predecessor\|successor&gt; `@elementDir` | builds `virtual_junctions.rs:186` | - | - | - |
 | &lt;road&gt; &lt;type&gt; | builds `properties.rs:81` | builds `RoadManager.cpp:3857` | stores `OpenDriveMap.cpp:213` | stores `RoadParser.cpp:140` |
 | &lt;road&gt; &lt;type&gt; `@s` | builds `properties.rs:84` | builds `RoadManager.cpp:3921` | stores `OpenDriveMap.cpp:215` | stores `RoadParser.cpp:143` |
 | &lt;road&gt; &lt;type&gt; `@type` | stores `properties.rs:81` | stores `RoadManager.cpp:3861` | stores `OpenDriveMap.cpp:216` | stores `RoadParser.cpp:144` |
@@ -732,13 +732,13 @@ the files the first table lists for that library.
 | Element | This crate | esmini | libOpenDRIVE | CARLA |
 | --- | --- | --- | --- | --- |
 | &lt;junction&gt; | builds `mod.rs:532` | builds `RoadManager.cpp:5491` | builds `OpenDriveMap.cpp:92` | builds `JunctionParser.cpp:44` |
-| &lt;junction&gt; `@name` | stores `virtual_junctions.rs:156` | stores `RoadManager.cpp:5493` | stores `OpenDriveMap.cpp:98` | stores `JunctionParser.cpp:47` |
+| &lt;junction&gt; `@name` | stores `virtual_junctions.rs:171` | stores `RoadManager.cpp:5493` | stores `OpenDriveMap.cpp:98` | stores `JunctionParser.cpp:47` |
 | &lt;junction&gt; `@id` | builds `mod.rs:533` | builds `RoadManager.cpp:5495` | builds `OpenDriveMap.cpp:95` | builds `JunctionParser.cpp:46` |
 | &lt;junction&gt; `@type` | builds `links.rs:392` | builds `RoadManager.cpp:5494` | - | - |
-| &lt;junction&gt; `@mainRoad` | builds `virtual_junctions.rs:32` | - | - | - |
-| &lt;junction&gt; `@sStart` | builds `virtual_junctions.rs:35` | - | - | - |
-| &lt;junction&gt; `@sEnd` | builds `virtual_junctions.rs:35` | - | - | - |
-| &lt;junction&gt; `@orientation` | builds `virtual_junctions.rs:158` | - | - | - |
+| &lt;junction&gt; `@mainRoad` | builds `virtual_junctions.rs:34` | - | - | - |
+| &lt;junction&gt; `@sStart` | builds `virtual_junctions.rs:37` | - | - | - |
+| &lt;junction&gt; `@sEnd` | builds `virtual_junctions.rs:37` | - | - | - |
+| &lt;junction&gt; `@orientation` | builds `virtual_junctions.rs:173` | - | - | - |
 | &lt;junction&gt; &lt;connection&gt; | builds `links.rs:380` | builds `RoadManager.cpp:5510` | builds `OpenDriveMap.cpp:101` | builds `JunctionParser.cpp:50` |
 | &lt;junction&gt; &lt;connection&gt; `@id` | builds `links.rs:377` | stores `RoadManager.cpp:5515` | stores `OpenDriveMap.cpp:110` | stores `JunctionParser.cpp:53` |
 | &lt;junction&gt; &lt;connection&gt; `@incomingRoad` | builds `links.rs:383` | builds `RoadManager.cpp:5517` | builds `OpenDriveMap.cpp:114` | builds `JunctionParser.cpp:54` |
@@ -751,12 +751,12 @@ the files the first table lists for that library.
 | &lt;junction&gt; &lt;connection&gt; &lt;laneLink&gt; `@toLayer` | - | - | - | - |
 | &lt;junction&gt; &lt;connection&gt; `@type` | builds `links.rs:392` | - | - | - |
 | &lt;junction&gt; &lt;connection&gt; `@connectingRoad` | builds `links.rs:397` | builds `RoadManager.cpp:5527` | builds `OpenDriveMap.cpp:115` | builds `JunctionParser.cpp:55` |
-| &lt;junction&gt; &lt;connection&gt; &lt;predecessor&gt; | builds `virtual_junctions.rs:124` | - | - | - |
+| &lt;junction&gt; &lt;connection&gt; &lt;predecessor&gt; | builds `virtual_junctions.rs:137` | - | - | - |
 | &lt;junction&gt; &lt;connection&gt; &lt;predecessor&gt; `@elementType` | - | - | - | - |
-| &lt;junction&gt; &lt;connection&gt; &lt;predecessor&gt; `@elementId` | builds `virtual_junctions.rs:71` | - | - | - |
-| &lt;junction&gt; &lt;connection&gt; &lt;predecessor&gt; `@elementS` | builds `virtual_junctions.rs:62` | - | - | - |
-| &lt;junction&gt; &lt;connection&gt; &lt;predecessor&gt; `@elementDir` | builds `virtual_junctions.rs:171` | - | - | - |
-| &lt;junction&gt; &lt;connection&gt; &lt;successor&gt; | builds `virtual_junctions.rs:125` | - | - | - |
+| &lt;junction&gt; &lt;connection&gt; &lt;predecessor&gt; `@elementId` | builds `virtual_junctions.rs:80` | - | - | - |
+| &lt;junction&gt; &lt;connection&gt; &lt;predecessor&gt; `@elementS` | builds `virtual_junctions.rs:71` | - | - | - |
+| &lt;junction&gt; &lt;connection&gt; &lt;predecessor&gt; `@elementDir` | builds `virtual_junctions.rs:186` | - | - | - |
+| &lt;junction&gt; &lt;connection&gt; &lt;successor&gt; | builds `virtual_junctions.rs:138` | - | - | - |
 | &lt;junction&gt; &lt;crossPath&gt; | builds `junction_areas.rs:127` | - | - | - |
 | &lt;junction&gt; &lt;crossPath&gt; `@crossingRoad` | builds `junction_areas.rs:128` | - | - | - |
 | &lt;junction&gt; &lt;crossPath&gt; `@id` | builds `junction_areas.rs:126` | - | - | - |
