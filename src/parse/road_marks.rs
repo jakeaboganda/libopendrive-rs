@@ -1,8 +1,8 @@
 //! Road marks, placed along the lane borders of each baked road.
 
 use super::{
-    active, attr_f64, child, cubics_in, side_borders, BakedRoad, Cubic, RoadMarkProvenance,
-    SectionDef, Warning, MAX_REPEAT_INSTANCES,
+    active, attr_f32, attr_f64, child, cubics_in, side_borders, BakedRoad, Cubic,
+    RoadMarkProvenance, SectionDef, Warning, MAX_REPEAT_INSTANCES,
 };
 use crate::coords::Point;
 use crate::road::{LaneGeom, MarkSpan, Road, RoadSection};
@@ -56,8 +56,8 @@ impl LineDef {
     /// A `<type><line>`, taking `type_width` if it gives no width of its
     /// own. One with a `length` and `space` of 0 is continuous.
     fn repeating(line: roxmltree::Node, type_width: Option<f64>) -> Self {
-        let length = attr_f64(line, "length").unwrap_or(0.0);
-        let space = attr_f64(line, "space").unwrap_or(0.0);
+        let length = attr_f32(line, "length").map_or(0.0, f64::from);
+        let space = attr_f32(line, "space").map_or(0.0, f64::from);
         let pattern = if length == 0.0 && space == 0.0 {
             LinePattern::Continuous
         } else {
@@ -73,7 +73,7 @@ impl LineDef {
 
     /// An `<explicit><line>`, painted once.
     fn explicit(line: roxmltree::Node) -> Self {
-        let length = attr_f64(line, "length").unwrap_or(0.0) as f32;
+        let length = attr_f32(line, "length").map_or(0.0, f64::from) as f32;
         Self::parse(line, LinePattern::Single { length })
     }
 
@@ -82,15 +82,15 @@ impl LineDef {
     fn parse(line: roxmltree::Node, pattern: LinePattern) -> Self {
         Self {
             pattern,
-            s_offset: attr_f64(line, "sOffset").unwrap_or(0.0).max(0.0),
-            t_offset: attr_f64(line, "tOffset").unwrap_or(0.0),
+            s_offset: attr_f32(line, "sOffset").map_or(0.0, f64::from).max(0.0),
+            t_offset: attr_f32(line, "tOffset").map_or(0.0, f64::from),
             rule: match line.attribute("rule") {
                 None | Some("none") => LineRule::None,
                 Some("no passing") => LineRule::NoPassing,
                 Some("caution") => LineRule::Caution,
                 Some(_) => LineRule::Unknown,
             },
-            width: attr_f64(line, "width").filter(|w| *w > 0.0),
+            width: attr_f32(line, "width").map(f64::from).filter(|w| *w > 0.0),
             color: line.attribute("color").map(str::to_string),
         }
     }
@@ -146,7 +146,10 @@ pub(super) fn parse<'a>(lane: roxmltree::Node<'a, 'a>) -> Vec<MarkDef> {
         .filter(|n| n.has_tag_name("roadMark"))
         .map(|m| {
             let kind = child(m, "type");
-            let type_width = kind.and_then(|t| attr_f64(t, "width")).filter(|w| *w > 0.0);
+            let type_width = kind
+                .and_then(|t| attr_f32(t, "width"))
+                .map(f64::from)
+                .filter(|w| *w > 0.0);
             let lines_of = |parent: Option<roxmltree::Node<'a, 'a>>| {
                 parent
                     .into_iter()
@@ -161,8 +164,8 @@ pub(super) fn parse<'a>(lane: roxmltree::Node<'a, 'a>) -> Vec<MarkDef> {
                     _ => RoadMarkWeight::Standard,
                 },
                 color: m.attribute("color").unwrap_or("standard").to_string(),
-                width: attr_f64(m, "width").filter(|w| *w > 0.0),
-                height: attr_f64(m, "height"),
+                width: attr_f32(m, "width").map(f64::from).filter(|w| *w > 0.0),
+                height: attr_f32(m, "height").map(f64::from),
                 lane_change: lane_change(m.attribute("laneChange")),
                 type_width,
                 lines: lines_of(kind)
@@ -304,7 +307,8 @@ fn place_section(
 }
 
 /// One mark along `border` over the stretch `[start, end]` of road. A line
-/// with more dashes than `out` has left paints nothing, with a warning.
+/// with more dashes than `out` has left, or whose paint lands out of range,
+/// paints nothing, with a warning.
 fn bake(
     road: &Road,
     section: &RoadSection,
@@ -344,6 +348,26 @@ fn bake(
                 Vec::new()
             }
         };
+        let mut pieces = paint(
+            road,
+            section,
+            border.od_lane_id,
+            |s| border.t(road, section, s) + line.t_offset + sway(s),
+            width / 2.0,
+            &stretches,
+        );
+        if !pieces
+            .iter()
+            .flatten()
+            .all(|p| p.to_array().iter().all(|c| c.is_finite()))
+        {
+            pieces.clear();
+            out.warnings.push(Warning::RoadMarkLineDropped {
+                road_id: road.od_id.clone(),
+                s: start,
+                lane: border.od_lane_id,
+            });
+        }
         lines.push(RoadMarkLine {
             color: line.color.clone().unwrap_or_else(|| mark.color.clone()),
             width: width as f32,
@@ -351,14 +375,7 @@ fn bake(
             s_offset: line.s_offset as f32,
             pattern: line.pattern,
             rule: line.rule,
-            pieces: paint(
-                road,
-                section,
-                border.od_lane_id,
-                |s| border.t(road, section, s) + line.t_offset + sway(s),
-                width / 2.0,
-                &stretches,
-            ),
+            pieces,
         });
     }
     RoadMark {

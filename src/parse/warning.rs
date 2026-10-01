@@ -30,10 +30,12 @@ pub enum Warning {
         /// Its `s`, if it has one.
         s: Option<f64>,
     },
-    /// A road mark line with too many dashes to paint: more than 100,000 on
-    /// the line, or more than are left of 1,000,000 for the whole load. A
-    /// broken file can give dashes a fraction of a millimetre long. The line
-    /// keeps its pattern and paints nothing.
+    /// A road mark line the crate can't paint. Either it has too many
+    /// dashes: more than 100,000 on the line, or more than are left of
+    /// 1,000,000 for the whole load, as when a broken file gives dashes a
+    /// fraction of a millimetre long. Or its width or offset is so large its
+    /// paint lands out of range. The line keeps its pattern and paints
+    /// nothing.
     RoadMarkLineDropped {
         /// The `<road id>` it is on.
         road_id: String,
@@ -541,7 +543,7 @@ impl fmt::Display for Warning {
             },
             Self::RoadMarkLineDropped { road_id, s, lane } => write!(
                 f,
-                "road {road_id:?}: a line of the road mark on lane {lane} at s {s:.2} m has too many dashes to paint"
+                "road {road_id:?}: a line of the road mark on lane {lane} at s {s:.2} m can't be painted"
             ),
             Self::RoadLengthMismatch {
                 road_id,
