@@ -4,8 +4,10 @@
 #
 #     sh examples/crg_data.sh [DIR]
 #
-# The files go to DIR, target/crg by default, and the viewer scenes to
-# viewer/web/NAME.json. country_road.crg is 85 MB; the rest total 2 MB.
+# Run it from any folder. The files go to DIR, target/crg in the repository
+# by default, and the viewer scenes to viewer/web/NAME.json. country_road.crg
+# is 85 MB, and the rest total 2 MB. A download that stops part way is
+# fetched again on the next run.
 #
 # ASAM OpenCRG, Apache License 2.0, https://github.com/asam-ev/OpenCRG
 #   country_road      569 m of a scanned country road, 1 cm grid
@@ -17,7 +19,13 @@
 #   Horstwalde        250 m obstacle course, heights up to 1.8 m
 set -eu
 
-dir=${1:-target/crg}
+case ${1:-} in
+"") dir= ;;
+/*) dir=$1 ;;
+*) dir=$PWD/$1 ;;
+esac
+cd "$(dirname "$0")/.."
+dir=${dir:-$PWD/target/crg}
 asam=https://raw.githubusercontent.com/asam-ev/OpenCRG/4b747acf9a25f02f329eb1e640836cbd9a35952f/crg-bin
 chrono=https://raw.githubusercontent.com/projectchrono/chrono/030e6aa85c3b5d8bfc959455250f02aae659b4b8/data/vehicle/terrain/crg_roads
 
@@ -29,7 +37,10 @@ for file in "$asam/country_road.crg" "$asam/belgian_block.crg" \
     "$chrono/halfround_6in.crg" "$chrono/detrended_rms_course_2in.crg" \
     "$chrono/Horstwalde.crg"; do
     name=$(basename "$file" .crg)
-    [ -f "$dir/$name.crg" ] || curl -fsSL -o "$dir/$name.crg" "$file"
+    if [ ! -f "$dir/$name.crg" ]; then
+        curl -fsSL -o "$dir/$name.crg.part" "$file"
+        mv "$dir/$name.crg.part" "$dir/$name.crg"
+    fi
     target/release/examples/crg_to_xodr "$dir/$name.crg"
     target/release/viewer_export "$dir/$name.xodr" "viewer/web/$name.json"
 done

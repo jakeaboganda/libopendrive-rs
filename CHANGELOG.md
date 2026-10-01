@@ -143,6 +143,10 @@
 - Fixed: `Signal::heading`, documented in `(-π, π]`, could be exactly
   `-π` after rounding to `f32`. It is now `π` there, and so are a
   signal's pitch and roll.
+- Fixed: `examples/crg_data.sh` worked only from the repository root, and
+  kept a half-downloaded `.crg` file forever, so later runs failed on it.
+  It now runs from any folder, and downloads to a `.part` file it renames
+  only once the download is complete.
 
 ### Docs
 
