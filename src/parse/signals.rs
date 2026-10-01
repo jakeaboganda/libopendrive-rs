@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::f64::consts::PI;
 
 use super::{
-    attr_f64, child, orientation, validity, BakedRoad, ControllerProvenance,
+    attr_f32, attr_f64, child, orientation, validity, BakedRoad, ControllerProvenance,
     JunctionControllerProvenance, ObjectProvenance, Orientation, SignalProvenance,
     SignalReferenceProvenance,
 };
@@ -202,7 +202,7 @@ fn place_signal(
         .unwrap_or(own);
     let text = |name| node.attribute(name).unwrap_or_default().to_string();
     let flag = |name| matches!(node.attribute(name), Some("true" | "1"));
-    let size = |name| attr_f64(node, name).map(|v| v as f32);
+    let size = |name| attr_f32(node, name);
     let id = SignalId(out.baked.len());
     out.baked.push(Signal {
         id,
@@ -303,7 +303,7 @@ fn standing(node: roxmltree::Node, road: &Road, orientation: Orientation) -> Opt
         Orientation::Negative | Orientation::Both => 0.0,
     };
     Some(Board {
-        position: ground + Vector::new(0.0, 0.0, number("zOffset") as f32),
+        position: ground + Vector::new(0.0, 0.0, attr_f32(node, "zOffset").unwrap_or(0.0)),
         heading: road_heading + facing + number("hOffset"),
         pitch: number("pitch"),
         roll: number("roll"),
@@ -384,17 +384,22 @@ fn boards(node: roxmltree::Node, board: &Board) -> Vec<SignalBoard> {
     let at = |n: roxmltree::Node| {
         let local = [
             0.0,
-            attr_f64(n, "v").unwrap_or(0.0),
-            attr_f64(n, "z").unwrap_or(0.0),
+            attr_f32(n, "v").map_or(0.0, f64::from),
+            attr_f32(n, "z").map_or(0.0, f64::from),
         ];
         let [x, y, z] = orient(board.heading, board.pitch, board.roll, local);
-        board.position + Vector::new(x as f32, y as f32, z as f32)
+        let placed = board.position + Vector::new(x as f32, y as f32, z as f32);
+        if placed.to_array().iter().all(|c| c.is_finite()) {
+            placed
+        } else {
+            board.position
+        }
     };
     let size = |n: roxmltree::Node, name| {
         n.attribute(name)
             .and_then(|v| v.trim().parse::<f64>().ok())
-            .filter(|v| v.is_finite())
             .map(|v| v as f32)
+            .filter(|v| v.is_finite())
     };
     let text = |n: roxmltree::Node, name| n.attribute(name).unwrap_or_default().to_string();
     node.children()
@@ -443,16 +448,16 @@ fn boards(node: roxmltree::Node, board: &Board) -> Vec<SignalBoard> {
 }
 
 /// A board at a `<positionInertial>`, facing its `hdg`, or `None` if it is
-/// missing `x`, `y` or `z`.
+/// missing `x`, `y` or `z`, or one is too large for an `f32`.
 fn inertial(node: roxmltree::Node) -> Option<Board> {
     let number = |name| attr_f64(node, name).unwrap_or(0.0);
     let (x, y, z) = (
-        attr_f64(node, "x")?,
-        attr_f64(node, "y")?,
-        attr_f64(node, "z")?,
+        attr_f32(node, "x")?,
+        attr_f32(node, "y")?,
+        attr_f32(node, "z")?,
     );
     Some(Board {
-        position: Point::new(x as f32, y as f32, z as f32),
+        position: Point::new(x, y, z),
         heading: number("hdg"),
         pitch: number("pitch"),
         roll: number("roll"),

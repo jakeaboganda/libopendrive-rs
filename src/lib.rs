@@ -1127,7 +1127,9 @@
 //! one junk road is the worse failure. [`load_str`] still errors if the
 //! document yielded no lanes at all. Non-finite attribute values are rejected
 //! at parse. Rust's float parser accepts `NaN` and turns `1e400` into
-//! infinity, and one such value poisons every point derived from it.
+//! infinity, and one such value poisons every point derived from it. A
+//! number the crate keeps as an `f32`, such as a signal's size, counts as
+//! unreadable too when it is too large for one.
 //!
 //! [`Provenance::warnings`] says what the load did with a bad file. Each
 //! [`Warning`] names where in the file it happened, and prints as a
