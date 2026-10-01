@@ -263,3 +263,25 @@ fn a_lane_opening_out_of_nothing_tessellates_into_a_valid_mesh() {
         .validate()
         .expect("no triangle without area");
 }
+
+#[test]
+fn a_triangle_naming_a_missing_vertex_covers_nothing() {
+    let mesh = Mesh {
+        vertices: vec![
+            Point::new(0.0, 0.0, 1.0),
+            Point::new(2.0, 0.0, 1.0),
+            Point::new(0.0, 2.0, 1.0),
+        ],
+        normals: vec![Vector::Z; 3],
+        indices: vec![9, 9, 9, 0, 1, 2],
+        lanes: Vec::new(),
+        objects: Vec::new(),
+    };
+    let (z, _) = mesh.height_at(0.5, 0.5).expect("the good triangle");
+    assert_eq!(z, 1.0);
+    let (z, _) = mesh
+        .sampler()
+        .height_at(0.5, 0.5)
+        .expect("the good triangle");
+    assert_eq!(z, 1.0);
+}

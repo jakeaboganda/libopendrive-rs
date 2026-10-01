@@ -132,6 +132,9 @@
   choke on those. They are now left out. `Mesh::validate` didn't catch
   them, nor a leftover index that makes no whole triangle. It now reports
   both as `MeshError::DegenerateTriangle`.
+- Fixed: `Mesh::height_at` panicked on a triangle naming a vertex the
+  mesh lacks, and `MeshSampler` then read the wrong triangles. Such a
+  triangle now covers nothing. Only a hand-built mesh can have one.
 
 ## 0.4.0 - 2026-09-30
 
