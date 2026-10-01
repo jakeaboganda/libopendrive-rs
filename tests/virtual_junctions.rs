@@ -161,3 +161,24 @@ fn a_virtual_junction_off_its_main_road_has_none() {
             junction_id: "555".into()
         }));
 }
+
+#[test]
+fn a_lane_pair_naming_a_missing_lane_is_left_out_with_a_warning() {
+    let xodr = std::fs::read_to_string(FIXTURE).unwrap().replace(
+        r#"<laneLink from="1" to="1"/></connection>"#,
+        r#"<laneLink from="1" to="1"/><laneLink from="9" to="1"/></connection>"#,
+    );
+    let (net, prov) = libopendrive::load_str_with_provenance(&xodr).unwrap();
+    assert!(prov.warnings.contains(&Warning::VirtualLaneDropped {
+        junction_id: "555".into(),
+        road_id: String::new(),
+        connection_id: "2".into(),
+        from: 9,
+        to: 1,
+    }));
+    let link = net.virtual_junctions()[0]
+        .links
+        .iter()
+        .find(|l| matches!(l.from, libopendrive::LinkPoint::Along { .. }) && l.lanes.len() == 1);
+    assert!(link.is_some(), "the link keeps its good pair");
+}

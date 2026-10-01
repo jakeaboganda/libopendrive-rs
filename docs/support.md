@@ -297,6 +297,7 @@ junction or junction group.
 | `ElevationGridNotApplied` | every junction `<elevationGrid>`, since the crate doesn't move the junction's roads onto it |
 | `VirtualJunctionWithoutMainRoad` | a virtual junction without a `mainRoad` and stretch on a baked road |
 | `VirtualLinkDropped` | a virtual junction link the crate can't place |
+| `VirtualLaneDropped` | a lane pair of a virtual link that names a lane its road doesn't have there |
 | `NeighborDropped` | a road `<neighbor>` the crate can't read |
 | `RailwayDropped` | a railway `<switch>` or platform `<segment>` the crate can't place |
 | `SpeedLimitDropped` | a `<speed>` whose `max` or `unit` the crate can't read, or whose limit is too large for an `f32` |

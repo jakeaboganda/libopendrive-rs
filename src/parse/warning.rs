@@ -279,6 +279,23 @@ pub enum Warning {
         /// The connection's `id`, empty for a road's `<link>`.
         connection_id: String,
     },
+    /// A lane pair of a virtual junction's link that names a lane its road
+    /// doesn't have there. The crate keeps the link without that pair.
+    VirtualLaneDropped {
+        /// The `<junction id>`.
+        junction_id: String,
+        /// The road whose `<link>` gives the link, empty for a
+        /// `type="virtual"` connection.
+        road_id: String,
+        /// The connection's `id`, empty for a road's `<link>`.
+        connection_id: String,
+        /// The pair's first `<lane id>`: on the link's road, or a
+        /// `<laneLink>`'s `from`.
+        from: i32,
+        /// The pair's second `<lane id>`: on the road it meets, or a
+        /// `<laneLink>`'s `to`.
+        to: i32,
+    },
     /// A `<junctionReference>` naming a junction the file does not have. The
     /// crate leaves it out of the group.
     JunctionReferenceDropped {
@@ -486,6 +503,7 @@ impl Warning {
             | Self::CrossSectionWithShape { road_id }
             | Self::RailwayDropped { road_id, .. }
             | Self::VirtualLinkDropped { road_id, .. }
+            | Self::VirtualLaneDropped { road_id, .. }
             | Self::UnknownStripMode { road_id, .. }
             | Self::StripDropped { road_id, .. }
             | Self::LaneLinkDropped {
@@ -613,6 +631,16 @@ impl fmt::Display for Warning {
             } => write!(
                 f,
                 "junction {junction_id:?}: connection {connection_id:?} from road {incoming_road_id:?} dropped a <laneLink> from {from:?} to {to:?}, not whole numbers"
+            ),
+            Self::VirtualLaneDropped {
+                junction_id,
+                road_id,
+                connection_id,
+                from,
+                to,
+            } => write!(
+                f,
+                "junction {junction_id:?}: link from road {road_id:?} connection {connection_id:?} dropped lane pair {from} to {to}, a lane it names isn't there"
             ),
             Self::RoadLengthMismatch {
                 road_id,
