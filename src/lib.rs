@@ -1168,7 +1168,9 @@
 //!   `LHT`, and [`Warning::UnknownLaneDirection`] for a lane `direction`
 //!   the spec does not allow. See [Coordinate frame](#coordinate-frame).
 //! - [`Warning::ConnectionDropped`] for a junction connection without the
-//!   roads it joins.
+//!   roads it joins, or in a junction without an `id`, and
+//!   [`Warning::LaneLinkDropped`] for a `<laneLink>` whose `from` or `to`
+//!   isn't a whole number.
 //! - [`Warning::JunctionLinkMissing`] for an incoming road whose `<link>`
 //!   leaves out its junction.
 //! - [`Warning::VirtualJunctionWithoutMainRoad`] and

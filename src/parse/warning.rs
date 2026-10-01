@@ -151,15 +151,31 @@ pub enum Warning {
     },
     /// A junction `<connection>` without an `incomingRoad`, or without the
     /// road it leads into: a `connectingRoad`, or a `linkedRoad` in a
-    /// `type="direct"` junction. The spec requires both. The crate drops the
+    /// `type="direct"` junction, or in a `<junction>` without the `id` the
+    /// spec requires. The spec requires both roads. The crate drops the
     /// connection, so no lane links across it.
     ConnectionDropped {
         /// Its `incomingRoad`, empty if it has none.
+        incoming_road_id: String,
+        /// The `<junction id>` it is in, empty if it has none.
+        junction_id: String,
+        /// Its `<connection id>`, empty if it has none.
+        connection_id: String,
+    },
+    /// A junction `<laneLink>` whose `from` or `to` isn't a whole number.
+    /// The crate drops it, so the lane it names doesn't link across the
+    /// junction there.
+    LaneLinkDropped {
+        /// Its connection's `incomingRoad`.
         incoming_road_id: String,
         /// The `<junction id>` it is in.
         junction_id: String,
         /// Its `<connection id>`, empty if it has none.
         connection_id: String,
+        /// Its `from`, as the file writes it.
+        from: String,
+        /// Its `to`, as the file writes it.
+        to: String,
     },
     /// A road that a common junction's `<connection>` names as its
     /// `incomingRoad`, whose own `<link>` names the junction at neither end.
@@ -472,6 +488,10 @@ impl Warning {
             | Self::VirtualLinkDropped { road_id, .. }
             | Self::UnknownStripMode { road_id, .. }
             | Self::StripDropped { road_id, .. }
+            | Self::LaneLinkDropped {
+                incoming_road_id: road_id,
+                ..
+            }
             | Self::ConnectionDropped {
                 incoming_road_id: road_id,
                 ..
@@ -583,6 +603,16 @@ impl fmt::Display for Warning {
             } => write!(
                 f,
                 "road {road_id:?}: a lane in section {section} with id {id:?} dropped, the id isn't a whole number other than 0"
+            ),
+            Self::LaneLinkDropped {
+                incoming_road_id,
+                junction_id,
+                connection_id,
+                from,
+                to,
+            } => write!(
+                f,
+                "junction {junction_id:?}: connection {connection_id:?} from road {incoming_road_id:?} dropped a <laneLink> from {from:?} to {to:?}, not whole numbers"
             ),
             Self::RoadLengthMismatch {
                 road_id,

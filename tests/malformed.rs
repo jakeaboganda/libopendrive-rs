@@ -470,3 +470,53 @@ fn a_lane_with_an_unreadable_id_is_dropped_with_a_warning() {
         [unreadable("x"), unreadable("1.0"), unreadable("0")]
     );
 }
+
+#[test]
+fn a_lane_link_or_junction_the_crate_cannot_read_is_dropped_with_a_warning() {
+    let road = |id: &str, junction: &str, link: &str, x: f64| {
+        format!(
+            r#"<road id="{id}" length="10" junction="{junction}"><link>{link}</link><planView>
+            <geometry s="0" x="{x}" y="0" hdg="0" length="10"><line/></geometry></planView>
+            <lanes><laneSection s="0"><center><lane id="0" type="none"/></center><right>
+            <lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane>
+            </right></laneSection></lanes></road>"#
+        )
+    };
+    let xodr = format!(
+        r#"<OpenDRIVE><header/>{}{}
+        <junction id="J"><connection id="0" incomingRoad="A" connectingRoad="C" contactPoint="start">
+          <laneLink from="-1.0" to="-1"/></connection></junction>
+        <junction><connection id="7" incomingRoad="A" connectingRoad="C" contactPoint="start"/></junction>
+        </OpenDRIVE>"#,
+        road(
+            "A",
+            "-1",
+            r#"<successor elementType="junction" elementId="J"/>"#,
+            0.0
+        ),
+        road(
+            "C",
+            "J",
+            r#"<predecessor elementType="road" elementId="A" contactPoint="end"/>"#,
+            10.0
+        ),
+    );
+    let (_, prov) = load_str_with_provenance(&xodr).unwrap();
+    assert_eq!(
+        prov.warnings,
+        [
+            Warning::LaneLinkDropped {
+                incoming_road_id: "A".into(),
+                junction_id: "J".into(),
+                connection_id: "0".into(),
+                from: "-1.0".into(),
+                to: "-1".into(),
+            },
+            Warning::ConnectionDropped {
+                incoming_road_id: "A".into(),
+                junction_id: String::new(),
+                connection_id: "7".into(),
+            },
+        ]
+    );
+}

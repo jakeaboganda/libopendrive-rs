@@ -375,6 +375,18 @@ pub(crate) fn junctions(
     }
     for j in root.children().filter(|n| n.has_tag_name("junction")) {
         let Some(jid) = j.attribute("id") else {
+            warnings.extend(
+                j.children()
+                    .filter(|n| n.has_tag_name("connection"))
+                    .map(|c| Warning::ConnectionDropped {
+                        incoming_road_id: c
+                            .attribute("incomingRoad")
+                            .unwrap_or_default()
+                            .to_string(),
+                        junction_id: String::new(),
+                        connection_id: c.attribute("id").unwrap_or_default().to_string(),
+                    }),
+            );
             continue;
         };
         let direct = j.attribute("type") == Some("direct");
@@ -401,20 +413,25 @@ pub(crate) fn junctions(
                 });
                 continue;
             };
+            let mut lane_links = Vec::new();
+            for l in c.children().filter(|n| n.has_tag_name("laneLink")) {
+                let id = |name| l.attribute(name).and_then(|v| v.parse::<i32>().ok());
+                match (id("from"), id("to")) {
+                    (Some(from), Some(to)) => lane_links.push((from, to)),
+                    _ => warnings.push(Warning::LaneLinkDropped {
+                        incoming_road_id: incoming.to_string(),
+                        junction_id: jid.to_string(),
+                        connection_id: c.attribute("id").unwrap_or_default().to_string(),
+                        from: l.attribute("from").unwrap_or_default().to_string(),
+                        to: l.attribute("to").unwrap_or_default().to_string(),
+                    }),
+                }
+            }
             conns.push(JunctionConn {
                 incoming_road: incoming.to_string(),
                 connecting_road: connecting.to_string(),
                 contact: contact_of(c),
-                lane_links: c
-                    .children()
-                    .filter(|n| n.has_tag_name("laneLink"))
-                    .filter_map(|l| {
-                        Some((
-                            l.attribute("from")?.parse().ok()?,
-                            l.attribute("to")?.parse().ok()?,
-                        ))
-                    })
-                    .collect(),
+                lane_links,
             });
         }
         if direct {

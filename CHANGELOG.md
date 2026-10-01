@@ -107,6 +107,11 @@
 - Fixed: a `<lane>` under `<left>` or `<right>` whose `id` isn't a
   whole number, or is 0, was dropped without a word. It now raises the new
   `Warning::LaneIdUnreadable`.
+- Fixed: a junction `<laneLink>` whose `from` or `to` isn't a whole
+  number, and a `<junction>` without an `id` with all its connections,
+  were dropped without a word. The first now raises the new
+  `Warning::LaneLinkDropped`, and each connection of the second a
+  `ConnectionDropped`.
 
 ## 0.4.0 - 2026-09-30
 
