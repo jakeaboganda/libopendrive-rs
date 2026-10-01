@@ -16,12 +16,14 @@
 //! `--refresh` bakes again every scene in `viewer/web/` that is older than
 //! its `.xodr` or than this program, so a scene always holds what the
 //! current viewer shows. It finds a scene's `.xodr` in `sources.json`, or
-//! else as `tests/data/<map name>.xodr`, and names the scenes it can't.
+//! where that file has moved or has no entry, as
+//! `tests/data/<map name>.xodr`. It names the scenes it can't find a source
+//! for.
 
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use libopendrive::opencrg::CrgGrid;
@@ -212,7 +214,8 @@ fn stale_scenes(folder: &Path) -> Vec<(String, String)> {
         let stem = name.trim_end_matches(".json");
         let source = sources
             .get(&name)
-            .map(Into::into)
+            .map(PathBuf::from)
+            .filter(|path| path.exists())
             .unwrap_or_else(|| Path::new("tests/data").join(format!("{stem}.xodr")));
         let Some(source_time) = modified(&source) else {
             unknown.push(name);
