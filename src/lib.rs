@@ -3,11 +3,11 @@
 #![warn(rustdoc::broken_intra_doc_links)]
 //! A pure-Rust OpenDRIVE (`.xodr`) importer.
 //!
-//! OpenDRIVE describes roads analytically: clothoids, arcs, cubic elevation
-//! and width profiles, lane links. This crate evaluates all of it once, at
-//! load, and hands back a [`RoadNetwork`] of plain polylines. Nothing
-//! downstream touches OpenDRIVE again. Consumers sample points, walk the
-//! lane graph, and tessellate a surface mesh.
+//! OpenDRIVE describes roads with formulas: clothoids, arcs, cubic elevation
+//! and width profiles, lane links. This crate works all of it out once, at
+//! load, and hands back a [`RoadNetwork`] of lanes made of points. Code that
+//! uses it never touches OpenDRIVE again. It samples points, walks the lane
+//! graph, and builds a triangle mesh of the road surface.
 //!
 //! No C++ dependency, no bindings, no `unsafe`, and no math crate in the
 //! public API.
@@ -340,7 +340,7 @@
 //! [`load_file_with_provenance`], the same way [`LaneProvenance`] names a
 //! lane's road. For a referenced object, those are the reference's, and
 //! [`ObjectProvenance::referenced_from`] names the road the original is on.
-//! [`RoadNetwork::object_mesh`] tessellates them all. Markings and borders
+//! [`RoadNetwork::object_mesh`] turns them all into triangles. Markings and borders
 //! are not in it: they are already quads, in [`Marking::pieces`] and
 //! [`Border::pieces`].
 //!
@@ -435,8 +435,8 @@
 //!
 //! Its [`JunctionArea::grid`] is the grid of heights along the junction's
 //! reference line, its `<planView>`, and square to it.
-//! [`JunctionArea::height_at`] reads it bicubically, as the spec gives it:
-//! from a square's corners and their slopes and twist, each slope from the
+//! [`JunctionArea::height_at`] reads a smooth surface through it, the
+//! spec's bicubic interpolation: from a square's corners and their slopes and twist, each slope from the
 //! cubic through the four grid points in line with the square's edge, or the
 //! straight line along the edge where the grid has too few. So between two
 //! equal heights the ground can rise past them, as the cubic through its
@@ -540,7 +540,7 @@
 //! the mean of the two, and [`Lane::bank`] adds the slope between them.
 //! Neighbouring lanes share a border height, so the mesh stays closed. A
 //! crown that breaks on a lane border is exact. A curve inside a lane is
-//! lost: the chord across a parabola `c t²` is `c w² / 4` off at its
+//! lost: the straight line across a parabola `c t²` is `c w² / 4` off at its
 //! middle, 5.5 mm on a 3.5 m lane of a crown falling 2.5 % at 7 m out.
 //! [`LaneProvenance::heights`] still gives the `<height>`s only. Each
 //! profile's `s` is a station of every lane section it falls in.
@@ -652,9 +652,9 @@
 //! Where a lane's heights change pace, its lane section has a station, so a
 //! ramp 1 m long bakes 1 m long.
 //!
-//! The tessellator tilts a raised lane's cross axis by its slope, rather
-//! than moving each edge to its own height. The lane's width is the chord
-//! across its surface, so each edge lands on its border and at its height.
+//! The mesh builder tilts a raised lane's cross axis by its slope, rather
+//! than moving each edge to its own height. The lane's width is the straight
+//! line across its surface, so each edge lands on its border and at its height.
 //! On a grade the edges also sit half the rise times the grade along the
 //! road from where the road's normal puts them, 1.5 mm for a 0.1 m rise at
 //! 3 %.
@@ -1224,16 +1224,17 @@
 //! rules:
 //!
 //! - Build lane geometry with [`Polyline::try_new`], and return an error on
-//!   degenerate input, rather than call the panicking [`Polyline::new`].
+//!   bad input, such as fewer than two points, rather than call the
+//!   panicking [`Polyline::new`].
 //! - Where it splits one curve into contiguous lanes, build them with
-//!   [`Polyline::try_new_with_tangents`] and pass the curve's analytical
-//!   tangent at each end. A polyline that has to guess its end tangent
-//!   guesses from its last chord. The two lanes meeting at a joint then
+//!   [`Polyline::try_new_with_tangents`] and pass the curve's exact tangent at
+//!   each end. A polyline that has to guess its end tangent guesses from its
+//!   last segment. The two lanes meeting at a joint then
 //!   guess differently and leave a visible seam.
 //! - Keep [`LaneId`]s opaque, and never assume one indexes the lane list.
 //!
 //! On curves tighter than the half-width, [`RoadNetwork::surface_mesh`]
-//! pinches the inner rib so the surface strip stays fold-free. The outer
+//! pulls in the inner edge so the surface doesn't fold over itself. The outer
 //! edge keeps its full width and radius.
 
 mod advance;
