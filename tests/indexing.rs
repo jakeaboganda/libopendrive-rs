@@ -140,3 +140,22 @@ fn nan_never_finds_or_wins_a_lane() {
     let (id, _) = net.nearest_lane(Point::new(5.0, 3.0, 0.0)).unwrap();
     assert_eq!(id, LaneId(1), "the NaN vertex doesn't win");
 }
+
+#[test]
+fn the_lowest_point_skips_a_nan_height() {
+    use libopendrive::{Direction, Lane, LaneType, Polyline};
+    let lane = |id: usize, z: f32| Lane {
+        id: LaneId(id),
+        kind: LaneType::Driving,
+        direction: Direction::Forward,
+        center: Polyline::new(vec![Point::new(0.0, 0.0, z), Point::new(10.0, 0.0, z)]),
+        width: 3.5,
+        widths: Vec::new(),
+        bank: Vec::new(),
+        successors: Vec::new(),
+        predecessors: Vec::new(),
+        neighbors: Vec::new(),
+    };
+    let net = RoadNetwork::new(vec![lane(0, f32::NAN), lane(1, -5.0)]);
+    assert_eq!(net.min_elevation(), Some(-5.0));
+}
