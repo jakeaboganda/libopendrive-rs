@@ -1153,7 +1153,16 @@ fn parse_road(
         defs: Vec::new(),
         warnings,
     };
+    let (lanes_before, metas_before, next_before) = (out.len(), topo.metas.len(), topo.next_id);
     bake_lanes(road, &mut baked, out, topo);
+    if !out[lanes_before..].iter().all(finite) {
+        out.truncate(lanes_before);
+        topo.metas.truncate(metas_before);
+        topo.next_id = next_before;
+        topo.registry.retain(|_, id| id.0 < next_before);
+        topo.roads.remove(&baked.road.od_id);
+        return Err(RoadSkipReason::OutOfRange);
+    }
     if let Some(objects_node) = child(road, "objects") {
         place_objects(objects_node, index, &baked.road, objects);
         place_structures(objects_node, &baked.road, out, structures);
@@ -1223,6 +1232,17 @@ fn geometry(g: roxmltree::Node) -> Option<GeomRec> {
         return None;
     };
     Some(GeomRec::new(s, x, y, hdg, length, shape))
+}
+
+/// Whether every number in `lane` is finite. A coefficient too large for an
+/// `f32`, such as an elevation of `1e39`, bakes to infinity.
+fn finite(lane: &Lane) -> bool {
+    let center = &lane.center;
+    let points = center.points().iter().map(|p| p.to_array());
+    let tangents = center.tangents().iter().map(|t| t.to_array());
+    points.chain(tangents).flatten().all(f32::is_finite)
+        && lane.width.is_finite()
+        && lane.widths.iter().chain(&lane.bank).all(|v| v.is_finite())
 }
 
 /// The longest road or geometry the crate bakes, in metres. The crate

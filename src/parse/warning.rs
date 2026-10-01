@@ -412,6 +412,9 @@ pub enum RoadSkipReason {
     NoGeometry,
     /// Its `length` is over [`MAX_LENGTH`](crate::MAX_LENGTH), 100 km.
     TooLong,
+    /// Its lanes land outside the range an `f32` holds, from a number such
+    /// as an elevation or a lane width of `1e39`.
+    OutOfRange,
 }
 
 impl Warning {
@@ -732,6 +735,7 @@ impl fmt::Display for RoadSkipReason {
             Self::NoPlanView => "no <planView>",
             Self::NoGeometry => "no <geometry> it can bake",
             Self::TooLong => "a length over 100 km",
+            Self::OutOfRange => "lanes too far out for an f32",
         })
     }
 }
