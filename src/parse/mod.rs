@@ -2784,10 +2784,12 @@ impl Ring {
 
 /// Place one `<outline>` in the network's frame.
 ///
-/// A `<cornerRoad>` is a road station `(s, t)`, moved by `shift`, raised by
-/// `dz`. A `<cornerLocal>` is `(u, v, z)` in the object's own frame, so it needs the
-/// object's origin to be on the road. Each corner's top is `height` above its
-/// base, up in the frame the corner is given in. An outline with a corner
+/// A `<cornerRoad>` is a road station `(s, t)`, moved by `shift`, raised
+/// `dz` straight up, with its top `height` straight above its base. A
+/// `<cornerLocal>` is `(u, v, z)` in the object's own frame, so it needs the
+/// object's origin to be on the road, with its top `height` up that frame's
+/// axis. libOpenDRIVE raises a `<cornerRoad>` along the road's normal
+/// instead, which differs on a banked road. An outline with a corner
 /// that cannot be placed is dropped whole, because the polygon without it is
 /// a different shape. So is one with fewer than two corners.
 ///
