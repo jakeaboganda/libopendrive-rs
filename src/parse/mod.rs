@@ -857,6 +857,10 @@ struct SectionDef {
     /// The `<lane id>`s it skipped for having neither a width nor a border,
     /// in file order.
     dropped: Vec<i32>,
+    /// The `id`s, as the file writes them, of the lanes under `<left>` or
+    /// `<right>` it skipped for an `id` that isn't a whole number other than
+    /// 0, in file order.
+    bad_ids: Vec<String>,
     /// The `<lane id>`s with borders, if any lane has widths, in file order.
     mixed: Vec<i32>,
 }
@@ -869,13 +873,16 @@ impl SectionDef {
 
     fn parse(section: roxmltree::Node) -> Self {
         let (mut left, mut right, mut dropped) = (Vec::new(), Vec::new(), Vec::new());
+        let mut bad_ids = Vec::new();
         let (mut with_widths, mut with_borders) = (false, Vec::new());
         for side in ["left", "right"] {
             let Some(side_node) = child(section, side) else {
                 continue;
             };
             for lane in side_node.children().filter(|n| n.has_tag_name("lane")) {
-                let Some(id) = lane.attribute("id").and_then(|s| s.parse::<i32>().ok()) else {
+                let id = lane.attribute("id").and_then(|s| s.parse::<i32>().ok());
+                let Some(id) = id.filter(|&id| id != 0) else {
+                    bad_ids.push(lane.attribute("id").unwrap_or_default().to_string());
                     continue;
                 };
                 let widths = lane_cubics(lane.children().filter(|n| n.has_tag_name("width")));
@@ -915,7 +922,7 @@ impl SectionDef {
                 let def = (def, geom);
                 if id > 0 {
                     left.push(def);
-                } else if id < 0 {
+                } else {
                     right.push(def);
                 }
             }
@@ -941,6 +948,7 @@ impl SectionDef {
             geoms: [left_geoms, right_geoms],
             center,
             dropped,
+            bad_ids,
             mixed,
         }
     }
@@ -1285,6 +1293,14 @@ impl BakedRoad {
                 lane,
             }))
             .collect();
+        out.splice(
+            0..0,
+            def.bad_ids.iter().map(|id| Warning::LaneIdUnreadable {
+                road_id: road_id.clone(),
+                section: index,
+                id: id.clone(),
+            }),
+        );
         let border_lanes = || {
             section
                 .left

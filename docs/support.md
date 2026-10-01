@@ -269,6 +269,7 @@ junction or junction group.
 | `GeometryDropped` | a `<geometry>` missing its pose or `length`, with a `length` that isn't above 0 or is over 100 km, or of a shape the crate doesn't know |
 | `RoadMarkLineDropped` | a road mark line with more dashes than the crate paints (100,000 on the line, or 1,000,000 in the whole file), or whose paint lands out of range |
 | `TooManyCopies` | an `<object>` whose `<repeat>` or dashed `<marking>` would make over 100,000 copies or dashes |
+| `LaneIdUnreadable` | a `<lane>` under `<left>` or `<right>` whose `id` isn't a whole number, or is 0 |
 | `LaneDropped` | a lane with no `<width>` or `<border>` the crate can read |
 | `WidthAndBorder` | a lane with `<border>`s in a lane section that also has `<width>`s |
 | `BorderWithLaneOffset` | a border lane on a road whose `<laneOffset>` is not 0 |

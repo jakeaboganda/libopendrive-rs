@@ -1152,6 +1152,8 @@
 //!   so wide or so far off its border that its paint lands out of range.
 //! - [`Warning::TooManyCopies`] for an object whose `<repeat>` or dashed
 //!   `<marking>` would make over 100,000 copies or dashes.
+//! - [`Warning::LaneIdUnreadable`] for a lane whose `id` isn't a whole
+//!   number, or is 0 outside `<center>`.
 //! - [`Warning::LaneDropped`] for a lane with no `<width>` or `<border>` it
 //!   can read.
 //! - [`Warning::WidthAndBorder`], [`Warning::BorderWithLaneOffset`] and

@@ -440,3 +440,33 @@ fn a_road_whose_lanes_land_out_of_f32_range_is_skipped() {
     assert_eq!(net.lanes()[0].id.0, 0, "lane ids stay dense");
     net.surface_mesh().validate().expect("a valid mesh");
 }
+
+#[test]
+fn a_lane_with_an_unreadable_id_is_dropped_with_a_warning() {
+    let lane = |id: &str| {
+        format!(
+            r#"<lane id="{id}" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane>"#
+        )
+    };
+    let xodr = format!(
+        r#"<OpenDRIVE><header/><road id="1" length="20" junction="-1"><planView>
+        <geometry s="0" x="0" y="0" hdg="0" length="20"><line/></geometry></planView>
+        <lanes><laneSection s="0"><center><lane id="0" type="none"/></center>
+        <right>{}{}{}{}</right></laneSection></lanes></road></OpenDRIVE>"#,
+        lane("-1"),
+        lane("x"),
+        lane("1.0"),
+        lane("0"),
+    );
+    let (net, prov) = load_str_with_provenance(&xodr).unwrap();
+    assert_eq!(net.lanes().len(), 1);
+    let unreadable = |id: &str| Warning::LaneIdUnreadable {
+        road_id: "1".into(),
+        section: 0,
+        id: id.into(),
+    };
+    assert_eq!(
+        prov.warnings,
+        [unreadable("x"), unreadable("1.0"), unreadable("0")]
+    );
+}
