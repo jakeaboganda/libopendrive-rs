@@ -122,6 +122,9 @@
   returned a lane instead of `None`. In a hand-built or deserialized
   network, a lane with a NaN point also beat every other lane. Now it never
   wins.
+- Fixed: `with_speed_limits` and the other builders for stretches along
+  lanes panicked on a stretch whose `from` was NaN, and so did
+  deserializing one. Such a stretch is now left out.
 
 ## 0.4.0 - 2026-09-30
 
