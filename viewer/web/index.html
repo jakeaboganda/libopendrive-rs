@@ -1576,7 +1576,7 @@ function onHover(ev) {
 
   const p = hit.point;
   const rows = [
-    `<b>road ${lane.roadId}</b>  lane ${lane.odLaneId}  <b>${lane.laneType}</b>`,
+    `<b>road ${escapeHtml(String(lane.roadId))}</b>  lane ${lane.odLaneId}  <b>${lane.laneType}</b>`,
     `x ${p.x.toFixed(2)}   y ${p.y.toFixed(2)}   z ${p.z.toFixed(2)}`,
     ...roadRows(lane, i, u, s, t),
     `width ${laneWidth(lane, i, u).toFixed(2)} m   heading ${vec3(heading)}`,
