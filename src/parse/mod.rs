@@ -1075,63 +1075,15 @@ fn parse_road(
     let rule = traffic_rule(road).unwrap_or(TrafficRule::RightHand);
     let plan_view = child(road, "planView").ok_or(RoadSkipReason::NoPlanView)?;
     let mut geoms: Vec<GeomRec> = Vec::new();
+    let mut dropped = Vec::new();
     for g in plan_view.children().filter(|n| n.has_tag_name("geometry")) {
-        // A geometry record missing (or carrying a non-finite) pose is skipped
-        // rather than baked: the rest of the road is still usable.
-        let (Some(s), Some(x), Some(y), Some(hdg), Some(length)) = (
-            attr_f64(g, "s"),
-            attr_f64(g, "x"),
-            attr_f64(g, "y"),
-            attr_f64(g, "hdg"),
-            attr_f64(g, "length"),
-        ) else {
-            continue;
-        };
-        let shape = if let Some(arc) = child(g, "arc") {
-            let Some(curvature) = attr_f64(arc, "curvature") else {
-                continue;
-            };
-            GeomShape::Arc { curvature }
-        } else if let Some(sp) = child(g, "spiral") {
-            let (Some(curv_start), Some(curv_end)) =
-                (attr_f64(sp, "curvStart"), attr_f64(sp, "curvEnd"))
-            else {
-                continue;
-            };
-            GeomShape::Spiral {
-                curv_start,
-                curv_end,
-            }
-        } else if let Some(pp) = child(g, "paramPoly3") {
-            let coeff = |n: &str| attr_f64(pp, n).unwrap_or(0.0);
-            // "arcLength" -> p in [0,len]; anything else, including an absent
-            // attribute, is "normalized" p in [0,1], matching libOpenDRIVE's
-            // default and case-insensitive compare (files set it explicitly).
-            let p_max = match pp.attribute("pRange").map(str::to_ascii_lowercase) {
-                Some(ref r) if r == "arclength" => length,
-                _ => 1.0,
-            };
-            GeomShape::ParamPoly3 {
-                u: [coeff("aU"), coeff("bU"), coeff("cU"), coeff("dU")],
-                v: [coeff("aV"), coeff("bV"), coeff("cV"), coeff("dV")],
-                p_max,
-            }
-        } else if let Some(p3) = child(g, "poly3") {
-            // poly3 is the special case of paramPoly3 with u(p)=p and v(p) the
-            // cubic in u; reuse the same baker over p in [0, length].
-            let coeff = |n: &str| attr_f64(p3, n).unwrap_or(0.0);
-            GeomShape::ParamPoly3 {
-                u: [0.0, 1.0, 0.0, 0.0],
-                v: [coeff("a"), coeff("b"), coeff("c"), coeff("d")],
-                p_max: length,
-            }
-        } else if child(g, "line").is_some() {
-            GeomShape::Line
-        } else {
-            // An unknown geometry shape: skip it rather than fail the load.
-            continue;
-        };
-        geoms.push(GeomRec::new(s, x, y, hdg, length, shape));
+        match geometry(g) {
+            Some(rec) => geoms.push(rec),
+            None => dropped.push(Warning::GeometryDropped {
+                road_id: road_id.clone(),
+                s: attr_f64(g, "s"),
+            }),
+        }
     }
     if geoms.is_empty() {
         return Err(RoadSkipReason::NoGeometry);
@@ -1147,7 +1099,7 @@ fn parse_road(
     let superelevations = child(road, "lateralProfile")
         .map(|n| cubics_in(n, "superelevation", "s"))
         .unwrap_or_default();
-    let mut warnings = Vec::new();
+    let mut warnings = dropped;
     let lateral = Lateral {
         profiles: child(road, "lateralProfile")
             .map(shape_profiles)
@@ -1201,6 +1153,62 @@ fn parse_road(
         surfaces.extend(road_crg(node, &baked.road));
     }
     Ok(baked)
+}
+
+/// One `<planView><geometry>` record, or `None` for one the crate can't
+/// bake: one missing its `s`, `x`, `y`, `hdg` or `length`, one whose
+/// `length` isn't above 0, or one of a shape it doesn't know.
+fn geometry(g: roxmltree::Node) -> Option<GeomRec> {
+    let (Some(s), Some(x), Some(y), Some(hdg), Some(length)) = (
+        attr_f64(g, "s"),
+        attr_f64(g, "x"),
+        attr_f64(g, "y"),
+        attr_f64(g, "hdg"),
+        attr_f64(g, "length"),
+    ) else {
+        return None;
+    };
+    if length <= 0.0 {
+        return None;
+    }
+    let shape = if let Some(arc) = child(g, "arc") {
+        let curvature = attr_f64(arc, "curvature")?;
+        GeomShape::Arc { curvature }
+    } else if let Some(sp) = child(g, "spiral") {
+        let (curv_start, curv_end) = (attr_f64(sp, "curvStart")?, attr_f64(sp, "curvEnd")?);
+        GeomShape::Spiral {
+            curv_start,
+            curv_end,
+        }
+    } else if let Some(pp) = child(g, "paramPoly3") {
+        let coeff = |n: &str| attr_f64(pp, n).unwrap_or(0.0);
+        // "arcLength" -> p in [0,len]; anything else, including an absent
+        // attribute, is "normalized" p in [0,1], matching libOpenDRIVE's
+        // default and case-insensitive compare (files set it explicitly).
+        let p_max = match pp.attribute("pRange").map(str::to_ascii_lowercase) {
+            Some(ref r) if r == "arclength" => length,
+            _ => 1.0,
+        };
+        GeomShape::ParamPoly3 {
+            u: [coeff("aU"), coeff("bU"), coeff("cU"), coeff("dU")],
+            v: [coeff("aV"), coeff("bV"), coeff("cV"), coeff("dV")],
+            p_max,
+        }
+    } else if let Some(p3) = child(g, "poly3") {
+        // poly3 is the special case of paramPoly3 with u(p)=p and v(p) the
+        // cubic in u; reuse the same baker over p in [0, length].
+        let coeff = |n: &str| attr_f64(p3, n).unwrap_or(0.0);
+        GeomShape::ParamPoly3 {
+            u: [0.0, 1.0, 0.0, 0.0],
+            v: [coeff("a"), coeff("b"), coeff("c"), coeff("d")],
+            p_max: length,
+        }
+    } else if child(g, "line").is_some() {
+        GeomShape::Line
+    } else {
+        return None;
+    };
+    Some(GeomRec::new(s, x, y, hdg, length, shape))
 }
 
 /// How far, in metres, a `<border>` may lie inside its inner neighbour's

@@ -529,7 +529,8 @@ impl GeomRec {
 /// `curv_start -> curv_end` over `length`, so heading is the closed form
 /// `hdg0 + curv_start*u + (c_dot/2)*u^2`; position is its running integral,
 /// which has no elementary form, so integrate cos/sin(heading) by the midpoint
-/// rule at a fine step (mm-accurate over hundreds of meters).
+/// rule at a fine step (mm-accurate over hundreds of meters). Always at
+/// least two samples, so a spiral of no length still has a pose.
 fn bake_spiral(
     x0: f64,
     y0: f64,
@@ -554,6 +555,9 @@ fn bake_spiral(
         y += theta_mid.sin() * step;
         u += step;
         out.push((u, x, y, heading(u)));
+    }
+    if out.len() == 1 {
+        out.push((0.0, x0, y0, hdg0));
     }
     out
 }
