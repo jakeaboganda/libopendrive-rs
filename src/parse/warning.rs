@@ -19,6 +19,16 @@ pub enum Warning {
         /// What it lacked.
         reason: RoadSkipReason,
     },
+    /// A `<planView><geometry>` the crate can't bake: one missing its `s`,
+    /// `x`, `y`, `hdg` or `length`, one whose `length` isn't above 0, or one
+    /// of a shape it doesn't know. The crate drops it, so the geometry before
+    /// it runs on over its stretch of road.
+    GeometryDropped {
+        /// The `<road id>` it is on.
+        road_id: String,
+        /// Its `s`, if it has one.
+        s: Option<f64>,
+    },
     /// A `<lane>` with no `<width>` or `<border>` the crate could read. It
     /// has no extent, so it did not bake, and neither did its road marks. A
     /// lane outside it stacks on the lane inside it.
@@ -392,6 +402,7 @@ impl Warning {
     pub fn road_id(&self) -> &str {
         match self {
             Self::RoadSkipped { road_id, .. }
+            | Self::GeometryDropped { road_id, .. }
             | Self::LaneDropped { road_id, .. }
             | Self::WidthAndBorder { road_id, .. }
             | Self::BorderWithLaneOffset { road_id, .. }
@@ -507,6 +518,10 @@ impl fmt::Display for Warning {
                 f,
                 "road {road_id:?}: lane {lane}'s <access> at s {s:.2} m dropped, rule {rule:?} is neither allow nor deny"
             ),
+            Self::GeometryDropped { road_id, s } => match s {
+                Some(s) => write!(f, "road {road_id:?}: <geometry> at s {s:.2} m dropped"),
+                None => write!(f, "road {road_id:?}: <geometry> without an s dropped"),
+            },
             Self::RoadLengthMismatch {
                 road_id,
                 length,

@@ -274,3 +274,28 @@ fn a_clean_map_raises_no_warnings() {
         assert_eq!(prov.warnings, [], "{path}");
     }
 }
+
+#[test]
+fn a_geometry_of_no_length_is_dropped_with_a_warning_not_a_panic() {
+    let geometry = |s: f64, length: f64, shape: &str| {
+        format!(r#"<geometry s="{s}" x="{s}" y="0" hdg="0" length="{length}">{shape}</geometry>"#)
+    };
+    let spiral = r#"<spiral curvStart="0" curvEnd="0.01"/>"#;
+    let xodr = format!(
+        r#"<OpenDRIVE><header/><road id="1" length="30" junction="-1"><planView>{}{}{}{}</planView>
+        <lanes><laneSection s="0"><center><lane id="0" type="none"/></center><right>
+        <lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane>
+        </right></laneSection></lanes></road></OpenDRIVE>"#,
+        geometry(0.0, 10.0, "<line/>"),
+        geometry(10.0, -1.0, spiral),
+        geometry(10.0, 20.0, "<line/>"),
+        geometry(30.0, 0.0, spiral),
+    );
+    let (net, prov) = load_str_with_provenance(&xodr).expect("the road loads");
+    assert_eq!(net.lanes().len(), 1);
+    let dropped = |s: f64| Warning::GeometryDropped {
+        road_id: "1".into(),
+        s: Some(s),
+    };
+    assert_eq!(prov.warnings, vec![dropped(10.0), dropped(30.0)]);
+}

@@ -42,6 +42,10 @@
 
 - Fixed: the viewer wrote a road's id into the lane tooltip as HTML, so a
   map could run script in the page. It now shows the id as text.
+- Fixed: a `<geometry>` whose `length` is 0 or less made the whole load
+  panic. The crate now drops it with the new `Warning::GeometryDropped`,
+  which it also raises for a geometry missing its pose or of a shape it
+  doesn't know. It used to drop those without a word.
 
 ## 0.4.0 - 2026-09-30
 
