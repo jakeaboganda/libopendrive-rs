@@ -38,6 +38,11 @@
 - A CRG file that does not load, or a mesh that is not a valid trimesh, is
   now listed with the map's warnings in the sidebar.
 
+### Fixes
+
+- Fixed: the viewer wrote a road's id into the lane tooltip as HTML, so a
+  map could run script in the page. It now shows the id as text.
+
 ## 0.4.0 - 2026-09-30
 
 ### Virtual junctions
