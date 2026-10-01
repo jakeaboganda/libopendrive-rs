@@ -214,8 +214,8 @@ fn write_sources<'a>(
 }
 
 /// The `(source, scene)` jobs that bake again each scene in `folder` older
-/// than its `.xodr` or than this program, and the scenes whose source it
-/// can't find, which it leaves as they are.
+/// than its `.xodr`, an OpenCRG file the `.xodr` names, or this program, and
+/// the scenes whose source it can't find, which it leaves as they are.
 fn stale_scenes(folder: &Path) -> (Vec<(String, String)>, Vec<String>) {
     let modified = |path: &Path| fs::metadata(path).and_then(|m| m.modified()).ok();
     let exporter = env::current_exe().ok().and_then(|exe| modified(&exe));
@@ -233,8 +233,15 @@ fn stale_scenes(folder: &Path) -> (Vec<(String, String)>, Vec<String>) {
             unknown.push(name);
             continue;
         };
+        let dir = source.parent().unwrap_or(Path::new("."));
+        let crg_times = fs::read_to_string(&source)
+            .map(|xodr| crg_files(&xodr))
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|file| modified(&dir.join(file)));
+        let newest = crg_times.fold(source_time, |a, b| a.max(b));
         let scene_time = modified(&scene);
-        if scene_time < Some(source_time) || scene_time < exporter {
+        if scene_time < Some(newest) || scene_time < exporter {
             jobs.push((
                 source.to_string_lossy().into_owned(),
                 scene.to_string_lossy().into_owned(),
@@ -242,4 +249,39 @@ fn stale_scenes(folder: &Path) -> (Vec<(String, String)>, Vec<String>) {
         }
     }
     (jobs, unknown)
+}
+
+/// The `file` of each `<CRG>` in `xodr`, found by a scan of its text rather
+/// than a full load, so a refresh stays quick.
+fn crg_files(xodr: &str) -> Vec<String> {
+    xodr.split("<CRG")
+        .skip(1)
+        .filter_map(|tag| {
+            let tag = &tag[..tag.find('>')?];
+            let at = tag.find("file=")? + "file=".len();
+            let quote = tag[at..].chars().next()?;
+            let value = &tag[at + 1..];
+            let value = &value[..value.find(quote)?];
+            Some(
+                value
+                    .replace("&quot;", "\"")
+                    .replace("&apos;", "'")
+                    .replace("&lt;", "<")
+                    .replace("&gt;", ">")
+                    .replace("&amp;", "&"),
+            )
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::crg_files;
+
+    #[test]
+    fn the_crg_files_of_a_map_are_found_by_name() {
+        let xodr = r#"<road><surface><CRG file="a.crg" mode="attached"/>
+            <CRG mode="genuine" file='b &amp; c.crg'/></surface></road>"#;
+        assert_eq!(crg_files(xodr), ["a.crg", "b & c.crg"]);
+    }
 }
