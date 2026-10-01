@@ -86,6 +86,9 @@
   climb they pointed straight up. `Mesh::height_at` and `MeshSampler`
   pass them on, and `RoadSample::up` points callers to them for the grade.
   They now lean with grade and bank alike.
+- Fixed: of several `<access>`es or `<rule>`s at one `sOffset`, only the
+  last was kept. An `allow` and a `deny` there now merge into the
+  `allow` less the denied users, and rules join with `"; "`.
 
 ## 0.4.0 - 2026-09-30
 

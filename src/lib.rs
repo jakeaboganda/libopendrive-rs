@@ -813,15 +813,20 @@
 //! next of its kind, or to the end of its lane section.
 //!
 //! - A rule is the file's free text, such as `no stopping at any time`. A
-//!   `<rule>` without a `value` is skipped.
+//!   `<rule>` without a `value` is skipped. Rules at the same `sOffset` all
+//!   apply, so their texts join with `"; "`.
 //! - [`Access::Allow`] lists the only road users that may use the lane, and
 //!   [`Access::Deny`] those that may not. Each is a restriction `type` as
 //!   the file names it, such as `bus`. Where a lane has no access stretch,
 //!   everyone may use it, as the spec says. A `rule="deny"` naming `none`
 //!   lifts the restrictions before it.
 //! - Files before 1.8 name one road user per `<access>`, in its
-//!   `restriction` attribute. Those at the same `sOffset` with the same
-//!   `rule` merge into one stretch.
+//!   `restriction` attribute. `<access>`es at the same `sOffset` apply
+//!   together. Two with the same `rule` merge their road users. An `allow`
+//!   and a `deny` merge into the `allow`, less the road users the `deny`
+//!   names, since only those may then use the lane.
+//! - A lane has one material, speed and visibility at a time. Of two at the
+//!   same `sOffset`, the later in the file holds.
 //! - A material is a [`Material`], as on an object. The crate does not use
 //!   its friction, which a CRG gives through [`RoadSurface`].
 //!
