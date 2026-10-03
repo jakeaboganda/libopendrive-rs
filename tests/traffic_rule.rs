@@ -4,7 +4,7 @@
 //! and 1 are right-hand traffic, and roads 2 and 3 the same pair with
 //! `rule="LHT"`. Road 4 has `rule="lht"`.
 
-use libopendrive::{load_file_with_provenance, Direction, Lane, Provenance, RoadNetwork, Warning};
+use xodr::{load_file_with_provenance, Direction, Lane, Provenance, RoadNetwork, Warning};
 
 const FIXTURE: &str = "tests/data/traffic_rule.xodr";
 

@@ -6,8 +6,8 @@
 //! superelevation become a canted, collider-ready mesh, an angle that peaks
 //! through the arc and is flat on the straights, and a sample that leans.
 
-use libopendrive::load_file;
-use libopendrive::{Point, RoadNetwork};
+use xodr::load_file;
+use xodr::{Point, RoadNetwork};
 
 const SWEEPER: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -15,7 +15,7 @@ const SWEEPER: &str = concat!(
 );
 
 /// The greatest `bank_at` over a lane, scanned finely along its length.
-fn peak_bank(lane: &libopendrive::Lane) -> f32 {
+fn peak_bank(lane: &xodr::Lane) -> f32 {
     let len = lane.center.length();
     let mut peak = 0.0f32;
     let mut s = 0.0;
@@ -87,7 +87,7 @@ fn the_outer_left_lane_rides_above_the_inner_through_the_cant() {
             .collect::<Vec<_>>()
     };
     // Left lanes travel Backward under RHT; there are two of them.
-    let mut left = max_z(libopendrive::Direction::Backward);
+    let mut left = max_z(xodr::Direction::Backward);
     left.sort_by(|a, b| a.total_cmp(b));
     assert_eq!(left.len(), 2, "two left lanes");
     assert!(

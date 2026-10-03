@@ -6,7 +6,7 @@
 //! its connections one way only. Roads 3 and 4 meet through direct junction
 //! 9, which gives them both ways.
 
-use libopendrive::{load_file_with_provenance, Lane, Provenance, RoadNetwork, Warning};
+use xodr::{load_file_with_provenance, Lane, Provenance, RoadNetwork, Warning};
 
 const FIXTURE: &str = "tests/data/direct_junctions.xodr";
 

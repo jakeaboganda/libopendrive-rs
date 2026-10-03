@@ -4,11 +4,11 @@
 //! bilinear grid holds exactly. So each mode's expected height is a formula
 //! from the ASAM OpenDRIVE 1.9 road surface section.
 
-use libopendrive::{
+use opencrg::CrgGrid;
+use xodr::{
     load_file, load_str, CrgAlong, CrgMode, CrgPurpose, RoadNetwork, RoadSurface, SurfaceHint,
     SurfaceSample,
 };
-use opencrg::CrgGrid;
 
 const A: f64 = 0.01;
 const B: f64 = 0.02;
@@ -101,11 +101,7 @@ fn xy(geometry: &str, s: f64, t: f64, bank: f64) -> (f64, f64) {
     (x - t * h.sin(), y + t * h.cos())
 }
 
-fn surface<'a>(
-    net: &'a RoadNetwork,
-    mesh: &'a libopendrive::Mesh,
-    grid: CrgGrid,
-) -> RoadSurface<'a> {
+fn surface<'a>(net: &'a RoadNetwork, mesh: &'a xodr::Mesh, grid: CrgGrid) -> RoadSurface<'a> {
     let mut grid = Some(grid);
     RoadSurface::new(net, mesh, move |_| grid.take())
 }

@@ -1,7 +1,7 @@
 # OpenDRIVE support
 
 What the importer reads from an `.xodr` file, and what it skips. For the exact
-element and attribute list, see [the crate docs](https://docs.rs/libopendrive).
+element and attribute list, see [the crate docs](https://docs.rs/xodr).
 
 Geometry is cross-checked against the reference C++
 [libOpenDRIVE](https://github.com/pageldev/libOpenDRIVE).
@@ -221,11 +221,11 @@ point in `f64`. Off the CRG it answers from the surface mesh, which the CRG
 does not change.
 
 The crate parses CRG files with [`opencrg`](https://crates.io/crates/opencrg)
-and re-exports it, so `libopendrive::opencrg` also reads a `.crg` file on its
+and re-exports it, so `xodr::opencrg` also reads a `.crg` file on its
 own.
 
 ```rust
-use libopendrive::{load_file, opencrg::CrgGrid, RoadSurface, SurfaceHint};
+use xodr::{load_file, opencrg::CrgGrid, RoadSurface, SurfaceHint};
 
 let net = load_file("maps/track.xodr")?;
 let mesh = net.surface_mesh();

@@ -10,7 +10,7 @@
 
 use std::f32::consts::PI;
 
-use libopendrive::{
+use xodr::{
     load_file_with_provenance, Control, Dependency, JunctionControllerProvenance, Orientation,
     Point, Provenance, Reference, Referenced, RoadNetwork, Signal, SignalProvenance,
     SignalReferenceProvenance, Unit,
@@ -391,7 +391,7 @@ fn a_country_is_kept_as_the_map_spells_it() {
 #[cfg(feature = "serde")]
 #[test]
 fn signals_survive_a_round_trip() {
-    let net = libopendrive::load_file(SIGNALS).expect("signals.xodr loads");
+    let net = xodr::load_file(SIGNALS).expect("signals.xodr loads");
     let json = serde_json::to_string(&net).expect("serialize");
     let back: RoadNetwork = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(back.signals(), net.signals());
@@ -431,15 +431,15 @@ fn a_number_too_large_for_an_f32_reads_as_missing_not_infinite() {
             r#"<staticBoard><sign v="1e39" z="0" width="1e39" height="1"/></staticBoard>"#
         ),
     );
-    let net = libopendrive::load_str(&xodr).unwrap();
-    let finite = |p: libopendrive::Point| p.to_array().iter().all(|c| c.is_finite());
+    let net = xodr::load_str(&xodr).unwrap();
+    let finite = |p: xodr::Point| p.to_array().iter().all(|c| c.is_finite());
     for s in net.signals() {
         assert!(finite(s.position), "{:?}", s.position);
         for size in [s.width, s.height, s.length] {
             assert!(size.is_none_or(f32::is_finite), "{size:?}");
         }
         for board in &s.boards {
-            if let libopendrive::SignalBoard::Static(signs) = board {
+            if let xodr::SignalBoard::Static(signs) = board {
                 for sign in signs {
                     assert!(finite(sign.position), "{:?}", sign.position);
                     assert_eq!(sign.width, None);
@@ -466,7 +466,7 @@ fn a_heading_just_over_minus_pi_stays_in_range() {
         </right></laneSection></lanes><signals>
         <signal id="s" s="10" t="-4" orientation="-" hOffset="-3.14159264"/>
         </signals></road></OpenDRIVE>"#;
-    let heading = libopendrive::load_str(xodr).unwrap().signals()[0].heading;
+    let heading = xodr::load_str(xodr).unwrap().signals()[0].heading;
     assert!(
         heading > -std::f32::consts::PI && heading <= std::f32::consts::PI,
         "{heading}"

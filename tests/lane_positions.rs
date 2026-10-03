@@ -1,9 +1,7 @@
 //! Lane positions: `RoadNetwork::lane_point` and `lane_position` place a
 //! point by its lane, the road `s`, and an offset from the lane's center.
 
-use libopendrive::{
-    load_file, load_str, LaneId, LanePosition, Point, RoadNetwork, RoadPosition, Vector,
-};
+use xodr::{load_file, load_str, LaneId, LanePosition, Point, RoadNetwork, RoadPosition, Vector};
 
 /// A 60 m arc from the origin heading +X, curving left on a 40 m radius. Its
 /// `<laneOffset>` grows from 0 to 1 m over the road, so the lanes move off

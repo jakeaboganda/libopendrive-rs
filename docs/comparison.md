@@ -62,7 +62,7 @@ than this crate, grouped by what the other library does with them:
 
 - **Header offset.** esmini applies `<offset>` to every point. The crate
   keeps it for the caller and applies nothing, since reprojecting is out of
-  its scope. See [Geo reference](https://docs.rs/libopendrive/latest/libopendrive/#geo-reference).
+  its scope. See [Geo reference](https://docs.rs/xodr/latest/xodr/#geo-reference).
 - **Signal meaning.** esmini looks a signal's `country`, `type`, `subtype`
   and `value` up in a catalogue, and esmini and CARLA pick traffic lights by
   them. The crate keeps the codes and looks nothing up.

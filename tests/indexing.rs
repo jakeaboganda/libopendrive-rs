@@ -6,7 +6,7 @@
 //! brute-force answer on a real city export, which has the stacked roads,
 //! dead ground, and far-off-map queries a hand-written fixture would not.
 
-use libopendrive::{load_file, LaneId, Point, Projection, RoadNetwork, Vector};
+use xodr::{load_file, LaneId, Point, Projection, RoadNetwork, Vector};
 
 const TOWN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/town07.xodr");
 
@@ -110,7 +110,7 @@ fn an_empty_network_indexes_and_answers_nothing() {
 
 #[test]
 fn nan_never_finds_or_wins_a_lane() {
-    use libopendrive::{Direction, Lane, LaneId, LaneType, Polyline, RoadNetwork};
+    use xodr::{Direction, Lane, LaneId, LaneType, Polyline, RoadNetwork};
     let lane = |id: usize, points: Vec<Point>| Lane {
         id: LaneId(id),
         kind: LaneType::Driving,
@@ -143,7 +143,7 @@ fn nan_never_finds_or_wins_a_lane() {
 
 #[test]
 fn the_lowest_point_skips_a_nan_height() {
-    use libopendrive::{Direction, Lane, LaneType, Polyline};
+    use xodr::{Direction, Lane, LaneType, Polyline};
     let lane = |id: usize, z: f32| Lane {
         id: LaneId(id),
         kind: LaneType::Driving,

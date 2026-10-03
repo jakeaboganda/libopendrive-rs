@@ -1,6 +1,6 @@
 //! Moving along the lanes: `RoadNetwork::advance`, `left_of` and `right_of`.
 
-use libopendrive::{load_file, load_str, Advance, Direction, LaneId, LanePosition, RoadNetwork};
+use xodr::{load_file, load_str, Advance, Direction, LaneId, LanePosition, RoadNetwork};
 
 /// The baked lane `od_id` of the first section of the road `road`.
 fn lane(net: &RoadNetwork, road: &str, od_id: i32) -> LaneId {

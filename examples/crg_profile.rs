@@ -23,8 +23,8 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::time::Instant;
 
-use libopendrive::opencrg::CrgGrid;
-use libopendrive::{load_file, LaneId, RoadSurface, SurfaceHint};
+use xodr::opencrg::CrgGrid;
+use xodr::{load_file, LaneId, RoadSurface, SurfaceHint};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();

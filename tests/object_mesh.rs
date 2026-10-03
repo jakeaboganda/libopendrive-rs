@@ -4,7 +4,7 @@
 //! `a · (b × c) / 6`. That sum only comes out as the shape's volume when every
 //! face is there and wound outward, so it checks both at once.
 
-use libopendrive::{load_file, Mesh, ObjectSpan, ObjectType, Point, RoadNetwork, Shape};
+use xodr::{load_file, Mesh, ObjectSpan, ObjectType, Point, RoadNetwork, Shape};
 
 const OBJECTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/objects.xodr");
 const E6MINI: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/e6mini.xodr");
@@ -26,7 +26,7 @@ fn volume(mesh: &Mesh, span: &ObjectSpan) -> f32 {
 fn span_of<'a>(
     net: &RoadNetwork,
     mesh: &'a Mesh,
-    pick: impl Fn(&libopendrive::Object) -> bool,
+    pick: impl Fn(&xodr::Object) -> bool,
 ) -> Option<&'a ObjectSpan> {
     let object = net.objects().iter().find(|o| pick(o)).expect("object");
     mesh.objects.iter().find(|s| s.object == object.id)
@@ -201,7 +201,7 @@ fn one_object(object: &str) -> (Mesh, ObjectSpan) {
             <width sOffset="0" a="3.5"/></lane></right></laneSection></lanes>
           <objects>{object}</objects></road></OpenDRIVE>"#
     );
-    let mesh = libopendrive::load_str(&xml).expect("loads").object_mesh();
+    let mesh = xodr::load_str(&xml).expect("loads").object_mesh();
     mesh.validate().expect("a collider can build it");
     let span = mesh.objects[0].clone();
     (mesh, span)
@@ -279,7 +279,7 @@ fn a_sweep_round_a_bend_caps_both_ends_outward() {
     let rail = r#"<object id="rail" s="0" t="-4" zOffset="0" height="1" width="0.4">
         <repeat s="0" length="94.247780" distance="0" tStart="-4" tEnd="-4" widthStart="0.4" widthEnd="0.4"
           heightStart="1" heightEnd="1" zOffsetStart="0" zOffsetEnd="0"/></object>"#;
-    let mesh = libopendrive::load_str(&road(rail)).unwrap().object_mesh();
+    let mesh = xodr::load_str(&road(rail)).unwrap().object_mesh();
     mesh.validate().expect("a collider can build it");
     let want = 0.4 * 1.0 * 1.5 * std::f32::consts::PI * 24.0;
     let got = volume(&mesh, &mesh.objects[0]);
@@ -288,7 +288,7 @@ fn a_sweep_round_a_bend_caps_both_ends_outward() {
     let pipe = r#"<object id="pipe" s="0" t="-4" zOffset="0" radius="0.5">
         <repeat s="0" length="94.247780" distance="0" tStart="-4" tEnd="-4" radiusStart="0.5" radiusEnd="0.5"
           zOffsetStart="0" zOffsetEnd="0"/></object>"#;
-    let mesh = libopendrive::load_str(&road(pipe)).unwrap().object_mesh();
+    let mesh = xodr::load_str(&road(pipe)).unwrap().object_mesh();
     let got = volume(&mesh, &mesh.objects[0]);
     assert!(
         got > 0.9 * 0.5 * 0.5 * std::f32::consts::PI * 0.9 * std::f32::consts::PI * 24.0,
@@ -298,8 +298,8 @@ fn a_sweep_round_a_bend_caps_both_ends_outward() {
 
 #[test]
 fn an_outline_with_no_corners_meshes_to_nothing() {
-    let object = |closed: bool| libopendrive::Object {
-        id: libopendrive::ObjectId(0),
+    let object = |closed: bool| xodr::Object {
+        id: xodr::ObjectId(0),
         kind: ObjectType::Barrier,
         subtype: String::new(),
         name: String::new(),

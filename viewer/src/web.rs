@@ -1,8 +1,8 @@
 //! [`bake`](crate::bake) for the page, compiled to WebAssembly.
 
 use js_sys::{Function, Uint8Array};
-use libopendrive::opencrg::CrgGrid;
 use wasm_bindgen::prelude::*;
+use xodr::opencrg::CrgGrid;
 
 /// Bake an OpenDRIVE document into its scene JSON. `crg` is called with the
 /// file a `<CRG file>` names and returns its bytes, or `undefined` when the

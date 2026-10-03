@@ -4,7 +4,7 @@
 //! Every road there is a straight along +X, so each border's height has a
 //! closed form to check against.
 
-use libopendrive::{
+use xodr::{
     load_file_with_provenance, Lane, LaneProvenance, Mesh, Point, Provenance, RoadNetwork, Shape,
     Warning,
 };

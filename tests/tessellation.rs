@@ -5,7 +5,7 @@
 //! tessellates to a near-collinear sliver whose winding flips. A corner tighter
 //! than the lane half-width lets the inner offset push past the curve's center.
 
-use libopendrive::{
+use xodr::{
     load_file, load_file_with_provenance, Direction, Lane, LaneId, LaneType, Point, Polyline,
     RoadNetwork, Vector,
 };
@@ -19,7 +19,7 @@ fn facet_up(a: Point, b: Point, c: Point) -> f32 {
 
 /// Count of downward-facing, inverted triangles. Zero-area facets from a
 /// zero-width lane are not inversions, so they are left out.
-fn inverted(mesh: &libopendrive::Mesh) -> usize {
+fn inverted(mesh: &xodr::Mesh) -> usize {
     mesh.indices
         .chunks_exact(3)
         .filter(|t| {
@@ -106,7 +106,7 @@ fn lane_of(width: f32, pts: &[[f32; 3]]) -> RoadNetwork {
 }
 
 /// Ribs in the mesh, one pair of vertices each.
-fn ribs(mesh: &libopendrive::Mesh) -> usize {
+fn ribs(mesh: &xodr::Mesh) -> usize {
     mesh.vertices.len() / 2
 }
 

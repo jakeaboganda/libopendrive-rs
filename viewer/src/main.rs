@@ -1,9 +1,9 @@
 //! Bake OpenDRIVE maps and export each as the JSON the three.js viewer reads.
 //!
 //! ```sh
-//! cargo run -p libopendrive-viewer -- tests/data/*.xodr
-//! cargo run -p libopendrive-viewer -- tests/data/testtrack.xodr /tmp/testtrack.json
-//! cargo run -p libopendrive-viewer -- --refresh
+//! cargo run -p xodr-viewer -- tests/data/*.xodr
+//! cargo run -p xodr-viewer -- tests/data/testtrack.xodr /tmp/testtrack.json
+//! cargo run -p xodr-viewer -- --refresh
 //! ```
 //!
 //! Each map goes to `viewer/web/<map name>.json`, unless there is one map and
@@ -26,8 +26,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use libopendrive::opencrg::CrgGrid;
-use libopendrive_viewer::bake;
+use xodr::opencrg::CrgGrid;
+use xodr_viewer::bake;
 
 /// Where scenes go without an output path, and the folder the viewer serves.
 const SCENES: &str = "viewer/web";

@@ -248,7 +248,7 @@ impl CrgAlong {
 /// Each moving point keeps its own [`SurfaceHint`].
 ///
 /// ```no_run
-/// use libopendrive::{load_file, opencrg::CrgGrid, RoadSurface, SurfaceHint};
+/// use xodr::{load_file, opencrg::CrgGrid, RoadSurface, SurfaceHint};
 ///
 /// let net = load_file("maps/track.xodr")?;
 /// let mesh = net.surface_mesh();
@@ -259,7 +259,7 @@ impl CrgAlong {
 /// if let Some(ground) = surface.sample(12.0, -30.0, &mut wheel) {
 ///     println!("{} m, friction {:?}", ground.z, ground.friction);
 /// }
-/// # Ok::<(), libopendrive::ImportError>(())
+/// # Ok::<(), xodr::ImportError>(())
 /// ```
 #[derive(Debug)]
 pub struct RoadSurface<'a> {

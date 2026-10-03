@@ -1,14 +1,17 @@
-# libopendrive
+# xodr
 
 A pure-Rust OpenDRIVE (`.xodr`) importer. It reads a map once and turns it
 into lanes made of points, a lane graph in the direction traffic drives, and
-a triangle mesh of the road surface. It also reads the OpenCRG (`.crg`) files a map lays on its
-roads.
+a triangle mesh of the road surface. It also reads the OpenCRG (`.crg`)
+files a map lays on its roads.
 
 No C++ dependency, no bindings, no `unsafe`.
 
+Up to 0.4.1 this crate was called `libopendrive`. It was renamed because
+that name is easily confused with libOpenDRIVE, a C++ library.
+
 ```rust
-use libopendrive::{load_file, Point};
+use xodr::{load_file, Point};
 
 let net = load_file("maps/town07.xodr")?;
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>libopendrive viewer</title>
+<title>xodr viewer</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -282,7 +282,7 @@ document.getElementById('open').addEventListener('change', async e => {
 // survive the reload that draws them, and resolve to its request's result.
 function openedFiles(mode, use) {
   return new Promise((resolve, reject) => {
-    const db = indexedDB.open('libopendrive-viewer', 1);
+    const db = indexedDB.open('xodr-viewer', 1);
     db.onupgradeneeded = () => db.result.createObjectStore('opened');
     db.onerror = () => reject(db.error);
     db.onsuccess = () => {
@@ -312,7 +312,7 @@ async function pickScene() {
   picker.addEventListener('change', () => { location.search = '?scene=' + encodeURIComponent(picker.value); });
   const title = chosen?.replace(/\.json$/, '') ?? opened?.replace(/\.xodr$/i, '');
   if (title) {
-    document.title = `${title} - libopendrive viewer`;
+    document.title = `${title} - xodr viewer`;
     document.querySelector('#sidebar h1').textContent = title;
   }
   return { sceneUrl: chosen, opened, count: names.length };
@@ -326,7 +326,7 @@ async function bakeOpened(name) {
   if (!map) throw new Error(`${escapeHtml(name)} is not open any more. Open it again with <strong>open .xodr</strong>.`);
   let baker;
   try {
-    baker = await import('./pkg/libopendrive_viewer.js');
+    baker = await import('./pkg/xodr_viewer.js');
     await baker.default();
   } catch (e) {
     throw new Error('The WebAssembly baker is not built. Run <code>sh viewer/build.sh</code>, then reload.');

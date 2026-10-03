@@ -5,7 +5,7 @@
 //! is a straight along +X, so a right lane's distance along its centerline
 //! is the road's `s`, less the start of its lane section.
 
-use libopendrive::{
+use xodr::{
     load_file_with_provenance, Access, Along, LaneId, Material, Provenance, RoadNetwork, Warning,
 };
 
@@ -156,7 +156,7 @@ fn entries_at_the_same_s_offset_apply_together() {
         <lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/>{lane}</lane>
         </right></laneSection></lanes></road></OpenDRIVE>"#
     );
-    let net = libopendrive::load_str(&xodr).unwrap();
+    let net = xodr::load_str(&xodr).unwrap();
     let access: Vec<_> = net.lane_access().iter().map(|a| a.value.clone()).collect();
     assert_eq!(access, [Access::Allow(users(&["bus"]))]);
     let rules: Vec<_> = net.lane_rules().iter().map(|a| a.value.clone()).collect();

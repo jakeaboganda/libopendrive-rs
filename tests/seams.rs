@@ -3,7 +3,7 @@
 //! starts from the same station - derives the same rib direction and the two
 //! strips join without a V-shaped gap.
 
-use libopendrive::{load_file_with_provenance, LaneId, LaneProvenance, Mesh, Point, Provenance};
+use xodr::{load_file_with_provenance, LaneId, LaneProvenance, Mesh, Point, Provenance};
 
 /// The mesh rib (left vertex, right vertex) at one end of a lane's strip.
 fn rib(mesh: &Mesh, lane: LaneId, at_end: bool) -> Option<(Point, Point)> {

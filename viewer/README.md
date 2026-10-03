@@ -1,13 +1,13 @@
 # OpenDRIVE viewer
 
-A three.js page that draws maps baked by `libopendrive`. Hover anything it
+A three.js page that draws maps baked by `xodr`. Hover anything it
 draws, such as a lane, an object, a signal or a junction, to read what
-`libopendrive` knows about it.
+`xodr` knows about it.
 
-`libopendrive` draws nothing itself. The `libopendrive-viewer` crate in this
+`xodr` draws nothing itself. The `xodr-viewer` crate in this
 folder is the baker. It turns a `.xodr` map into JSON, and
 `web/index.html` draws that JSON.
-The page runs `libopendrive-viewer` in the browser, compiled to WebAssembly,
+The page runs `xodr-viewer` in the browser, compiled to WebAssembly,
 so it opens a `.xodr` straight from disk. The `viewer_export` binary bakes
 the same JSON ahead of time, for maps you want in the page's `map` list.
 
@@ -54,14 +54,14 @@ The page bakes a map you open. `viewer_export` bakes maps ahead of time, to
 maps as you like, such as `tests/data/*.xodr`:
 
 ```sh
-cargo run --release -p libopendrive-viewer -- tests/data/town07.xodr
+cargo run --release -p xodr-viewer -- tests/data/town07.xodr
 ```
 
 The URL names a baked map as `?scene=town07.json`, so a link opens the same
 one. To bake to another path, give one map and the output:
 
 ```sh
-cargo run --release -p libopendrive-viewer -- tests/data/objects.xodr /tmp/objects.json
+cargo run --release -p xodr-viewer -- tests/data/objects.xodr /tmp/objects.json
 ```
 
 `viewer_export` reads OpenCRG files from beside the `.xodr`. If a map fails
@@ -115,7 +115,7 @@ tunnels and bridges above them. A group of 12 or fewer starts open. So on a
 small map everything is listed, and on town07 you see 234 closed roads.
 Filtering opens every group that matches.
 
-At the top, in amber, are the map's warnings. Most are what `libopendrive`
+At the top, in amber, are the map's warnings. Most are what `xodr`
 dropped from a bad file, such as a road with no geometry or a lane with no
 `<width>`. The rest come from the baker: a CRG file it could not load, or a
 mesh that is not a valid triangle mesh. Click a warning to light the lanes of the

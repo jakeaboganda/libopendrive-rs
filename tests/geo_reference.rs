@@ -1,7 +1,7 @@
 //! The geo reference: `<header><geoReference>` and `<header><offset>`, kept
 //! as the file gives them.
 
-use libopendrive::{load_file, load_str, GeoOffset, GeoReference, RoadNetwork};
+use xodr::{load_file, load_str, GeoOffset, GeoReference, RoadNetwork};
 
 /// A one-lane road under a `<header>` holding `header`.
 fn map(header: &str) -> RoadNetwork {

@@ -1,5 +1,5 @@
 [package]
-name = "libopendrive-viewer"
+name = "xodr-viewer"
 version = "0.0.0"
 edition = "2021"
 publish = false
@@ -14,7 +14,7 @@ name = "viewer_export"
 path = "src/main.rs"
 
 [dependencies]
-libopendrive = { path = "..", features = ["serde"] }
+xodr = { path = "..", features = ["serde"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 
 # build.sh runs the wasm-bindgen CLI of this exact version.

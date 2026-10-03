@@ -1,15 +1,15 @@
 [package]
-name = "libopendrive"
+name = "xodr"
 version = "0.4.1"
 edition = "2021"
 rust-version = "1.85"
 description = "Pure-Rust OpenDRIVE (.xodr) importer: bakes a road network into polylines, a lane graph, and a surface mesh."
-repository = "https://github.com/jakeaboganda/libopendrive-rs"
+repository = "https://github.com/jakeaboganda/xodr"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 keywords = ["opendrive", "xodr", "road", "map", "simulation"]
 categories = ["parser-implementations", "science::robotics", "simulation"]
-documentation = "https://docs.rs/libopendrive"
+documentation = "https://docs.rs/xodr"
 # The tests and benchmarks need the map fixtures in tests/data. Those stay in
 # git and out of the published tarball. They are 1.7 MB, consumers never need
 # them, and two carry third-party licences (see tests/data/README.md). Tests

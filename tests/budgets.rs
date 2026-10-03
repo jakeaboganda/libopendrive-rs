@@ -6,7 +6,7 @@
 
 use std::time::Instant;
 
-use libopendrive::{load_file, Point};
+use xodr::{load_file, Point};
 
 const TOWN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/town07.xodr");
 

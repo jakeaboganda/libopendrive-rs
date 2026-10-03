@@ -5,7 +5,7 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use libopendrive::{load_file, Point, RoadNetwork};
+use xodr::{load_file, Point, RoadNetwork};
 
 const TOWN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/town07.xodr");
 

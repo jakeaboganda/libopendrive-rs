@@ -6,7 +6,7 @@
 //! the routing graph) treats the imported network as sound, so this is the
 //! boundary where that has to be made true.
 
-use libopendrive::{
+use xodr::{
     load_file, load_file_with_provenance, load_str, load_str_with_provenance, RoadSkipReason,
     Warning,
 };
@@ -21,7 +21,7 @@ const FULL_MAPS: [&str; 4] = [
     concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/testtrack.xodr"),
 ];
 
-fn fixture(name: &str) -> libopendrive::RoadNetwork {
+fn fixture(name: &str) -> xodr::RoadNetwork {
     load_file(format!("{DATA}{name}")).unwrap_or_else(|e| panic!("loading {name}: {e}"))
 }
 

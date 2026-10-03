@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Renamed to `xodr`
+
+- The crate is now `xodr`, renamed from `libopendrive`, which was easily
+  confused with the C++ library libOpenDRIVE. To upgrade, replace
+  `libopendrive` with `xodr` in `Cargo.toml` and in your `use` paths.
+  Nothing else changes.
+- The viewer crate is now `xodr-viewer`, so run the exporter with
+  `cargo run -p xodr-viewer -- map.xodr`. Files opened in the viewer under
+  the old name won't reopen after a reload. Open them again.
+
 ## 0.4.1 - 2026-10-03
 
 ### Lane changes
