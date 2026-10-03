@@ -1,0 +1,24 @@
+[package]
+name = "libopendrive"
+version = "0.4.2"
+edition = "2021"
+rust-version = "1.85"
+description = "Renamed to xodr. This last release re-exports xodr, so existing code keeps compiling."
+repository = "https://github.com/jakeaboganda/xodr"
+documentation = "https://docs.rs/xodr"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+keywords = ["opendrive", "xodr", "road", "map", "simulation"]
+categories = ["parser-implementations", "science::robotics", "simulation"]
+
+[features]
+serde = ["xodr/serde"]
+
+[dependencies]
+xodr = "0.5"
+
+[package.metadata.docs.rs]
+all-features = true
+
+# A project of its own, not part of the xodr workspace it is checked out in.
+[workspace]
