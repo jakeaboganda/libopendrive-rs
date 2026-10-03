@@ -29,7 +29,7 @@ use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
-use libopendrive::opencrg::{CrgGrid, Uv};
+use xodr::opencrg::{CrgGrid, Uv};
 
 /// How long each arc of the plan view is, and how far apart the elevation
 /// and superelevation records are, in metres.

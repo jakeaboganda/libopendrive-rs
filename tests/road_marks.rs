@@ -12,7 +12,7 @@
 //! `<type><line>`. Road 2 is the same from `(0, 30)`, 40 m long, with
 //! `<explicit>` lines on lane -1 and a center mark that sways.
 
-use libopendrive::{
+use xodr::{
     load_file_with_provenance, load_str_with_provenance, LaneChange, LinePattern, LineRule, Point,
     Provenance, RoadMark, RoadMarkLine, RoadMarkProvenance, RoadMarkType, RoadMarkWeight,
     RoadNetwork, Warning,
@@ -62,7 +62,7 @@ fn mark<'a>(
 }
 
 /// The `<lane id>` of a baked lane.
-fn od_id(prov: &Provenance, lane: Option<libopendrive::LaneId>) -> Option<i32> {
+fn od_id(prov: &Provenance, lane: Option<xodr::LaneId>) -> Option<i32> {
     lane.map(|id| {
         prov.lanes
             .iter()

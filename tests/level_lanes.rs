@@ -5,7 +5,7 @@
 //! road there is a straight along +X on flat ground, so a point's height is
 //! what the cross-section gives it.
 
-use libopendrive::{load_file_with_provenance, Lane, Provenance, RoadNetwork, Shape, Warning};
+use xodr::{load_file_with_provenance, Lane, Provenance, RoadNetwork, Shape, Warning};
 
 const FIXTURE: &str = "tests/data/level_lanes.xodr";
 

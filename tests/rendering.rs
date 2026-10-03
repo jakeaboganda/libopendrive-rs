@@ -5,7 +5,7 @@
 //! lanes it came from, and the whole network survives a round trip out of the
 //! process.
 
-use libopendrive::load_file;
+use xodr::load_file;
 
 const TOWN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/town07.xodr");
 #[cfg(feature = "serde")]
@@ -117,7 +117,7 @@ fn a_span_is_left_and_right_boundary_vertices_in_alternation() {
 fn a_hand_built_mesh_carries_no_spans() {
     // `lanes` is what the tessellator recorded, not a required field. A mesh
     // assembled by hand is still a valid mesh.
-    let mesh = libopendrive::Mesh::default();
+    let mesh = xodr::Mesh::default();
     assert!(mesh.lanes.is_empty());
     assert!(mesh.validate().is_err());
 }
@@ -128,7 +128,7 @@ fn a_network_survives_a_round_trip_and_is_still_queryable() {
     // A viewer typically lives in another process. What it receives has to
     // behave like an imported map, not merely look like one. The arc lengths,
     // tangents and lane index are all derived state that has to come back.
-    use libopendrive::RoadNetwork;
+    use xodr::RoadNetwork;
 
     let net = load_file(SWEEPER).expect("the banked sweeper loads");
     let json = serde_json::to_string(&net).expect("serialize");
@@ -153,7 +153,7 @@ fn a_network_survives_a_round_trip_and_is_still_queryable() {
 fn a_mesh_survives_a_round_trip() {
     let mesh = load_file(SWEEPER).expect("loads").surface_mesh();
     let json = serde_json::to_string(&mesh).expect("serialize");
-    let back: libopendrive::Mesh = serde_json::from_str(&json).expect("deserialize");
+    let back: xodr::Mesh = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(mesh, back);
     assert_eq!(mesh.lanes, back.lanes, "lane spans must survive too");
 }
@@ -164,7 +164,7 @@ fn a_polyline_of_fewer_than_two_points_is_refused_on_the_way_in() {
     // Polyline serializes as points plus its two boundary tangents, so
     // deserializing is the one place an untrusted peer could hand us a
     // degenerate one.
-    use libopendrive::Polyline;
+    use xodr::Polyline;
     let one = r#"{"points":[[0,0,0]],"tangents":[[1,0,0],[1,0,0]]}"#;
     let none = r#"{"points":[],"tangents":[[1,0,0],[1,0,0]]}"#;
     assert!(serde_json::from_str::<Polyline>(one).is_err());

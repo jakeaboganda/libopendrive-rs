@@ -7,7 +7,7 @@
 //! from `(0, -40)` heading +X, and places some of them again with
 //! `<objectReference>`s. That puts every expected placement in closed form.
 
-use libopendrive::{
+use xodr::{
     load_file, load_file_with_provenance, Corner, Extent, Marking, Material, Object, ObjectId,
     ObjectType, Orientation, ParkingSpace, Point, Section, Shape, UserData, Vector,
 };
@@ -698,7 +698,7 @@ fn a_real_file_expands_its_rows_of_posts_and_sweeps_its_railings() {
 fn objects_survive_a_round_trip() {
     let net = load_file(OBJECTS).expect("objects.xodr loads");
     let json = serde_json::to_string(&net).expect("serialize");
-    let back: libopendrive::RoadNetwork = serde_json::from_str(&json).expect("deserialize");
+    let back: xodr::RoadNetwork = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(back.objects(), net.objects());
     assert_eq!(back, net);
 }
@@ -1043,7 +1043,7 @@ fn a_stretch_ending_on_a_section_boundary_stays_out_of_the_next_section() {
         section(0.0),
         section(50.0),
     );
-    let (net, prov) = libopendrive::load_str_with_provenance(&xodr).unwrap();
+    let (net, prov) = xodr::load_str_with_provenance(&xodr).unwrap();
     let lane = |section: usize| {
         prov.lanes
             .iter()
@@ -1075,13 +1075,13 @@ fn a_repeat_or_marking_with_too_many_copies_is_left_out_with_a_warning() {
             </right></laneSection></lanes><objects>{object}</objects></road></OpenDRIVE>"#
         )
     };
-    let warned = |object: &str| libopendrive::Warning::TooManyCopies {
+    let warned = |object: &str| xodr::Warning::TooManyCopies {
         road_id: "1".into(),
         object_id: object.into(),
     };
     let posts = r#"<object id="posts" type="pole" s="0" t="-5" height="1" radius="0.1">
         <repeat s="0" length="100" distance="0.0001"/></object>"#;
-    let (net, prov) = libopendrive::load_str_with_provenance(&xodr(posts)).unwrap();
+    let (net, prov) = xodr::load_str_with_provenance(&xodr(posts)).unwrap();
     assert!(net.objects().is_empty());
     assert_eq!(prov.warnings, [warned("posts")]);
 
@@ -1092,7 +1092,7 @@ fn a_repeat_or_marking_with_too_many_copies_is_left_out_with_a_warning() {
         </outline></outlines>
         <markings><marking width="0.5" color="white" lineLength="0.00001" spaceLength="0.00001">
           <cornerReference id="0"/><cornerReference id="1"/></marking></markings></object>"#;
-    let (net, prov) = libopendrive::load_str_with_provenance(&xodr(crossing)).unwrap();
+    let (net, prov) = xodr::load_str_with_provenance(&xodr(crossing)).unwrap();
     assert_eq!(net.objects().len(), 1, "the outline stays");
     assert!(net.objects()[0].markings[0].pieces.is_empty());
     assert_eq!(prov.warnings, [warned("crossing")]);

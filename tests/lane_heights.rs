@@ -4,7 +4,7 @@
 //! road there is straight or a plain arc, so each raised edge has a closed
 //! form to check against.
 
-use libopendrive::{
+use xodr::{
     load_file_with_provenance, Lane, LaneProvenance, Mesh, Point, Provenance, RoadNetwork, Shape,
 };
 

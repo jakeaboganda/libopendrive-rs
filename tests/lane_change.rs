@@ -4,7 +4,7 @@
 //! road runs along +X in right-hand traffic, so the left of lanes -1 to -3
 //! is `+t`, and the left of lane 1 is `-t`.
 
-use libopendrive::{
+use xodr::{
     load_file_with_provenance, load_str_with_provenance, LanePosition, Provenance, RoadNetwork,
 };
 

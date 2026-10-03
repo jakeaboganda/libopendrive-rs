@@ -7,9 +7,7 @@
 //! than the reference line, so how far along the lane the tunnel starts is
 //! not its `s`.
 
-use libopendrive::{
-    load_file, load_file_with_provenance, Coverage, LaneId, StructureId, StructureKind,
-};
+use xodr::{load_file, load_file_with_provenance, Coverage, LaneId, StructureId, StructureKind};
 
 const OBJECTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/objects.xodr");
 

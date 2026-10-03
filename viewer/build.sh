@@ -17,10 +17,10 @@ rustup target list --installed | grep -qx wasm32-unknown-unknown ||
 [ "$(wasm-bindgen --version 2>/dev/null)" = "wasm-bindgen $version" ] ||
     cargo install -q --locked wasm-bindgen-cli --version "$version"
 
-cargo build -q --release -p libopendrive-viewer --lib --target wasm32-unknown-unknown
+cargo build -q --release -p xodr-viewer --lib --target wasm32-unknown-unknown
 wasm-bindgen --target web --no-typescript --out-dir viewer/web/pkg \
-    target/wasm32-unknown-unknown/release/libopendrive_viewer.wasm
+    target/wasm32-unknown-unknown/release/xodr_viewer.wasm
 
-cargo build -q --release -p libopendrive-viewer --bin viewer_export
+cargo build -q --release -p xodr-viewer --bin viewer_export
 target/release/viewer_export --refresh ||
     echo "warning: some scenes in viewer/web were not baked again, see above" >&2

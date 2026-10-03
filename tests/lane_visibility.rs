@@ -5,7 +5,7 @@
 //! Its road is a straight along +X, so a lane's distance along its
 //! centerline is the road's `s`, less the start of its lane section.
 
-use libopendrive::{
+use xodr::{
     load_file_with_provenance, load_str_with_provenance, LaneId, Provenance, Visibility, Warning,
 };
 
@@ -120,7 +120,7 @@ fn a_distance_too_large_for_f32_is_dropped_with_a_warning() {
 fn lane_visibility_survives_a_serde_round_trip() {
     let (net, _) = load_file_with_provenance(FIXTURE).unwrap();
     let json = serde_json::to_string(&net).unwrap();
-    let back: libopendrive::RoadNetwork = serde_json::from_str(&json).unwrap();
+    let back: xodr::RoadNetwork = serde_json::from_str(&json).unwrap();
     assert_eq!(back.lane_visibility(), net.lane_visibility());
     assert!(!net.lane_visibility().is_empty());
 }

@@ -1,7 +1,7 @@
 //! Road coordinates: `RoadNetwork::road_point` turns `(road, s, t)` into a
 //! point on the road surface, and `road_position` turns a point back.
 
-use libopendrive::{
+use xodr::{
     load_file, load_file_with_provenance, load_str, Point, RoadId, RoadNetwork, RoadPosition,
 };
 
@@ -125,9 +125,7 @@ fn a_road_position_is_the_road_s_and_t_under_a_point() {
             "{at:?} for ({s}, {t})"
         );
         // Above the surface, the same place.
-        let above = net
-            .road_position(p + libopendrive::Vector::Z * 2.0)
-            .unwrap();
+        let above = net.road_position(p + xodr::Vector::Z * 2.0).unwrap();
         assert!(
             (above.s - s).abs() < 1e-3 && (above.t - t).abs() < 1e-3,
             "{above:?}"

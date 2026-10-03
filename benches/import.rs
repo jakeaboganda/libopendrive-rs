@@ -6,7 +6,7 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use libopendrive::load_str;
+use xodr::load_str;
 
 const DATA: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/");
 

@@ -24,11 +24,11 @@
 //! to another math library is `Point::to_array`.
 //!
 //! ```no_run
-//! let net = libopendrive::load_file("maps/town07.xodr")?;
+//! let net = xodr::load_file("maps/town07.xodr")?;
 //! let lane = net.driving_lanes().next().expect("a driving lane");
 //! let pose = lane.center.pose_at(25.0);
 //! let route = net.route(pose.position, lane.center.point_at(400.0));
-//! # Ok::<(), libopendrive::ImportError>(())
+//! # Ok::<(), xodr::ImportError>(())
 //! ```
 //!
 //! # Which OpenDRIVE version
@@ -987,13 +987,13 @@
 //! with [`RoadNetwork::road_by_od_id`].
 //!
 //! ```no_run
-//! use libopendrive::{load_file, RoadPosition};
+//! use xodr::{load_file, RoadPosition};
 //!
 //! let net = load_file("maps/town07.xodr")?;
 //! let road = net.road_by_od_id("5").expect("road 5").id();
 //! let point = net.road_point(RoadPosition { road, s: 10.0, t: -1.75 });
 //! let back = point.and_then(|p| net.road_position(p));
-//! # Ok::<(), libopendrive::ImportError>(())
+//! # Ok::<(), xodr::ImportError>(())
 //! ```
 //!
 //! The surface is the one the lanes are baked on: the elevation, the
@@ -1061,12 +1061,12 @@
 //! lane's end, as an [`Advance::DeadEnd`] with the distance left.
 //!
 //! ```no_run
-//! # let net = libopendrive::load_file("maps/town07.xodr")?;
-//! # let here = net.lane_position(libopendrive::Point::ORIGIN).expect("on a lane");
+//! # let net = xodr::load_file("maps/town07.xodr")?;
+//! # let here = net.lane_position(xodr::Point::ORIGIN).expect("on a lane");
 //! for branch in net.advance(here, 25.0) {
 //!     let ahead = net.lane_point(branch.position());
 //! }
-//! # Ok::<(), libopendrive::ImportError>(())
+//! # Ok::<(), xodr::ImportError>(())
 //! ```
 //!
 //! The distance runs along the lanes' centerlines, so it is how far a

@@ -40,8 +40,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use libopendrive::opencrg::CrgGrid;
-use libopendrive::{
+use serde_json::{json, Map, Value};
+use xodr::opencrg::CrgGrid;
+use xodr::{
     load_str_with_provenance, Access, Along, Controller, ControllerProvenance, Corner, CrgMode,
     CrgPurpose, CrgSurface, CrossPathEnd, Direction, Extent, JunctionArea, JunctionGroupKind,
     LaneId, LanePosition, LaneSpan, LinePattern, LinkPoint, Marking, Mesh, Object,
@@ -50,7 +51,6 @@ use libopendrive::{
     Shape, Side, Signal, SignalBoard, SignalProvenance, SpeedLimit, Structure, StructureKind,
     StructureProvenance, SurfaceHint, SwitchPosition, TrackPoint, VirtualJunction, Warning,
 };
-use serde_json::{json, Map, Value};
 
 #[cfg(target_arch = "wasm32")]
 mod web;
@@ -183,7 +183,7 @@ fn build_scene(
         .collect();
 
     json!({
-        "meta": { "generator": "libopendrive viewer_export", "frame": "OpenDRIVE Z-up metres" },
+        "meta": { "generator": "xodr viewer_export", "frame": "OpenDRIVE Z-up metres" },
         "mesh": buffers(mesh),
         "lanes": lanes,
         "objects": objects,
@@ -333,7 +333,7 @@ fn semantic_text(semantic: &Semantic) -> String {
             .collect::<Vec<_>>()
             .join(", ")
     };
-    let amount = |value: &Option<f64>, unit: &Option<libopendrive::Unit>| {
+    let amount = |value: &Option<f64>, unit: &Option<xodr::Unit>| {
         [
             value.map(|v| v.to_string()),
             unit.map(|u| u.as_str().to_string()),

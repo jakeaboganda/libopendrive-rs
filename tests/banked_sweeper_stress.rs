@@ -8,8 +8,8 @@
 //! superelevation record that starts mid-road, multi-section + bank, laneOffset +
 //! bank, a steep bank, and an empty `<lateralProfile>`.
 
-use libopendrive::{load_file, load_str};
-use libopendrive::{Direction, RoadNetwork};
+use xodr::{load_file, load_str};
+use xodr::{Direction, RoadNetwork};
 
 const SWEEPER: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -29,7 +29,7 @@ const MID_ROAD: &str = concat!(
 );
 
 /// Vertex index whose bank is largest in magnitude on a lane.
-fn peak_bank_vertex(lane: &libopendrive::Lane) -> usize {
+fn peak_bank_vertex(lane: &xodr::Lane) -> usize {
     let mut best = 0usize;
     let mut peak = 0.0f32;
     for (i, b) in lane.bank.iter().enumerate() {

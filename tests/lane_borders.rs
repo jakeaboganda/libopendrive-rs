@@ -4,7 +4,7 @@
 //! road there is a straight along +X, so a lane's borders are its
 //! centerline's `y` less the road's, plus or minus half its width.
 
-use libopendrive::{load_file_with_provenance, Lane, Provenance, RoadNetwork, Warning};
+use xodr::{load_file_with_provenance, Lane, Provenance, RoadNetwork, Warning};
 
 const FIXTURE: &str = "tests/data/lane_borders.xodr";
 

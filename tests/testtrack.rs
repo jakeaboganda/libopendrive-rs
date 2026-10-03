@@ -6,12 +6,12 @@
 //! straight, a tight corner really tight, a crest that really rises and falls.
 //! Otherwise a vehicle-tuning session is reading a road that isn't there.
 
-use libopendrive::load_file;
+use xodr::load_file;
 
 const TRACK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/testtrack.xodr");
 
 /// Curvature at arc length `s`, from the change in heading over a short span.
-fn curvature(lane: &libopendrive::Lane, s: f32) -> f32 {
+fn curvature(lane: &xodr::Lane, s: f32) -> f32 {
     const SPAN: f32 = 4.0;
     let (a, b) = (
         lane.center.pose_at(s - SPAN * 0.5).heading,
@@ -129,7 +129,7 @@ fn the_test_track_curves_are_super_elevated() {
 
 /// Deepest (most negative) bank over `[lo, hi]` lane arc length, scanned finely
 /// so lane-vs-road arc-length drift can't miss the peak.
-fn deepest_bank(lane: &libopendrive::Lane, lo: f32, hi: f32) -> f32 {
+fn deepest_bank(lane: &xodr::Lane, lo: f32, hi: f32) -> f32 {
     let (mut best, mut s) = (0.0f32, lo);
     while s <= hi {
         best = best.min(lane.bank_at(s));
@@ -139,7 +139,7 @@ fn deepest_bank(lane: &libopendrive::Lane, lo: f32, hi: f32) -> f32 {
 }
 
 /// Largest |bank| over `[lo, hi]`, for asserting a stretch reads flat.
-fn worst_abs_bank(lane: &libopendrive::Lane, lo: f32, hi: f32) -> f32 {
+fn worst_abs_bank(lane: &xodr::Lane, lo: f32, hi: f32) -> f32 {
     let (mut m, mut s) = (0.0f32, lo);
     while s <= hi {
         m = m.max(lane.bank_at(s).abs());
@@ -148,7 +148,7 @@ fn worst_abs_bank(lane: &libopendrive::Lane, lo: f32, hi: f32) -> f32 {
     m
 }
 
-fn longest_lane(net: &libopendrive::RoadNetwork) -> &libopendrive::Lane {
+fn longest_lane(net: &xodr::RoadNetwork) -> &xodr::Lane {
     net.driving_lanes()
         .max_by(|a, b| a.center.length().total_cmp(&b.center.length()))
         .expect("a driving lane")
@@ -319,9 +319,9 @@ fn both_lanes_carry_the_road_level_banking() {
             lane.direction
         );
         match lane.direction {
-            libopendrive::Direction::Forward => saw_forward = true,
-            libopendrive::Direction::Backward => saw_backward = true,
-            libopendrive::Direction::Both => panic!("no two-way lanes here"),
+            xodr::Direction::Forward => saw_forward = true,
+            xodr::Direction::Backward => saw_backward = true,
+            xodr::Direction::Both => panic!("no two-way lanes here"),
         }
     }
     assert!(

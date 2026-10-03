@@ -202,10 +202,10 @@ fn the_declared_version_changes_nothing() {
         r#"<header revMajor="7" revMinor="3" name="not a real revision"/>"#,
         r#"<header revMajor="banana" revMinor=""/>"#,
     ];
-    let baseline = libopendrive::load_str(&format!("<OpenDRIVE>{ROAD}</OpenDRIVE>"))
+    let baseline = xodr::load_str(&format!("<OpenDRIVE>{ROAD}</OpenDRIVE>"))
         .expect("a road with no header imports");
     for header in headers {
-        let net = libopendrive::load_str(&format!("<OpenDRIVE>{header}{ROAD}</OpenDRIVE>"))
+        let net = xodr::load_str(&format!("<OpenDRIVE>{header}{ROAD}</OpenDRIVE>"))
             .unwrap_or_else(|e| panic!("header {header:?} was rejected: {e}"));
         assert_eq!(net, baseline, "header {header:?} changed the baked road");
     }

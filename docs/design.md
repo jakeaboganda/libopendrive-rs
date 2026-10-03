@@ -59,7 +59,7 @@ behaves like a freshly imported map. A road serializes as the records the
 file gives, and rebakes its spirals and cubic curves on the way in.
 
 ```toml
-libopendrive = { version = "0.4", features = ["serde"] }
+xodr = { version = "0.5", features = ["serde"] }
 ```
 
 ## Untrusted input

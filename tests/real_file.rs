@@ -5,7 +5,7 @@
 //! sections, with no spirals. It pins the "loads without panicking, produces finite geometry"
 //! bar for real files, and is what multiple lane sections were built for.
 
-use libopendrive::load_file;
+use xodr::load_file;
 
 const REAL: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/town07.xodr");
 const SPIRAL: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/spiral.xodr");

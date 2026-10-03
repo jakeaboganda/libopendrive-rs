@@ -22,7 +22,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       # The viewer's baker is also built for the browser.
       - run: rustup target add wasm32-unknown-unknown
-      - run: cargo clippy -p libopendrive-viewer --target wasm32-unknown-unknown -- -D warnings
+      - run: cargo clippy -p xodr-viewer --target wasm32-unknown-unknown -- -D warnings
       - run: cargo test --workspace
       - run: cargo test --workspace --all-features
       # The timing guardrails in tests/budgets.rs compare an indexed lookup

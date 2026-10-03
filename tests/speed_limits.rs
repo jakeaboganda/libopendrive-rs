@@ -5,7 +5,7 @@
 //! road there is a straight along +X, so a lane's distance along its
 //! centerline is its road's `s` less the start of its lane section.
 
-use libopendrive::{
+use xodr::{
     load_file_with_provenance, Along, LaneId, Provenance, RoadNetwork, RoadType, SpeedLimit,
     Warning,
 };

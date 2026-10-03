@@ -8,7 +8,7 @@
 //!
 //! Companion to the inline tests in `src/mesh.rs`.
 
-use libopendrive::{Mesh, Point, Vector};
+use xodr::{Mesh, Point, Vector};
 
 /// A single flat quad at height `z` spanning x∈[0,2], y∈[0,2], split on the
 /// (0,0)-(2,2) diagonal. `flip` reverses the winding of both triangles.
@@ -216,7 +216,7 @@ fn the_normal_on_a_climbing_road_tilts_with_the_grade() {
         <lanes><laneSection s="0"><center><lane id="0" type="none"/></center><right>
         <lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" d="0"/></lane>
         </right></laneSection></lanes></road></OpenDRIVE>"#;
-    let mesh = libopendrive::load_str(xodr).unwrap().surface_mesh();
+    let mesh = xodr::load_str(xodr).unwrap().surface_mesh();
     let pitch = 0.1_f32.atan();
     let want = Vector::new(-pitch.sin(), 0.0, pitch.cos());
     let (z, up) = mesh.height_at(50.0, -1.75).expect("on the road");
@@ -226,7 +226,7 @@ fn the_normal_on_a_climbing_road_tilts_with_the_grade() {
 
 #[test]
 fn validate_rejects_a_triangle_with_no_area_or_too_few_corners() {
-    use libopendrive::MeshError;
+    use xodr::MeshError;
     let mesh = |indices: Vec<u32>| Mesh {
         vertices: vec![
             Point::new(0.0, 0.0, 0.0),
@@ -254,7 +254,7 @@ fn validate_rejects_a_triangle_with_no_area_or_too_few_corners() {
 
 #[test]
 fn a_lane_opening_out_of_nothing_tessellates_into_a_valid_mesh() {
-    let net = libopendrive::load_file(concat!(
+    let net = xodr::load_file(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/data/lane_borders.xodr"
     ))
